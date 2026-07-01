@@ -67,6 +67,20 @@ class TransferClient {
         .toList();
   }
 
+  Future<FileManifestDto> fetchFileManifest(
+    String baseUrl, {
+    required String fileId,
+    String? token,
+  }) async {
+    final response = await _get(
+      '$baseUrl/manifest/files/$fileId',
+      token: token,
+    );
+    return FileManifestDto.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
   Future<void> downloadEntry({
     required Peer peer,
     required String shareId,

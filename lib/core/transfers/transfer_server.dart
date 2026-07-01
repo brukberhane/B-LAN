@@ -22,6 +22,8 @@ class TransferServer {
 
   bool get isRunning => _server != null;
 
+  int? get boundPort => _server?.port;
+
   Future<int> start({
     required int port,
     required String browserToken,
@@ -38,6 +40,7 @@ class TransferServer {
       ..post('/session', _session)
       ..get('/shares', _shares)
       ..get('/entries', _entries)
+      ..get('/manifest/files/<fileId>', _manifestFile)
       ..get('/files/<fileId>', _file)
       ..get('/chunks/<hash>', _chunk);
 
@@ -176,23 +179,46 @@ class TransferServer {
     );
   }
 
+  Future<Response> _manifestFile(Request request, String fileId) async {
+    final manifest = await _db.fileManifest(fileId);
+    if (manifest == null) {
+      return Response.notFound('File not found');
+    }
+    if (!manifest.hashReady) {
+      return Response(
+        409,
+        body: 'File hashing not complete',
+        headers: {'content-type': 'text/plain'},
+      );
+    }
+    if (!await _entryFileExists(manifest.entry, manifest.share)) {
+      return Response.notFound('Missing file');
+    }
+    final dto = manifest.toDto();
+    final encoded = jsonEncode(dto.toJson());
+    if (encoded.contains(manifest.share.localPath) ||
+        (manifest.entry.localUri?.isNotEmpty ?? false)) {
+      return Response.internalServerError(body: 'Manifest leaked local path');
+    }
+    return Response.ok(
+      encoded,
+      headers: {'content-type': 'application/json'},
+    );
+  }
+
   Future<Response> _file(Request request, String fileId) async {
-    final entry = await (_db.select(_db.entries)
-          ..where((t) => t.id.equals(fileId)))
-        .getSingleOrNull();
+    final entry = await _db.entryById(fileId);
     if (entry == null || entry.isDirectory) {
       return Response.notFound('File not found');
     }
     final share = await (_db.select(_db.shares)
           ..where((t) => t.id.equals(entry.shareId)))
         .getSingleOrNull();
-    if (share == null) {
+    if (share == null || !share.enabled) {
       return Response.notFound('Share not found');
     }
 
-    final file = File(
-      entry.localUri ?? p.join(share.localPath, entry.relativePath),
-    );
+    final file = _entryFile(entry, share);
     if (!await file.exists()) {
       return Response.notFound('Missing file');
     }
@@ -233,24 +259,20 @@ class TransferServer {
     final chunk = await (_db.select(_db.chunks)
           ..where((t) => t.hash.equals(hash)))
         .getSingleOrNull();
-    if (chunk == null) {
+    if (chunk == null || chunk.status != 'ready') {
       return Response.notFound('Chunk not found');
     }
-    final entry = await (_db.select(_db.entries)
-          ..where((t) => t.id.equals(chunk.entryId)))
-        .getSingleOrNull();
-    if (entry == null) {
+    final entry = await _db.entryById(chunk.entryId);
+    if (entry == null || entry.hashStatus != 'ready') {
       return Response.notFound('Entry not found');
     }
     final share = await (_db.select(_db.shares)
           ..where((t) => t.id.equals(entry.shareId)))
         .getSingleOrNull();
-    if (share == null) {
+    if (share == null || !share.enabled) {
       return Response.notFound('Share not found');
     }
-    final file = File(
-      entry.localUri ?? p.join(share.localPath, entry.relativePath),
-    );
+    final file = _entryFile(entry, share);
     if (!await file.exists()) {
       return Response.notFound('Missing file');
     }
@@ -262,4 +284,11 @@ class TransferServer {
       },
     );
   }
+
+  File _entryFile(Entry entry, Share share) => File(
+        entry.localUri ?? p.join(share.localPath, entry.relativePath),
+      );
+
+  Future<bool> _entryFileExists(Entry entry, Share share) =>
+      _entryFile(entry, share).exists();
 }

@@ -115,6 +115,74 @@ class EntryDto {
       );
 }
 
+class ChunkDto {
+  const ChunkDto({
+    required this.index,
+    required this.offset,
+    required this.length,
+    required this.hash,
+    required this.hashAlgorithm,
+  });
+
+  final int index;
+  final int offset;
+  final int length;
+  final String hash;
+  final String hashAlgorithm;
+
+  Map<String, dynamic> toJson() => {
+        'index': index,
+        'offset': offset,
+        'length': length,
+        'hash': hash,
+        'hashAlgorithm': hashAlgorithm,
+      };
+
+  factory ChunkDto.fromJson(Map<String, dynamic> json) => ChunkDto(
+        index: json['index'] as int,
+        offset: json['offset'] as int,
+        length: json['length'] as int,
+        hash: json['hash'] as String,
+        hashAlgorithm: json['hashAlgorithm'] as String? ?? protocol.hashAlgorithm,
+      );
+}
+
+class FileManifestDto {
+  const FileManifestDto({
+    required this.protocolVersion,
+    required this.entry,
+    required this.chunkSize,
+    required this.totalBytes,
+    required this.chunks,
+  });
+
+  final int protocolVersion;
+  final EntryDto entry;
+  final int chunkSize;
+  final int totalBytes;
+  final List<ChunkDto> chunks;
+
+  Map<String, dynamic> toJson() => {
+        'protocolVersion': protocolVersion,
+        'entry': entry.toJson(),
+        'chunkSize': chunkSize,
+        'totalBytes': totalBytes,
+        'chunks': chunks.map((c) => c.toJson()).toList(),
+      };
+
+  factory FileManifestDto.fromJson(Map<String, dynamic> json) =>
+      FileManifestDto(
+        protocolVersion:
+            json['protocolVersion'] as int? ?? protocol.protocolVersion,
+        entry: EntryDto.fromJson(json['entry'] as Map<String, dynamic>),
+        chunkSize: json['chunkSize'] as int,
+        totalBytes: json['totalBytes'] as int,
+        chunks: (json['chunks'] as List<dynamic>)
+            .map((e) => ChunkDto.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
 class SessionResponse {
   const SessionResponse({required this.token, required this.expiresInSeconds});
 

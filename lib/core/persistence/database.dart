@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../protocol/constants.dart';
+import '../protocol/models.dart';
 import 'tables.dart';
 
 part 'database.g.dart';
@@ -204,6 +205,35 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  Future<Entry?> entryById(String id) =>
+      (select(entries)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  Future<List<Chunk>> chunksForEntry(String entryId) => (select(chunks)
+        ..where((t) => t.entryId.equals(entryId))
+        ..orderBy([(t) => OrderingTerm.asc(t.chunkIndex)]))
+      .get();
+
+  Future<FileManifestData?> fileManifest(String entryId) async {
+    final entry = await entryById(entryId);
+    if (entry == null || entry.isDirectory) {
+      return null;
+    }
+    final share = await (select(shares)..where((t) => t.id.equals(entry.shareId)))
+        .getSingleOrNull();
+    if (share == null || !share.enabled) {
+      return null;
+    }
+    final chunkRows = await chunksForEntry(entryId);
+    return FileManifestData(
+      entry: entry,
+      share: share,
+      chunks: chunkRows,
+      chunkSize: entry.chunkSize ?? defaultChunkSizeDesktop,
+      totalBytes: entry.size,
+      hashReady: entry.hashStatus == 'ready',
+    );
+  }
+
   Future<void> clearShareIndex(String shareId) async {
     final entryRows = await (select(entries)
           ..where((t) => t.shareId.equals(shareId)))
@@ -244,6 +274,50 @@ class AppDatabase extends _$AppDatabase {
       }).toList();
     };
   }
+}
+
+class FileManifestData {
+  const FileManifestData({
+    required this.entry,
+    required this.share,
+    required this.chunks,
+    required this.chunkSize,
+    required this.totalBytes,
+    required this.hashReady,
+  });
+
+  final Entry entry;
+  final Share share;
+  final List<Chunk> chunks;
+  final int chunkSize;
+  final int totalBytes;
+  final bool hashReady;
+
+  FileManifestDto toDto() => FileManifestDto(
+        protocolVersion: protocolVersion,
+        entry: EntryDto(
+          id: entry.id,
+          name: entry.name,
+          path: entry.relativePath,
+          isDirectory: entry.isDirectory,
+          size: entry.size,
+          mtimeMs: entry.mtimeMs,
+          hashReady: hashReady,
+        ),
+        chunkSize: chunkSize,
+        totalBytes: totalBytes,
+        chunks: chunks
+            .map(
+              (c) => ChunkDto(
+                index: c.chunkIndex,
+                offset: c.offset,
+                length: c.length,
+                hash: c.hash,
+                hashAlgorithm: c.hashAlgorithm,
+              ),
+            )
+            .toList(),
+      );
 }
 
 class ShareSummaryData {

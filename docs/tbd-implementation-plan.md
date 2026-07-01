@@ -2,6 +2,21 @@
 
 Last reviewed: 2026-07-01
 
+## Implementation Status
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| 1 Transfer protocol contract | **complete** | Manifest DTOs, `/manifest/files/<id>`, chunk route tightened, client `fetchFileManifest`, tests pass |
+| 2 Verified resumable downloads | pending | — |
+| 3 Parallel chunk downloads | pending | — |
+| 4 Folder downloads | pending | — |
+| 5 Desktop indexing hardening | pending | — |
+| 6 Platform validation | pending | — |
+| 7 Security UX | pending | — |
+| 8 Multi-source downloads | pending | — |
+| 9 libSQL benchmark | pending | — |
+| 10 Tests / stress / release | pending | — |
+
 This document replaces the loose TBD list with an implementation order and detailed work plan. It assumes the current app state:
 
 - Drift + bundled SQLite schema v3 is the active persistence layer.
