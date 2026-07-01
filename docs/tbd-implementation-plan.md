@@ -8,10 +8,11 @@ Last reviewed: 2026-07-01
 |-------|--------|-------|
 | 1 Transfer protocol contract | **complete** | Manifest DTOs, `/manifest/files/<id>`, chunk route tightened, client `fetchFileManifest`, tests pass |
 | 2 Verified resumable downloads | **complete** | Schema v4, `download_chunks` wired, manifest-based verify/resume; hash format is base64 SHA-256 (matches indexer, not hex per plan) |
-| 3 Parallel chunk downloads | pending | — |
+| 3 Parallel chunk downloads | **complete** | Pool up to `maxConcurrentDownloads`; per-chunk open/write/close behind serial lock; fetch retry x3; `cancelActiveDownload()` groundwork |
+| 3.5 Transfer alignment cleanup | pending | Bring Phase 1-3 shortcuts back into alignment before folder downloads and UI expansion |
 | 4 Folder downloads | pending | — |
 | 5 Desktop indexing hardening | pending | — |
-| 6 Platform validation | pending | — |
+| 6 Platform validation and UI polish | pending | — |
 | 7 Security UX | pending | — |
 | 8 Multi-source downloads | pending | — |
 | 9 libSQL benchmark | pending | — |
@@ -19,9 +20,9 @@ Last reviewed: 2026-07-01
 
 This document replaces the loose TBD list with an implementation order and detailed work plan. It assumes the current app state:
 
-- Drift + bundled SQLite schema v3 is the active persistence layer.
+- Drift + bundled SQLite schema v4 is the active persistence layer.
 - Share scanning, SHA-256 chunk hashing, HTTP server, mDNS, Android SAF prototype, and core UI exist.
-- Downloads are currently single-peer, sequential ranged reads into `*.partial`, without chunk verification or true resume.
+- Downloads are currently single-peer manifest-based chunk transfers with verification, resume, and bounded parallel fetch.
 - Preserve current external changes: `bonsoir: ^7.1.4`, no `bonsoir_linux_dbus`, no `configureBonsoirPlatform()` call, current `setSetting()` behavior, and peer delete confirmation.
 
 ## Recommended Priority Order
@@ -40,6 +41,10 @@ Original suggested order was useful, but transfer work should be split and pulle
    - Use configured concurrency, retry chunks, and persist per-chunk state.
    - Reason: performance work is safer after verified chunk state exists.
 
+3.5. **Transfer alignment cleanup**
+   - Close implementation shortcuts from Phases 1-3 before building folder downloads on top.
+   - Reason: relative paths, URL-safe chunk hashes, and state consistency get harder to retrofit after recursive queues.
+
 4. **Folder downloads**
    - Recursively queue remote folders with path-safe target creation.
    - Reason: uses hardened single-file queue and exposes real app value.
@@ -49,8 +54,8 @@ Original suggested order was useful, but transfer work should be split and pulle
    - Reason: shared indexes must stay valid before relying on chunk routes long term.
 
 6. **Platform validation and polish**
-   - Verify Bonsoir 7/Linux, Android real-device behavior, Windows discovery limits, and web manual client.
-   - Reason: implementation exists but needs hardware/network proof.
+   - Verify Bonsoir 7/Linux, Android real-device behavior, Windows discovery limits, web manual client, and surface all implemented backend features in UI.
+   - Reason: implementation exists but needs hardware/network proof and current UI lags behind core capability.
 
 7. **Security UX**
    - Add real identity keypair, trust workflow, token rotation/revoke, and TLS design.
@@ -199,7 +204,6 @@ Original suggested order was useful, but transfer work should be split and pulle
 **Status: complete (2026-07-01).** Implementation notes:
 - Chunk hashes verified as base64 SHA-256 to match `hashFileChunks`, not lowercase hex.
 - Partial writes use `FileMode.append` + `setPosition` — `FileMode.write` truncates on each open.
-- Sequential chunk download only; parallel fetch is Phase 3.
 
 ## Phase 3: Parallel Chunk Downloads And Queue Control
 
@@ -211,32 +215,14 @@ Original suggested order was useful, but transfer work should be split and pulle
 
 ### Current State
 
-- `defaultMaxConcurrentDownloads` exists in constants but is unused.
-- `downloadEntry()` loops sequentially.
+- `maxConcurrentDownloads` constant exists; wired in `TransferClient`.
 
 ### Implementation
 
-1. Add a `DownloadWorker` or internal scheduler in `TransferClient`:
-   - Load pending chunks ordered by index.
-   - Run up to `maxConcurrentDownloads` tasks globally.
-   - Avoid concurrent writes to the same chunk.
-
-2. Use one `RandomAccessFile` guarded by a simple write mutex, or open/close per chunk:
-   - Simpler MVP: each task opens partial file, seeks, writes, flushes, closes.
-   - Safer for desktop/Android than sharing one file handle across futures.
-
-3. Fetch source:
-   - Native path: `GET /chunks/<hash>` when chunk hash known.
-   - Fallback: `GET /files/<id>` with exact `Range`.
-   - Verify response length equals expected chunk length.
-
-4. Retry:
-   - Retry transient network failures with capped attempts.
-   - Do not retry hash mismatch forever; mark error after one re-fetch unless source manifest changed.
-
-5. Pause/cancel groundwork:
-   - Add cancellation token in memory.
-   - Persist `paused` state when user pauses later.
+1. Chunk pool scheduler in `TransferClient` with work queue.
+2. Per-chunk partial open/write/close behind `_AsyncSerialLock`.
+3. Fetch retry (3 attempts) for transient errors; hash mismatch fails immediately.
+4. `cancelActiveDownload()` in-memory cancellation groundwork.
 
 ### Tests
 
@@ -248,6 +234,74 @@ Original suggested order was useful, but transfer work should be split and pulle
 
 - Large file downloads with at most configured concurrency.
 - DB shows verified chunk progress during transfer.
+
+**Status: complete (2026-07-01).** Implementation notes:
+- Default pool size `maxConcurrentDownloads` (3); overridable in constructor for tests.
+- Disk writes serialized; fetches run in parallel.
+- Persisted `paused` state deferred.
+
+## Phase 3.5: Transfer Alignment Cleanup
+
+### Goals
+
+- Remove shortcuts from Phases 1-3 before recursive folder downloads multiply them.
+- Make download storage layout match remote relative paths.
+- Make chunk hash routes robust for base64 hashes.
+- Make download/chunk state names and progress semantics consistent across DB, UI, and tests.
+
+### Current State
+
+- File manifests are per-file only; share-wide manifest remains deferred.
+- Downloads verify base64 SHA-256 because the indexer stores base64 digests.
+- `GET /chunks/<hash>` accepts raw hash in the path. Base64 can contain `/`, `+`, and `=`, which are awkward or unsafe in URL path segments.
+- `downloadEntry()` writes to `<download dir>/<entry.name>`, not `<download dir>/<entry.path>`, so duplicate names from different folders collide.
+- `download_chunks.sourcePeerId` exists but is not written for single-source transfers.
+- `paused` is a planned state, but only in-memory `cancelActiveDownload()` exists.
+- `queueDownload()` still awaits the whole download; no background queue/controller layer exists yet.
+
+### Implementation
+
+1. Make chunk identifiers URL-safe:
+   - Prefer `Uri.encodeComponent(chunk.hash)` in the client and route decode on the server.
+   - If Shelf router cannot safely capture encoded slashes, change route to `GET /chunks?hash=...`.
+   - Add tests with hashes containing `/`, `+`, and `=`.
+   - Keep manifest hash format unchanged for now: base64 SHA-256.
+
+2. Align file target paths:
+   - Change single-file download target from `entry.name` to sanitized `entry.path`.
+   - Create parent directories for nested paths.
+   - Reject unsafe paths: `..`, absolute roots, Windows drive prefixes, empty path segments, NUL/control chars.
+   - Add a small path helper in transfer code or `core/protocol/path_safety.dart` before Phase 4 uses it.
+
+3. Normalize state handling:
+   - Keep fixed strings: `queued`, `downloading`, `paused`, `complete`, `error`, `cancelled`.
+   - Add constants or a small value class for download/chunk states before more UI depends on them.
+   - Decide whether `cancelActiveDownload()` maps to `paused` or `cancelled`; do not leave cancelled transfers as `error`.
+   - Store `sourcePeerId` on each chunk when fetched from a peer, even for single-source.
+
+4. Tighten resume semantics:
+   - Use relative-path target as part of resume identity.
+   - If manifest hash list changes, reset stale chunks and keep the same download row only if target identity still matches.
+   - Avoid duplicate `download_chunks` rows for the same `downloadId + chunkIndex`; enforce in helper logic or add a DB uniqueness constraint in the next migration if needed.
+
+5. Keep app/service behavior explicit:
+   - Do not build full background queue here unless small.
+   - Add a note or TODO in `AppService.queueDownload()` that the method is still synchronous from UI perspective.
+   - Make UI wording avoid implying queued/background behavior until Phase 6 UI pass.
+
+### Tests
+
+- Chunk route works for base64 hashes containing `/`, `+`, and `=`.
+- Single-file download preserves nested relative path.
+- Unsafe remote paths are rejected and never write outside download root.
+- Cancelled/paused path leaves DB state as intended.
+- Source peer ID is recorded on verified chunks.
+
+### Acceptance
+
+- Phase 4 can safely recurse remote directories without path collisions or traversal risk.
+- Chunk fetches are URL-safe for existing base64 hashes.
+- Download/chunk states are represented consistently enough for UI polish.
 
 ## Phase 4: Folder Downloads
 
@@ -358,6 +412,7 @@ Original suggested order was useful, but transfer work should be split and pulle
 
 - Convert prototype platform support into known-good MVP behavior.
 - Document platform limitations honestly.
+- Bring UI up to parity with implemented core features, not only platform-specific behavior.
 
 ### Linux And Bonsoir 7
 
@@ -418,15 +473,64 @@ Original suggested order was useful, but transfer work should be split and pulle
    - Defer until core transfer queue stable.
    - If added, keep service lifecycle explicit.
 
+### UI Feature Surfacing Pass
+
+This phase must include a full walk through implemented backend capability and make sure users can see, trigger, or understand it from UI. Current UI is intentionally thin and trails the feature work.
+
+1. Shares UI:
+   - Show share storage type (`filesystem` vs `saf`) and enabled state.
+   - Expose rescan and remove actions clearly.
+   - Surface scan/hash status, current file, file count, byte progress, and errors.
+   - Show whether a share is currently discoverable/served.
+
+2. Browse UI:
+   - Show breadcrumb path and current share name.
+   - Distinguish hash-ready files from files still indexing on the remote peer.
+   - Disable or explain downloads when remote hash manifest is not ready.
+   - Add folder download action after Phase 4.
+   - Show download target path preview after Phase 3.5 relative-path alignment.
+
+3. Downloads UI:
+   - Show verified bytes, total bytes, percent, state, and error messages.
+   - Show chunk progress if available: verified chunks / total chunks.
+   - Surface resume behavior: "Resume" for interrupted/error downloads where safe.
+   - Add cancel/pause controls only after state semantics are aligned.
+   - Show source peer and, later, multi-source count.
+
+4. Peers UI:
+   - Show discovered/manual source, last seen, host/port, fingerprint, and trust state.
+   - Surface session/auth failure separately from peer absence.
+   - Keep remove confirmation.
+   - Add trust actions in Phase 7.
+
+5. Settings UI:
+   - Browser token: copy, rotate, revoke after token helpers exist.
+   - Manual web-client instructions: URL, port, token, and CORS caveats.
+   - Show platform capability summary: discovery, advertise, sharing, downloads.
+   - Add firewall/manual-connect help on desktop.
+
+6. Platform-specific UI:
+   - Android: notification permission state, multicast lock status where useful, SAF share limitations, foreground-service explanation.
+   - Windows: browse-only/advertise limitation if still true.
+   - Linux: Avahi/Bonjour dependency guidance if discovery fails.
+   - Web: manual-connect-only mode and no sharing/server/discovery.
+
+7. UX acceptance sweep:
+   - Every implemented core feature has a reachable UI path or explicit "not surfaced yet" note.
+   - Every known platform limitation appears in UI or docs.
+   - README claims match what the UI can actually do.
+
 ### Tests
 
 - Manual platform checklist in `docs/platform-test-matrix.md` or section in README.
 - Automated tests where platform APIs can be mocked.
+- Widget tests for newly surfaced UI actions where cheap.
 
 ### Acceptance
 
 - README platform claims match tested behavior.
 - Known gaps are visible in UI or docs, not hidden.
+- User can discover available features without reading source code.
 
 ## Phase 7: Security UX
 
@@ -683,12 +787,13 @@ Suggested PR/task split:
 2. DB helpers + `download_chunks` migration.
 3. Verified resume for single-file sequential downloads.
 4. Parallel chunk scheduler.
-5. Folder download queue.
-6. Watcher + incremental scanner.
-7. Platform docs/test matrix.
-8. Trust/token UX.
-9. Multi-source.
-10. DB benchmark.
+5. Transfer alignment cleanup.
+6. Folder download queue.
+7. Watcher + incremental scanner.
+8. Platform validation, UI surfacing, and docs/test matrix.
+9. Trust/token UX.
+10. Multi-source.
+11. DB benchmark.
 
 ### Do Not Do Yet
 

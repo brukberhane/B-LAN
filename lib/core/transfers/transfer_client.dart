@@ -7,15 +7,25 @@ import 'package:path/path.dart' as p;
 
 import '../indexing/chunker.dart';
 import '../persistence/database.dart';
+import '../protocol/constants.dart';
 import '../protocol/models.dart';
 
 class TransferClient {
-  TransferClient(this._db, {http.Client? httpClient})
-      : _httpClient = httpClient ?? http.Client();
+  TransferClient(
+    this._db, {
+    http.Client? httpClient,
+    int? maxConcurrentChunkDownloads,
+  })  : _httpClient = httpClient ?? http.Client(),
+        _maxConcurrentChunkDownloads =
+            maxConcurrentChunkDownloads ?? maxConcurrentDownloads;
 
   final AppDatabase _db;
   final http.Client _httpClient;
+  final int _maxConcurrentChunkDownloads;
   static const _requestTimeout = Duration(seconds: 10);
+  static const _chunkFetchMaxAttempts = 3;
+
+  bool _downloadCancelled = false;
 
   Future<HelloResponse> hello(String baseUrl, {String? token}) async {
     final response = await _get('$baseUrl/hello', token: token);
@@ -150,44 +160,16 @@ class TransferClient {
     );
 
     try {
-      final partialHandle = await partialFile.open(mode: FileMode.append);
-      try {
-        var pending = await _db.pendingDownloadChunks(downloadId);
-        while (pending.isNotEmpty) {
-          for (final row in pending) {
-            final chunk = manifest.chunks.firstWhere(
-              (c) => c.index == row.chunkIndex,
-            );
-            await _db.markDownloadChunkWriting(row.id);
-            final bytes = await _fetchChunkBytes(
-              baseUrl: baseUrl,
-              fileId: entry.id,
-              chunk: chunk,
-              token: token,
-            );
-            if (bytes.length != chunk.length) {
-              throw HttpException(
-                'Chunk ${chunk.index} length mismatch: '
-                '${bytes.length} != ${chunk.length}',
-              );
-            }
-            if (hashChunkBytes(bytes) != chunk.hash) {
-              throw HttpException('Chunk ${chunk.index} hash mismatch');
-            }
-
-            await partialHandle.setPosition(chunk.offset);
-            await partialHandle.writeFrom(bytes);
-            await partialHandle.flush();
-
-            await _db.markDownloadChunkVerified(row.id);
-            final progress = await _downloadProgress(downloadId);
-            await onProgress?.call(progress, manifest.totalBytes);
-          }
-          pending = await _db.pendingDownloadChunks(downloadId);
-        }
-      } finally {
-        await partialHandle.close();
-      }
+      _downloadCancelled = false;
+      await _downloadPendingChunks(
+        downloadId: downloadId,
+        partialFile: partialFile,
+        manifest: manifest,
+        baseUrl: baseUrl,
+        fileId: entry.id,
+        token: token,
+        onProgress: onProgress,
+      );
 
       if (await partialFile.exists()) {
         if (await finalFile.exists()) {
@@ -200,6 +182,117 @@ class TransferClient {
       await _db.failDownload(downloadId, '$error');
       rethrow;
     }
+  }
+
+  void cancelActiveDownload() => _downloadCancelled = true;
+
+  Future<void> _downloadPendingChunks({
+    required String downloadId,
+    required File partialFile,
+    required FileManifestDto manifest,
+    required String baseUrl,
+    required String fileId,
+    String? token,
+    Future<void> Function(int downloaded, int total)? onProgress,
+  }) async {
+    final writeLock = _AsyncSerialLock();
+
+    while (!_downloadCancelled) {
+      final pending = await _db.pendingDownloadChunks(downloadId);
+      if (pending.isEmpty) {
+        return;
+      }
+
+      var failed = false;
+      Object? error;
+      final queue = _ChunkWorkQueue(pending);
+      final workerCount = pending.length < _maxConcurrentChunkDownloads
+          ? pending.length
+          : _maxConcurrentChunkDownloads;
+
+      Future<void> worker() async {
+        while (!failed && !_downloadCancelled) {
+          final row = await queue.take();
+          if (row == null) {
+            return;
+          }
+          try {
+            await _downloadChunkRow(
+              row: row,
+              partialFile: partialFile,
+              manifest: manifest,
+              baseUrl: baseUrl,
+              fileId: fileId,
+              token: token,
+              writeLock: writeLock,
+              downloadId: downloadId,
+              onProgress: onProgress,
+            );
+          } catch (e) {
+            failed = true;
+            error = e;
+          }
+        }
+      }
+
+      await Future.wait(List.generate(workerCount, (_) => worker()));
+      if (_downloadCancelled) {
+        throw HttpException('Download cancelled');
+      }
+      if (error != null) {
+        throw error!;
+      }
+    }
+  }
+
+  Future<void> _downloadChunkRow({
+    required DownloadChunk row,
+    required File partialFile,
+    required FileManifestDto manifest,
+    required String baseUrl,
+    required String fileId,
+    String? token,
+    required _AsyncSerialLock writeLock,
+    required String downloadId,
+    Future<void> Function(int downloaded, int total)? onProgress,
+  }) async {
+    final chunk = manifest.chunks.firstWhere(
+      (c) => c.index == row.chunkIndex,
+    );
+    await _db.markDownloadChunkWriting(row.id);
+
+    final bytes = await _fetchChunkBytesWithRetry(
+      baseUrl: baseUrl,
+      fileId: fileId,
+      chunk: chunk,
+      token: token,
+    );
+    if (bytes.length != chunk.length) {
+      final message =
+          'Chunk ${chunk.index} length mismatch: ${bytes.length} != ${chunk.length}';
+      await _db.markDownloadChunkError(row.id, message);
+      throw HttpException(message);
+    }
+    if (hashChunkBytes(bytes) != chunk.hash) {
+      const message = 'Chunk hash mismatch';
+      await _db.markDownloadChunkError(row.id, message);
+      throw HttpException(message);
+    }
+
+    await writeLock.run(() async {
+      final handle = await partialFile.open(mode: FileMode.append);
+      try {
+        await handle.setPosition(chunk.offset);
+        await handle.writeFrom(bytes);
+        await handle.flush();
+      } finally {
+        await handle.close();
+      }
+    });
+
+    await _db.markDownloadChunkVerified(row.id);
+    final progress = await _downloadProgress(downloadId);
+    await onProgress?.call(progress, manifest.totalBytes);
   }
 
   Future<void> _reconcileVerifiedChunks({
@@ -275,6 +368,32 @@ class TransferClient {
     return true;
   }
 
+  Future<List<int>> _fetchChunkBytesWithRetry({
+    required String baseUrl,
+    required String fileId,
+    required ChunkDto chunk,
+    String? token,
+  }) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= _chunkFetchMaxAttempts; attempt++) {
+      try {
+        return await _fetchChunkBytes(
+          baseUrl: baseUrl,
+          fileId: fileId,
+          chunk: chunk,
+          token: token,
+        );
+      } catch (error) {
+        lastError = error;
+        if (attempt == _chunkFetchMaxAttempts) {
+          break;
+        }
+        await Future<void>.delayed(Duration(milliseconds: 100 * attempt));
+      }
+    }
+    throw lastError ?? HttpException('Chunk download failed');
+  }
+
   Future<List<int>> _fetchChunkBytes({
     required String baseUrl,
     required String fileId,
@@ -338,4 +457,29 @@ class TransferClient {
   Map<String, String> _authHeaders(String? token) => {
         if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
       };
+}
+
+class _AsyncSerialLock {
+  Future<void> _tail = Future.value();
+
+  Future<T> run<T>(Future<T> Function() action) {
+    final result = _tail.then((_) => action());
+    _tail = result.then((_) {}, onError: (_) {});
+    return result;
+  }
+}
+
+class _ChunkWorkQueue {
+  _ChunkWorkQueue(this._rows);
+
+  final List<DownloadChunk> _rows;
+  int _next = 0;
+  final _lock = _AsyncSerialLock();
+
+  Future<DownloadChunk?> take() => _lock.run(() async {
+        if (_next >= _rows.length) {
+          return null;
+        }
+        return _rows[_next++];
+      });
 }

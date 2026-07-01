@@ -229,6 +229,108 @@ void main() {
     );
   });
 
+  test('parallel chunk downloads complete with correct bytes', () async {
+    await sourceFile.writeAsBytes(List<int>.generate(30, (i) => i));
+    await (db.delete(db.chunks)..where((t) => t.entryId.equals(fileId))).go();
+    final hashed = await hashFileChunks(file: sourceFile, chunkSize: chunkSize);
+    for (final chunk in hashed) {
+      await db.into(db.chunks).insert(
+            ChunksCompanion.insert(
+              entryId: fileId,
+              chunkIndex: chunk.index,
+              offset: chunk.offset,
+              length: chunk.length,
+              hash: chunk.hash,
+              status: const Value('ready'),
+            ),
+          );
+    }
+    await (db.update(db.entries)..where((t) => t.id.equals(fileId))).write(
+      EntriesCompanion(
+        size: Value(await sourceFile.length()),
+        chunkSize: Value(chunkSize),
+      ),
+    );
+
+    final trackingClient = _ConcurrencyTrackingClient();
+    try {
+      await TransferClient(
+        db,
+        httpClient: trackingClient,
+        maxConcurrentChunkDownloads: 3,
+      ).downloadEntry(
+        peer: peer,
+        shareId: shareId,
+        entry: const EntryDto(
+          id: fileId,
+          name: 'data.bin',
+          path: 'data.bin',
+          isDirectory: false,
+          size: 30,
+          mtimeMs: 0,
+          hashReady: true,
+        ),
+        targetDirectory: downloadDir.path,
+        token: browserToken,
+      );
+
+      expect(trackingClient.maxInFlight, greaterThan(1));
+      expect(
+        await File('${downloadDir.path}/data.bin').readAsBytes(),
+        await sourceFile.readAsBytes(),
+      );
+    } finally {
+      trackingClient.close();
+    }
+  });
+
+  test('retry recovers from transient chunk fetch failure', () async {
+    final flakyClient = _FlakyChunkClient(failuresBeforeSuccess: 1);
+    try {
+      await TransferClient(db, httpClient: flakyClient).downloadEntry(
+        peer: peer,
+        shareId: shareId,
+        entry: entryDto(),
+        targetDirectory: downloadDir.path,
+        token: browserToken,
+      );
+
+      expect(flakyClient.chunkFailures, 1);
+      expect(
+        await File('${downloadDir.path}/data.bin').readAsBytes(),
+        await sourceFile.readAsBytes(),
+      );
+    } finally {
+      flakyClient.close();
+    }
+  });
+
+  test('hash mismatch marks download error without finalizing', () async {
+    final badClient = _CorruptChunkClient(corruptFromChunkRequest: 2);
+
+    try {
+      await expectLater(
+        TransferClient(db, httpClient: badClient).downloadEntry(
+          peer: peer,
+          shareId: shareId,
+          entry: entryDto(),
+          targetDirectory: downloadDir.path,
+          token: browserToken,
+        ),
+        throwsA(isA<HttpException>()),
+      );
+    } finally {
+      badClient.close();
+    }
+
+    final target = File('${downloadDir.path}/data.bin');
+    expect(await target.exists(), isFalse);
+
+    final rows = await db.select(db.downloads).get();
+    expect(rows.single.state, 'error');
+    expect(rows.single.errorMessage, isNotEmpty);
+  });
+
   test('existing complete file is detected without download', () async {
     final target = File('${downloadDir.path}/data.bin');
     await target.writeAsBytes(await sourceFile.readAsBytes());
@@ -268,6 +370,84 @@ class _CountingClient extends http.BaseClient {
       chunkRequests++;
     } else if (path.contains('/manifest/files/')) {
       manifestRequests++;
+    }
+    return _inner.send(request);
+  }
+
+  @override
+  void close() => _inner.close();
+}
+
+class _ConcurrencyTrackingClient extends http.BaseClient {
+  _ConcurrencyTrackingClient() : _inner = http.Client();
+
+  final http.Client _inner;
+  int inFlight = 0;
+  int maxInFlight = 0;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request.url.path.contains('/chunks/')) {
+      inFlight++;
+      if (inFlight > maxInFlight) {
+        maxInFlight = inFlight;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+    }
+    try {
+      return await _inner.send(request);
+    } finally {
+      if (request.url.path.contains('/chunks/')) {
+        inFlight--;
+      }
+    }
+  }
+
+  @override
+  void close() => _inner.close();
+}
+
+class _FlakyChunkClient extends http.BaseClient {
+  _FlakyChunkClient({required this.failuresBeforeSuccess}) : _inner = http.Client();
+
+  final http.Client _inner;
+  final int failuresBeforeSuccess;
+  int chunkFailures = 0;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request.url.path.contains('/chunks/') && chunkFailures < failuresBeforeSuccess) {
+      chunkFailures++;
+      return http.StreamedResponse(
+        Stream<List<int>>.value(const []),
+        503,
+      );
+    }
+    return _inner.send(request);
+  }
+
+  @override
+  void close() => _inner.close();
+}
+
+class _CorruptChunkClient extends http.BaseClient {
+  _CorruptChunkClient({required this.corruptFromChunkRequest})
+      : _inner = http.Client();
+
+  final http.Client _inner;
+  final int corruptFromChunkRequest;
+  int chunkRequests = 0;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request.url.path.contains('/chunks/')) {
+      chunkRequests++;
+      if (chunkRequests >= corruptFromChunkRequest) {
+        return http.StreamedResponse(
+          Stream<List<int>>.value(List<int>.filled(5, 9)),
+          200,
+        );
+      }
     }
     return _inner.send(request);
   }
