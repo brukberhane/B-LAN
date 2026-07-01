@@ -65,6 +65,8 @@ class Peers extends Table {
   IntColumn get port => integer()();
   TextColumn get fingerprint => text().nullable()();
   BoolColumn get trusted => boolean().withDefault(const Constant(false))();
+  TextColumn get identityStatus =>
+      text().withDefault(const Constant('normal'))();
   DateTimeColumn get lastSeen => dateTime().nullable()();
   BoolColumn get manual => boolean().withDefault(const Constant(false))();
 

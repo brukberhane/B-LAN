@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../core/persistence/database.dart';
 import '../../core/platform/platform_capabilities.dart';
+import '../../core/security/peer_identity.dart';
 import '../../core/ui/format.dart';
 import '../browse/browse_page.dart';
 
@@ -45,9 +46,26 @@ class PeersPage extends ConsumerWidget {
               final peer = rows[index];
               return ListTile(
                 leading: Icon(
-                  peer.manual ? Icons.link : Icons.wifi,
+                  peer.identityStatus == PeerIdentityStatus.identityChanged
+                      ? Icons.warning_amber
+                      : peer.manual
+                          ? Icons.link
+                          : Icons.wifi,
+                  color: peer.identityStatus == PeerIdentityStatus.identityChanged
+                      ? Colors.orange
+                      : null,
                 ),
-                title: Text(peer.nick),
+                title: Row(
+                  children: [
+                    Expanded(child: Text(peer.nick)),
+                    if (peer.identityStatus == PeerIdentityStatus.identityChanged)
+                      const Chip(
+                        label: Text('Identity changed'),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                  ],
+                ),
                 subtitle: Text(_peerSubtitle(peer)),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -57,10 +75,34 @@ class PeersPage extends ConsumerWidget {
                         padding: EdgeInsets.only(right: 4),
                         child: Icon(Icons.verified_user, size: 18),
                       ),
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      tooltip: 'Remove peer',
-                      onPressed: () => _confirmRemovePeer(context, ref, peer),
+                    PopupMenuButton<_PeerAction>(
+                      onSelected: (action) async {
+                        final service = ref.read(appServiceProvider);
+                        switch (action) {
+                          case _PeerAction.trust:
+                            await service.trustPeer(peer.id);
+                          case _PeerAction.forgetTrust:
+                            await service.forgetPeerTrust(peer.id);
+                          case _PeerAction.remove:
+                            await _confirmRemovePeer(context, ref, peer);
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        if (!peer.trusted)
+                          const PopupMenuItem(
+                            value: _PeerAction.trust,
+                            child: Text('Trust peer'),
+                          ),
+                        if (peer.trusted)
+                          const PopupMenuItem(
+                            value: _PeerAction.forgetTrust,
+                            child: Text('Forget trust'),
+                          ),
+                        const PopupMenuItem(
+                          value: _PeerAction.remove,
+                          child: Text('Remove'),
+                        ),
+                      ],
                     ),
                     const Icon(Icons.chevron_right),
                   ],
@@ -209,3 +251,5 @@ class PeersPage extends ConsumerWidget {
     }
   }
 }
+
+enum _PeerAction { trust, forgetTrust, remove }

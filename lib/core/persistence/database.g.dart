@@ -2151,6 +2151,18 @@ class $PeersTable extends Peers with TableInfo<$PeersTable, Peer> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _identityStatusMeta = const VerificationMeta(
+    'identityStatus',
+  );
+  @override
+  late final GeneratedColumn<String> identityStatus = GeneratedColumn<String>(
+    'identity_status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('normal'),
+  );
   static const VerificationMeta _lastSeenMeta = const VerificationMeta(
     'lastSeen',
   );
@@ -2183,6 +2195,7 @@ class $PeersTable extends Peers with TableInfo<$PeersTable, Peer> {
     port,
     fingerprint,
     trusted,
+    identityStatus,
     lastSeen,
     manual,
   ];
@@ -2242,6 +2255,15 @@ class $PeersTable extends Peers with TableInfo<$PeersTable, Peer> {
         trusted.isAcceptableOrUnknown(data['trusted']!, _trustedMeta),
       );
     }
+    if (data.containsKey('identity_status')) {
+      context.handle(
+        _identityStatusMeta,
+        identityStatus.isAcceptableOrUnknown(
+          data['identity_status']!,
+          _identityStatusMeta,
+        ),
+      );
+    }
     if (data.containsKey('last_seen')) {
       context.handle(
         _lastSeenMeta,
@@ -2287,6 +2309,10 @@ class $PeersTable extends Peers with TableInfo<$PeersTable, Peer> {
         DriftSqlType.bool,
         data['${effectivePrefix}trusted'],
       )!,
+      identityStatus: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}identity_status'],
+      )!,
       lastSeen: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_seen'],
@@ -2311,6 +2337,7 @@ class Peer extends DataClass implements Insertable<Peer> {
   final int port;
   final String? fingerprint;
   final bool trusted;
+  final String identityStatus;
   final DateTime? lastSeen;
   final bool manual;
   const Peer({
@@ -2320,6 +2347,7 @@ class Peer extends DataClass implements Insertable<Peer> {
     required this.port,
     this.fingerprint,
     required this.trusted,
+    this.identityStatus = 'normal',
     this.lastSeen,
     required this.manual,
   });
@@ -2334,6 +2362,7 @@ class Peer extends DataClass implements Insertable<Peer> {
       map['fingerprint'] = Variable<String>(fingerprint);
     }
     map['trusted'] = Variable<bool>(trusted);
+    map['identity_status'] = Variable<String>(identityStatus);
     if (!nullToAbsent || lastSeen != null) {
       map['last_seen'] = Variable<DateTime>(lastSeen);
     }
@@ -2351,6 +2380,7 @@ class Peer extends DataClass implements Insertable<Peer> {
           ? const Value.absent()
           : Value(fingerprint),
       trusted: Value(trusted),
+      identityStatus: Value(identityStatus),
       lastSeen: lastSeen == null && nullToAbsent
           ? const Value.absent()
           : Value(lastSeen),
@@ -2370,6 +2400,7 @@ class Peer extends DataClass implements Insertable<Peer> {
       port: serializer.fromJson<int>(json['port']),
       fingerprint: serializer.fromJson<String?>(json['fingerprint']),
       trusted: serializer.fromJson<bool>(json['trusted']),
+      identityStatus: serializer.fromJson<String>(json['identityStatus']),
       lastSeen: serializer.fromJson<DateTime?>(json['lastSeen']),
       manual: serializer.fromJson<bool>(json['manual']),
     );
@@ -2384,6 +2415,7 @@ class Peer extends DataClass implements Insertable<Peer> {
       'port': serializer.toJson<int>(port),
       'fingerprint': serializer.toJson<String?>(fingerprint),
       'trusted': serializer.toJson<bool>(trusted),
+      'identityStatus': serializer.toJson<String>(identityStatus),
       'lastSeen': serializer.toJson<DateTime?>(lastSeen),
       'manual': serializer.toJson<bool>(manual),
     };
@@ -2396,6 +2428,7 @@ class Peer extends DataClass implements Insertable<Peer> {
     int? port,
     Value<String?> fingerprint = const Value.absent(),
     bool? trusted,
+    String? identityStatus,
     Value<DateTime?> lastSeen = const Value.absent(),
     bool? manual,
   }) => Peer(
@@ -2405,6 +2438,7 @@ class Peer extends DataClass implements Insertable<Peer> {
     port: port ?? this.port,
     fingerprint: fingerprint.present ? fingerprint.value : this.fingerprint,
     trusted: trusted ?? this.trusted,
+    identityStatus: identityStatus ?? this.identityStatus,
     lastSeen: lastSeen.present ? lastSeen.value : this.lastSeen,
     manual: manual ?? this.manual,
   );
@@ -2418,6 +2452,9 @@ class Peer extends DataClass implements Insertable<Peer> {
           ? data.fingerprint.value
           : this.fingerprint,
       trusted: data.trusted.present ? data.trusted.value : this.trusted,
+      identityStatus: data.identityStatus.present
+          ? data.identityStatus.value
+          : this.identityStatus,
       lastSeen: data.lastSeen.present ? data.lastSeen.value : this.lastSeen,
       manual: data.manual.present ? data.manual.value : this.manual,
     );
@@ -2432,6 +2469,7 @@ class Peer extends DataClass implements Insertable<Peer> {
           ..write('port: $port, ')
           ..write('fingerprint: $fingerprint, ')
           ..write('trusted: $trusted, ')
+          ..write('identityStatus: $identityStatus, ')
           ..write('lastSeen: $lastSeen, ')
           ..write('manual: $manual')
           ..write(')'))
@@ -2439,8 +2477,17 @@ class Peer extends DataClass implements Insertable<Peer> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, nick, host, port, fingerprint, trusted, lastSeen, manual);
+  int get hashCode => Object.hash(
+    id,
+    nick,
+    host,
+    port,
+    fingerprint,
+    trusted,
+    identityStatus,
+    lastSeen,
+    manual,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2451,6 +2498,7 @@ class Peer extends DataClass implements Insertable<Peer> {
           other.port == this.port &&
           other.fingerprint == this.fingerprint &&
           other.trusted == this.trusted &&
+          other.identityStatus == this.identityStatus &&
           other.lastSeen == this.lastSeen &&
           other.manual == this.manual);
 }
@@ -2462,6 +2510,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
   final Value<int> port;
   final Value<String?> fingerprint;
   final Value<bool> trusted;
+  final Value<String> identityStatus;
   final Value<DateTime?> lastSeen;
   final Value<bool> manual;
   final Value<int> rowid;
@@ -2472,6 +2521,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     this.port = const Value.absent(),
     this.fingerprint = const Value.absent(),
     this.trusted = const Value.absent(),
+    this.identityStatus = const Value.absent(),
     this.lastSeen = const Value.absent(),
     this.manual = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -2483,6 +2533,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     required int port,
     this.fingerprint = const Value.absent(),
     this.trusted = const Value.absent(),
+    this.identityStatus = const Value.absent(),
     this.lastSeen = const Value.absent(),
     this.manual = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -2497,6 +2548,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     Expression<int>? port,
     Expression<String>? fingerprint,
     Expression<bool>? trusted,
+    Expression<String>? identityStatus,
     Expression<DateTime>? lastSeen,
     Expression<bool>? manual,
     Expression<int>? rowid,
@@ -2508,6 +2560,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
       if (port != null) 'port': port,
       if (fingerprint != null) 'fingerprint': fingerprint,
       if (trusted != null) 'trusted': trusted,
+      if (identityStatus != null) 'identity_status': identityStatus,
       if (lastSeen != null) 'last_seen': lastSeen,
       if (manual != null) 'manual': manual,
       if (rowid != null) 'rowid': rowid,
@@ -2521,6 +2574,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     Value<int>? port,
     Value<String?>? fingerprint,
     Value<bool>? trusted,
+    Value<String>? identityStatus,
     Value<DateTime?>? lastSeen,
     Value<bool>? manual,
     Value<int>? rowid,
@@ -2532,6 +2586,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
       port: port ?? this.port,
       fingerprint: fingerprint ?? this.fingerprint,
       trusted: trusted ?? this.trusted,
+      identityStatus: identityStatus ?? this.identityStatus,
       lastSeen: lastSeen ?? this.lastSeen,
       manual: manual ?? this.manual,
       rowid: rowid ?? this.rowid,
@@ -2559,6 +2614,9 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     if (trusted.present) {
       map['trusted'] = Variable<bool>(trusted.value);
     }
+    if (identityStatus.present) {
+      map['identity_status'] = Variable<String>(identityStatus.value);
+    }
     if (lastSeen.present) {
       map['last_seen'] = Variable<DateTime>(lastSeen.value);
     }
@@ -2580,6 +2638,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
           ..write('port: $port, ')
           ..write('fingerprint: $fingerprint, ')
           ..write('trusted: $trusted, ')
+          ..write('identityStatus: $identityStatus, ')
           ..write('lastSeen: $lastSeen, ')
           ..write('manual: $manual, ')
           ..write('rowid: $rowid')
@@ -6166,6 +6225,7 @@ typedef $$PeersTableCreateCompanionBuilder =
       required int port,
       Value<String?> fingerprint,
       Value<bool> trusted,
+      Value<String> identityStatus,
       Value<DateTime?> lastSeen,
       Value<bool> manual,
       Value<int> rowid,
@@ -6178,6 +6238,7 @@ typedef $$PeersTableUpdateCompanionBuilder =
       Value<int> port,
       Value<String?> fingerprint,
       Value<bool> trusted,
+      Value<String> identityStatus,
       Value<DateTime?> lastSeen,
       Value<bool> manual,
       Value<int> rowid,
@@ -6265,6 +6326,11 @@ class $$PeersTableFilterComposer extends Composer<_$AppDatabase, $PeersTable> {
 
   ColumnFilters<bool> get trusted => $composableBuilder(
     column: $table.trusted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get identityStatus => $composableBuilder(
+    column: $table.identityStatus,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6368,6 +6434,11 @@ class $$PeersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get identityStatus => $composableBuilder(
+    column: $table.identityStatus,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get lastSeen => $composableBuilder(
     column: $table.lastSeen,
     builder: (column) => ColumnOrderings(column),
@@ -6407,6 +6478,11 @@ class $$PeersTableAnnotationComposer
 
   GeneratedColumn<bool> get trusted =>
       $composableBuilder(column: $table.trusted, builder: (column) => column);
+
+  GeneratedColumn<String> get identityStatus => $composableBuilder(
+    column: $table.identityStatus,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get lastSeen =>
       $composableBuilder(column: $table.lastSeen, builder: (column) => column);
@@ -6503,6 +6579,7 @@ class $$PeersTableTableManager
                 Value<int> port = const Value.absent(),
                 Value<String?> fingerprint = const Value.absent(),
                 Value<bool> trusted = const Value.absent(),
+                Value<String> identityStatus = const Value.absent(),
                 Value<DateTime?> lastSeen = const Value.absent(),
                 Value<bool> manual = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -6513,6 +6590,7 @@ class $$PeersTableTableManager
                 port: port,
                 fingerprint: fingerprint,
                 trusted: trusted,
+                identityStatus: identityStatus,
                 lastSeen: lastSeen,
                 manual: manual,
                 rowid: rowid,
@@ -6525,6 +6603,7 @@ class $$PeersTableTableManager
                 required int port,
                 Value<String?> fingerprint = const Value.absent(),
                 Value<bool> trusted = const Value.absent(),
+                Value<String> identityStatus = const Value.absent(),
                 Value<DateTime?> lastSeen = const Value.absent(),
                 Value<bool> manual = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -6535,6 +6614,7 @@ class $$PeersTableTableManager
                 port: port,
                 fingerprint: fingerprint,
                 trusted: trusted,
+                identityStatus: identityStatus,
                 lastSeen: lastSeen,
                 manual: manual,
                 rowid: rowid,

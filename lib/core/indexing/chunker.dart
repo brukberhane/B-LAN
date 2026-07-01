@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
+import '../security/device_identity.dart' as device_identity;
+
 class ChunkDescriptor {
   const ChunkDescriptor({
     required this.index,
@@ -99,7 +101,5 @@ Future<bool> verifyChunkOnDisk({
   }
 }
 
-String fingerprintFromPeerId(String peerId) {
-  final digest = sha256.convert(utf8.encode(peerId));
-  return digest.toString().substring(0, 16);
-}
+String fingerprintFromPeerId(String peerId) =>
+    device_identity.fingerprintFromPeerId(peerId);

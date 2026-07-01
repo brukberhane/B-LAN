@@ -8,6 +8,8 @@ class HelloResponse {
     required this.fingerprint,
     required this.capabilities,
     this.appVersion = '1.0.0',
+    this.publicKey,
+    this.identityVersion = 1,
   });
 
   final int protocolVersion;
@@ -16,6 +18,8 @@ class HelloResponse {
   final String fingerprint;
   final List<String> capabilities;
   final String appVersion;
+  final String? publicKey;
+  final int identityVersion;
 
   Map<String, dynamic> toJson() => {
         'protocolVersion': protocolVersion,
@@ -24,6 +28,8 @@ class HelloResponse {
         'fingerprint': fingerprint,
         'capabilities': capabilities,
         'appVersion': appVersion,
+        if (publicKey != null) 'publicKey': publicKey,
+        'identityVersion': identityVersion,
       };
 
   factory HelloResponse.fromJson(Map<String, dynamic> json) => HelloResponse(
@@ -36,6 +42,8 @@ class HelloResponse {
                 .toList() ??
             const [],
         appVersion: json['appVersion'] as String? ?? '1.0.0',
+        publicKey: json['publicKey'] as String?,
+        identityVersion: json['identityVersion'] as int? ?? 1,
       );
 }
 

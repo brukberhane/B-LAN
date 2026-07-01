@@ -10,6 +10,7 @@ import '../indexing/chunker.dart';
 import '../persistence/database.dart';
 import '../protocol/constants.dart';
 import '../protocol/models.dart';
+import '../security/device_identity.dart';
 
 class TransferServer {
   TransferServer(this._db);
@@ -59,6 +60,23 @@ class TransferServer {
     _server = null;
   }
 
+  void updateBrowserToken(String token) => _browserToken = token;
+
+  bool isAuthorized(String token) {
+    if (token == _browserToken) {
+      return true;
+    }
+    final expiry = _sessions[token];
+    if (expiry == null) {
+      return false;
+    }
+    if (DateTime.now().isAfter(expiry)) {
+      _sessions.remove(token);
+      return false;
+    }
+    return true;
+  }
+
   Middleware get _corsMiddleware => (Handler inner) {
         return (Request request) async {
           if (request.method == 'OPTIONS') {
@@ -89,7 +107,7 @@ class TransferServer {
             return Response.forbidden('Missing token');
           }
           final token = auth.replaceFirst('Bearer ', '');
-          if (token == _browserToken || _sessions.containsKey(token)) {
+          if (isAuthorized(token)) {
             return inner(request);
           }
           return Response.forbidden('Invalid token');
@@ -119,11 +137,14 @@ class TransferServer {
   Future<Response> _hello(Request request) async {
     final peerId = await _db.ensurePeerId();
     final nick = await _db.ensureNick();
+    final identity = await DeviceIdentity(_db).ensureIdentity();
     final body = HelloResponse(
       protocolVersion: protocolVersion,
       peerId: peerId,
       nick: nick,
-      fingerprint: fingerprintFromPeerId(peerId),
+      fingerprint: identity.fingerprint,
+      publicKey: identity.publicKeyBase64,
+      identityVersion: identity.identityVersion,
       capabilities: const ['shares', 'browse', 'download', 'range'],
     );
     return Response.ok(

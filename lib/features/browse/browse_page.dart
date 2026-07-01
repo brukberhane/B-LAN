@@ -5,6 +5,7 @@ import '../../app/providers.dart';
 import '../../core/persistence/database.dart';
 import '../../core/protocol/models.dart';
 import '../../core/protocol/path_safety.dart';
+import '../../core/security/peer_identity.dart';
 import '../../core/ui/format.dart';
 
 class BrowsePage extends ConsumerStatefulWidget {
@@ -309,6 +310,10 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
       return;
     }
 
+    if (!await _ensureDownloadAllowed()) {
+      return;
+    }
+
     try {
       final count = await ref.read(appServiceProvider).queueDownload(
             peer: widget.peer,
@@ -333,6 +338,71 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
         );
       }
     }
+  }
+
+  Future<bool> _ensureDownloadAllowed() async {
+    final fresh =
+        await ref.read(databaseProvider).peerById(widget.peer.id) ?? widget.peer;
+
+    if (fresh.identityStatus == PeerIdentityStatus.identityChanged) {
+      final trust = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Peer identity changed'),
+          content: Text(
+            '${fresh.nick} fingerprint changed. Trust again before downloading.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Trust peer'),
+            ),
+          ],
+        ),
+      );
+      if (trust == true) {
+        await ref.read(appServiceProvider).trustPeer(fresh.id);
+        return true;
+      }
+      return false;
+    }
+
+    if (fresh.trusted) {
+      return true;
+    }
+
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Untrusted peer'),
+        content: Text(
+          '${fresh.nick} is not trusted. Download once or trust this peer?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'once'),
+            child: const Text('Download once'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'trust'),
+            child: const Text('Trust'),
+          ),
+        ],
+      ),
+    );
+    if (choice == 'trust') {
+      await ref.read(appServiceProvider).trustPeer(fresh.id);
+      return true;
+    }
+    return choice == 'once';
   }
 }
 

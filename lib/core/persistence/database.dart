@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../protocol/constants.dart';
 import '../protocol/download_states.dart';
 import '../protocol/models.dart';
+import '../security/peer_identity.dart';
 import '../indexing/chunker.dart';
 import 'tables.dart';
 
@@ -31,7 +32,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -63,6 +64,9 @@ class AppDatabase extends _$AppDatabase {
             await customStatement(
               'CREATE INDEX IF NOT EXISTS idx_chunks_hash ON chunks (hash)',
             );
+          }
+          if (from < 6) {
+            await migrator.addColumn(peers, peers.identityStatus);
           }
         },
       );
@@ -302,6 +306,56 @@ class AppDatabase extends _$AppDatabase {
         const EntriesCompanion(hashStatus: Value('ready')),
       );
     });
+  }
+
+  Future<Peer?> peerById(String id) =>
+      (select(peers)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  Future<void> upsertPeerFromHello({
+    required HelloResponse hello,
+    required String host,
+    required int port,
+    required bool manual,
+  }) async {
+    final existing = await peerById(hello.peerId);
+    var identityStatus = PeerIdentityStatus.normal;
+    var trusted = existing?.trusted ?? false;
+
+    if (existing?.fingerprint != null &&
+        existing!.fingerprint!.isNotEmpty &&
+        existing.fingerprint != hello.fingerprint) {
+      identityStatus = PeerIdentityStatus.identityChanged;
+      trusted = false;
+    }
+
+    await into(peers).insertOnConflictUpdate(
+      PeersCompanion.insert(
+        id: hello.peerId,
+        nick: hello.nick,
+        host: host,
+        port: port,
+        fingerprint: Value(hello.fingerprint),
+        trusted: Value(trusted),
+        identityStatus: Value(identityStatus),
+        manual: Value(manual),
+        lastSeen: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> trustPeer(String peerId) async {
+    await (update(peers)..where((t) => t.id.equals(peerId))).write(
+      const PeersCompanion(
+        trusted: Value(true),
+        identityStatus: Value(PeerIdentityStatus.normal),
+      ),
+    );
+  }
+
+  Future<void> forgetPeerTrust(String peerId) async {
+    await (update(peers)..where((t) => t.id.equals(peerId))).write(
+      const PeersCompanion(trusted: Value(false)),
+    );
   }
 
   Future<void> refreshShareTotals(String shareId) async {

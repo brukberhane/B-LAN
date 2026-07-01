@@ -9,11 +9,15 @@ void main() {
       nick: 'test',
       fingerprint: 'abcd',
       capabilities: ['browse'],
+      publicKey: 'cHVibGlj',
+      identityVersion: 2,
     );
     final decoded = HelloResponse.fromJson(original.toJson());
     expect(decoded.peerId, original.peerId);
     expect(decoded.nick, original.nick);
     expect(decoded.capabilities, original.capabilities);
+    expect(decoded.publicKey, original.publicKey);
+    expect(decoded.identityVersion, original.identityVersion);
   });
 
   test('ChunkDto roundtrip', () {

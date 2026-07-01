@@ -9,6 +9,7 @@ import '../../app/providers.dart';
 import '../../core/platform/platform_capabilities.dart';
 import '../browse/browse_page.dart';
 import '../../core/persistence/database.dart';
+import '../../core/security/peer_identity.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -37,6 +38,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final token = ref.watch(browserTokenProvider);
     final serverRunning = ref.watch(serverRunningProvider);
     final advertising = ref.watch(discoveryAdvertisingProvider);
+    final fingerprint = ref.watch(deviceFingerprintProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -54,6 +56,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               subtitle: Text(value),
             ),
             loading: () => const ListTile(title: Text('Nickname')),
+            error: (_, _) => const SizedBox.shrink(),
+          ),
+          fingerprint.when(
+            data: (value) => ListTile(
+              title: const Text('Device fingerprint'),
+              subtitle: Text(value),
+            ),
+            loading: () => const ListTile(title: Text('Device fingerprint')),
             error: (_, _) => const SizedBox.shrink(),
           ),
           port.when(
@@ -106,6 +116,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           .rotateBrowserToken();
                       ref.invalidate(browserTokenProvider);
                       if (context.mounted) {
+                        _copyText(context, newToken, 'New token copied');
+                      }
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.block),
+                    tooltip: 'Revoke token',
+                    onPressed: () async {
+                      final newToken = await ref
+                          .read(appServiceProvider)
+                          .revokeBrowserToken();
+                      ref.invalidate(browserTokenProvider);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Browser token revoked; old tokens rejected',
+                            ),
+                          ),
+                        );
                         _copyText(context, newToken, 'New token copied');
                       }
                     },
@@ -252,6 +282,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       port: port,
       fingerprint: null,
       trusted: false,
+      identityStatus: PeerIdentityStatus.normal,
       lastSeen: DateTime.now(),
       manual: true,
     );

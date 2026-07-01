@@ -14,6 +14,8 @@ import '../indexing/share_watcher.dart';
 import '../persistence/database.dart';
 import '../protocol/constants.dart';
 import '../protocol/models.dart';
+import '../security/device_identity.dart';
+import '../security/peer_session_store.dart';
 import '../transfers/transfer_client.dart';
 import '../transfers/transfer_server.dart';
 
@@ -45,12 +47,14 @@ class AppService {
   final MdnsDiscovery discovery;
   final _log = Logger('AppService');
   final _uuid = const Uuid();
+  final _sessions = PeerSessionStore();
   ShareWatcher? _shareWatcher;
   Timer? _reconcileTimer;
   static const _reconcileInterval = Duration(minutes: 30);
 
   Future<void> initialize() async {
     await platform.initialize();
+    await DeviceIdentity(db).ensureIdentity();
     await db.ensurePeerId();
     await db.ensureNick();
     await db.ensureBrowserToken();
@@ -138,8 +142,11 @@ class AppService {
   Future<String> rotateBrowserToken() async {
     final token = _uuid.v4();
     await db.setSetting('browser_token', token);
+    server.updateBrowserToken(token);
     return token;
   }
+
+  Future<String> revokeBrowserToken() => rotateBrowserToken();
 
   String localPeerUrl(int port) {
     final host = Platform.isWindows || Platform.isLinux || Platform.isMacOS
@@ -147,6 +154,10 @@ class AppService {
         : 'localhost';
     return 'http://$host:$port';
   }
+
+  Future<void> trustPeer(String peerId) => db.trustPeer(peerId);
+
+  Future<void> forgetPeerTrust(String peerId) => db.forgetPeerTrust(peerId);
 
   Future<void> addManualPeer(String host, int port, {String? nick}) async {
     final baseUrl = 'http://$host:$port';
@@ -156,22 +167,17 @@ class AppService {
       baseUrl,
       peerId: localPeerId,
     );
-    await db.setSetting('session_$host:$port', session);
+    await _sessions.saveToken(db, host, port, session);
     final ghostId = '$host:$port';
     if (ghostId != hello.peerId) {
       await (db.delete(db.peers)..where((t) => t.id.equals(ghostId))).go();
     }
-    await db.into(db.peers).insertOnConflictUpdate(
-          PeersCompanion.insert(
-            id: hello.peerId,
-            nick: hello.nick,
-            host: host,
-            port: port,
-            fingerprint: Value(hello.fingerprint),
-            manual: const Value(true),
-            lastSeen: Value(DateTime.now()),
-          ),
-        );
+    await db.upsertPeerFromHello(
+      hello: hello,
+      host: host,
+      port: port,
+      manual: true,
+    );
   }
 
   Future<void> removePeer(String peerId) async {
@@ -205,10 +211,14 @@ class AppService {
   }
 
   Future<String> ensurePeerSession(Peer peer) async {
+    final existing = await _sessions.readValidToken(db, peer.host, peer.port);
+    if (existing != null) {
+      return existing;
+    }
     final baseUrl = 'http://${peer.host}:${peer.port}';
     final localPeerId = await db.ensurePeerId();
     final session = await client.createSession(baseUrl, peerId: localPeerId);
-    await db.setSetting('session_${peer.host}:${peer.port}', session);
+    await _sessions.saveToken(db, peer.host, peer.port, session);
     return session;
   }
 
@@ -290,7 +300,7 @@ class AppService {
         baseUrl,
         peerId: localPeerId,
       );
-      await db.setSetting('session_${peer.host}:${peer.port}', session);
+      await _sessions.saveToken(db, peer.host, peer.port, session);
 
       for (final ghostId in {peer.peerId, '${peer.host}:${peer.port}'}) {
         if (ghostId != hello.peerId) {
@@ -298,17 +308,12 @@ class AppService {
         }
       }
 
-      await db.into(db.peers).insertOnConflictUpdate(
-            PeersCompanion.insert(
-              id: hello.peerId,
-              nick: hello.nick,
-              host: peer.host,
-              port: peer.port,
-              fingerprint: Value(hello.fingerprint),
-              manual: const Value(false),
-              lastSeen: Value(DateTime.now()),
-            ),
-          );
+      await db.upsertPeerFromHello(
+        hello: hello,
+        host: peer.host,
+        port: peer.port,
+        manual: false,
+      );
       _log.info('Discovered peer ${hello.nick} at ${peer.host}:${peer.port}');
     } catch (error) {
       _log.warning(

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/persistence/database.dart';
+import '../core/security/device_identity.dart';
 import '../core/services/app_service.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
@@ -56,4 +57,10 @@ final discoverySupportsAdvertisingProvider = Provider<bool>(
 
 final downloadsDirectoryProvider = FutureProvider<String>((ref) async {
   return ref.watch(appServiceProvider).downloadsDirectory();
+});
+
+final deviceFingerprintProvider = FutureProvider<String>((ref) async {
+  final identity =
+      await DeviceIdentity(ref.watch(databaseProvider)).ensureIdentity();
+  return identity.fingerprint;
 });
