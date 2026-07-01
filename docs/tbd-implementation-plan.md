@@ -11,7 +11,7 @@ Last reviewed: 2026-07-01
 | 3 Parallel chunk downloads | **complete** | Pool up to `maxConcurrentDownloads`; per-chunk open/write/close behind serial lock; fetch retry x3; `cancelActiveDownload()` groundwork |
 | 3.5 Transfer alignment cleanup | **complete** | `GET /chunks?hash=`; `path_safety.dart`; `download_states.dart`; relative-path targets; `sourcePeerId`; cancel → `cancelled`; sync `queueDownload` TODO |
 | 4 Folder downloads | **complete** | `listEntriesRecursive`, `downloadFolder`, browse folder download button, one DB row per file |
-| 5 Desktop indexing hardening | pending | — |
+| 5 Desktop indexing hardening | **complete** | `ShareWatcher` (desktop), `scanShareIncremental`, DB helpers, schema v5 indexes, 30m reconcile fallback |
 | 6 Platform validation and UI polish | pending | — |
 | 7 Security UX | pending | — |
 | 8 Multi-source downloads | pending | — |

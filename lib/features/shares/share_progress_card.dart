@@ -23,6 +23,17 @@ class ShareProgressCard extends StatelessWidget {
             'Scanning folder…',
             style: theme.textTheme.bodySmall,
           ),
+        ] else if (share.scanStatus == 'updating') ...[
+          const LinearProgressIndicator(),
+          const SizedBox(height: 4),
+          Text(
+            share.currentFile == null || share.currentFile!.isEmpty
+                ? 'Updating index…'
+                : 'Updating ${share.currentFile!}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall,
+          ),
         ] else if (share.scanStatus == 'hashing') ...[
           _buildHashProgress(theme),
         ] else if (share.scanStatus == 'ready') ...[
@@ -104,6 +115,7 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, color) = switch (status) {
       'scanning' => ('Scanning', Colors.orange),
+      'updating' => ('Updating', Colors.blue),
       'hashing' => ('Hashing', Colors.blue),
       'ready' => ('Ready', Colors.green),
       'error' => ('Error', Colors.red),

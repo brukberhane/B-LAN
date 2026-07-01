@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../protocol/constants.dart';
 import '../protocol/download_states.dart';
 import '../protocol/models.dart';
+import '../indexing/chunker.dart';
 import 'tables.dart';
 
 part 'database.g.dart';
@@ -30,7 +31,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -50,6 +51,18 @@ class AppDatabase extends _$AppDatabase {
             await migrator.addColumn(downloads, downloads.errorMessage);
             await migrator.addColumn(downloadChunks, downloadChunks.errorMessage);
             await migrator.addColumn(downloadChunks, downloadChunks.sourcePeerId);
+          }
+          if (from < 5) {
+            await customStatement(
+              'CREATE UNIQUE INDEX IF NOT EXISTS idx_entries_share_path '
+              'ON entries (share_id, relative_path)',
+            );
+            await customStatement(
+              'CREATE INDEX IF NOT EXISTS idx_chunks_entry_id ON chunks (entry_id)',
+            );
+            await customStatement(
+              'CREATE INDEX IF NOT EXISTS idx_chunks_hash ON chunks (hash)',
+            );
           }
         },
       );
@@ -237,6 +250,77 @@ class AppDatabase extends _$AppDatabase {
       chunkSize: entry.chunkSize ?? defaultChunkSizeDesktop,
       totalBytes: entry.size,
       hashReady: entry.hashStatus == 'ready',
+    );
+  }
+
+  Future<Entry?> entryBySharePath(String shareId, String relativePath) =>
+      (select(entries)
+            ..where(
+              (t) =>
+                  t.shareId.equals(shareId) &
+                  t.relativePath.equals(relativePath),
+            ))
+          .getSingleOrNull();
+
+  Future<List<Entry>> entriesWithPathPrefix(
+    String shareId,
+    String pathPrefix,
+  ) =>
+      (select(entries)
+            ..where(
+              (t) =>
+                  t.shareId.equals(shareId) &
+                  t.relativePath.like('$pathPrefix%'),
+            ))
+          .get();
+
+  Future<void> deleteEntryWithChunks(String entryId) async {
+    await (delete(chunks)..where((t) => t.entryId.equals(entryId))).go();
+    await (delete(entries)..where((t) => t.id.equals(entryId))).go();
+  }
+
+  Future<void> replaceEntryChunks({
+    required String entryId,
+    required List<ChunkDescriptor> hashedChunks,
+  }) async {
+    await transaction(() async {
+      await (delete(chunks)..where((t) => t.entryId.equals(entryId))).go();
+      for (final chunk in hashedChunks) {
+        await into(chunks).insert(
+          ChunksCompanion.insert(
+            entryId: entryId,
+            chunkIndex: chunk.index,
+            offset: chunk.offset,
+            length: chunk.length,
+            hash: chunk.hash,
+            hashAlgorithm: const Value(hashAlgorithm),
+            status: const Value('ready'),
+          ),
+        );
+      }
+      await (update(entries)..where((t) => t.id.equals(entryId))).write(
+        const EntriesCompanion(hashStatus: Value('ready')),
+      );
+    });
+  }
+
+  Future<void> refreshShareTotals(String shareId) async {
+    final files = await (select(entries)
+          ..where(
+            (t) => t.shareId.equals(shareId) & t.isDirectory.equals(false),
+          ))
+        .get();
+    final totalHashBytes = files.fold<int>(0, (sum, row) => sum + row.size);
+    final readyFiles =
+        files.where((row) => row.hashStatus == 'ready').toList();
+    final hashedBytes =
+        readyFiles.fold<int>(0, (sum, row) => sum + row.size);
+    await updateShareProgress(
+      shareId,
+      totalFiles: files.length,
+      hashedFiles: readyFiles.length,
+      totalHashBytes: totalHashBytes,
+      hashedBytes: hashedBytes,
     );
   }
 

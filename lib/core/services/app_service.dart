@@ -10,6 +10,7 @@ import '../../platform/platform_factory.dart';
 import '../../platform/platform_services.dart';
 import '../discovery/mdns_discovery.dart';
 import '../indexing/share_scanner.dart';
+import '../indexing/share_watcher.dart';
 import '../persistence/database.dart';
 import '../protocol/constants.dart';
 import '../protocol/models.dart';
@@ -44,6 +45,9 @@ class AppService {
   final MdnsDiscovery discovery;
   final _log = Logger('AppService');
   final _uuid = const Uuid();
+  ShareWatcher? _shareWatcher;
+  Timer? _reconcileTimer;
+  static const _reconcileInterval = Duration(minutes: 30);
 
   Future<void> initialize() async {
     await platform.initialize();
@@ -66,10 +70,27 @@ class AppService {
     if (Platform.isAndroid) {
       await platform.acquireMulticastLock();
     }
+    if (ShareWatcher.isSupported) {
+      _shareWatcher = ShareWatcher();
+      final shares = await db.select(db.shares).get();
+      for (final share in shares.where(
+        (row) => row.enabled && row.storageType != 'saf',
+      )) {
+        _startWatchingShare(share);
+      }
+      _reconcileTimer = Timer.periodic(
+        _reconcileInterval,
+        (_) => unawaited(_reconcileFilesystemShares()),
+      );
+    }
     _log.info('Core services started on port $boundPort');
   }
 
   Future<void> dispose() async {
+    _reconcileTimer?.cancel();
+    _reconcileTimer = null;
+    _shareWatcher?.dispose();
+    _shareWatcher = null;
     await discovery.stop();
     if (Platform.isAndroid) {
       await platform.releaseMulticastLock();
@@ -95,10 +116,16 @@ class AppService {
             storageType: Value(storageType),
           ),
         );
+    final share = await (db.select(db.shares)..where((t) => t.id.equals(id)))
+        .getSingle();
+    if (ShareWatcher.isSupported && storageType != 'saf') {
+      _startWatchingShare(share);
+    }
     unawaited(scanner.scanShare(id));
   }
 
   Future<void> removeShare(String shareId) async {
+    _shareWatcher?.unwatchShare(shareId);
     await db.clearShareIndex(shareId);
     await (db.delete(db.shares)..where((t) => t.id.equals(shareId))).go();
   }
@@ -295,5 +322,24 @@ class AppService {
             lastSeen: Value(peer.lastSeen ?? DateTime.now()),
           ),
         );
+  }
+
+  void _startWatchingShare(Share share) {
+    _shareWatcher?.watchShare(
+      shareId: share.id,
+      rootPath: share.localPath,
+      onChanged: (shareId, paths) {
+        unawaited(scanner.scanShareIncremental(shareId, paths));
+      },
+    );
+  }
+
+  Future<void> _reconcileFilesystemShares() async {
+    final shares = await db.select(db.shares).get();
+    for (final share in shares.where(
+      (row) => row.enabled && row.storageType != 'saf',
+    )) {
+      unawaited(scanner.scanShare(share.id));
+    }
   }
 }
