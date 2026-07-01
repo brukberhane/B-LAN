@@ -41,3 +41,19 @@ final nickProvider = FutureProvider<String>((ref) async {
   final db = ref.watch(databaseProvider);
   return db.ensureNick();
 });
+
+final serverRunningProvider = Provider<bool>(
+  (ref) => ref.watch(appServiceProvider).server.isRunning,
+);
+
+final discoveryAdvertisingProvider = Provider<bool>(
+  (ref) => ref.watch(appServiceProvider).discovery.isAdvertising,
+);
+
+final discoverySupportsAdvertisingProvider = Provider<bool>(
+  (ref) => ref.watch(appServiceProvider).discovery.supportsAdvertising,
+);
+
+final downloadsDirectoryProvider = FutureProvider<String>((ref) async {
+  return ref.watch(appServiceProvider).downloadsDirectory();
+});

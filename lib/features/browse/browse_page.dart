@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../core/persistence/database.dart';
 import '../../core/protocol/models.dart';
+import '../../core/protocol/path_safety.dart';
+import '../../core/ui/format.dart';
 
 class BrowsePage extends ConsumerStatefulWidget {
   const BrowsePage({
@@ -27,6 +29,7 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
   var _loading = true;
   String? _error;
   String? _authToken;
+  String? _downloadRoot;
 
   @override
   void initState() {
@@ -35,6 +38,7 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
   }
 
   Future<void> _bootstrap() async {
+    _downloadRoot = await ref.read(appServiceProvider).downloadsDirectory();
     _authToken = widget.token;
     if (_authToken == null) {
       try {
@@ -45,7 +49,7 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
           return;
         }
         setState(() {
-          _error = 'Session failed: $error';
+          _error = 'Session/auth failed: $error';
           _loading = false;
         });
         return;
@@ -122,7 +126,17 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.peer.nick),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.peer.nick),
+            if (_selectedShare != null)
+              Text(
+                _selectedShare!.name,
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+          ],
+        ),
         leading: _selectedShare == null
             ? null
             : IconButton(
@@ -141,7 +155,13 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
                 },
               ),
       ),
-      body: _buildBody(),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_selectedShare != null) _BreadcrumbBar(path: _path),
+          Expanded(child: _buildBody()),
+        ],
+      ),
     );
   }
 
@@ -150,7 +170,12 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null) {
-      return Center(child: Text('Error: $_error'));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text('Error: $_error', textAlign: TextAlign.center),
+        ),
+      );
     }
     if (_selectedShare == null) {
       if (_shares.isEmpty) {
@@ -162,15 +187,22 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
         itemBuilder: (context, index) {
           final share = _shares[index];
           return ListTile(
-            leading: const Icon(Icons.folder_shared),
+            leading: Icon(
+              share.enabled ? Icons.folder_shared : Icons.folder_off_outlined,
+            ),
             title: Text(share.name),
             subtitle: Text(
-              '${share.entryCount} files · ${_formatBytes(share.totalBytes)}',
+              share.enabled
+                  ? '${share.entryCount} files · ${formatBytes(share.totalBytes)} · ${share.scanStatus}'
+                  : 'Share disabled on remote peer',
             ),
-            onTap: () {
-              setState(() => _selectedShare = share);
-              _loadEntries();
-            },
+            enabled: share.enabled,
+            onTap: share.enabled
+                ? () {
+                    setState(() => _selectedShare = share);
+                    _loadEntries();
+                  }
+                : null,
           );
         },
       );
@@ -181,12 +213,19 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final entry = _entries[index];
+        final canDownload = entry.isDirectory || entry.hashReady;
         return ListTile(
           leading: Icon(
             entry.isDirectory ? Icons.folder : Icons.insert_drive_file,
           ),
           title: Text(entry.name),
-          subtitle: entry.isDirectory ? null : Text(_formatBytes(entry.size)),
+          subtitle: entry.isDirectory
+              ? null
+              : Text(
+                  entry.hashReady
+                      ? formatBytes(entry.size)
+                      : '${formatBytes(entry.size)} · indexing on peer',
+                ),
           trailing: entry.isDirectory
               ? Row(
                   mainAxisSize: MainAxisSize.min,
@@ -201,7 +240,10 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
                 )
               : IconButton(
                   icon: const Icon(Icons.download),
-                  onPressed: () => _download(entry),
+                  tooltip: entry.hashReady
+                      ? 'Download file'
+                      : 'File not ready to download',
+                  onPressed: canDownload ? () => _download(entry) : null,
                 ),
           onTap: entry.isDirectory ? () => _loadEntries(path: entry.path) : null,
         );
@@ -214,6 +256,59 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
     if (share == null) {
       return;
     }
+    if (!entry.isDirectory && !entry.hashReady) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Remote peer is still indexing this file'),
+        ),
+      );
+      return;
+    }
+
+    final downloadRoot = _downloadRoot;
+    if (downloadRoot == null) {
+      return;
+    }
+
+    String targetPath;
+    try {
+      targetPath = localTargetPath(
+        downloadRoot,
+        normalizeRemoteEntryPath(entry.path),
+      );
+    } on PathSafetyException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unsafe path: $error')),
+        );
+      }
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(entry.isDirectory ? 'Download folder?' : 'Download file?'),
+        content: Text(
+          'Save to:\n$targetPath\n\n'
+          'Download runs now and blocks until finished.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Download'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+
     try {
       final count = await ref.read(appServiceProvider).queueDownload(
             peer: widget.peer,
@@ -239,17 +334,24 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
       }
     }
   }
+}
 
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) {
-      return '$bytes B';
-    }
-    if (bytes < 1024 * 1024) {
-      return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    }
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+class _BreadcrumbBar extends StatelessWidget {
+  const _BreadcrumbBar({required this.path});
+
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final label = path.isEmpty ? '/' : '/${path.replaceAll('\\', '/')}';
+
+    return Material(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Text(label, style: theme.textTheme.bodySmall),
+      ),
+    );
   }
 }

@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../core/platform/platform_capabilities.dart';
 import '../browse/browse_page.dart';
 import '../../core/persistence/database.dart';
 
@@ -32,12 +35,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final nick = ref.watch(nickProvider);
     final port = ref.watch(httpPortProvider);
     final token = ref.watch(browserTokenProvider);
+    final serverRunning = ref.watch(serverRunningProvider);
+    final advertising = ref.watch(discoveryAdvertisingProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Text(
+            'This device',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
           nick.when(
             data: (value) => ListTile(
               title: const Text('Nickname'),
@@ -50,34 +60,147 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             data: (value) => ListTile(
               title: const Text('HTTP port'),
               subtitle: Text('$value'),
+              trailing: IconButton(
+                icon: const Icon(Icons.copy),
+                tooltip: 'Copy local URL',
+                onPressed: () => _copyText(
+                  context,
+                  ref.read(appServiceProvider).localPeerUrl(value),
+                  'Local URL copied',
+                ),
+              ),
             ),
             loading: () => const ListTile(title: Text('HTTP port')),
             error: (_, _) => const SizedBox.shrink(),
+          ),
+          ListTile(
+            title: const Text('Service status'),
+            subtitle: Text(
+              [
+                serverRunning ? 'HTTP server running' : 'HTTP server stopped',
+                if (!kIsWeb)
+                  advertising
+                      ? 'Advertising on LAN'
+                      : 'Not advertising on LAN',
+              ].join(' · '),
+            ),
           ),
           token.when(
             data: (value) => ListTile(
               title: const Text('Browser token'),
               subtitle: Text(value),
-              trailing: IconButton(
-                icon: const Icon(Icons.copy),
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: value));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Token copied')),
-                  );
-                },
+              trailing: Wrap(
+                spacing: 4,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.copy),
+                    tooltip: 'Copy token',
+                    onPressed: () => _copyText(context, value, 'Token copied'),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Rotate token',
+                    onPressed: () async {
+                      final newToken = await ref
+                          .read(appServiceProvider)
+                          .rotateBrowserToken();
+                      ref.invalidate(browserTokenProvider);
+                      if (context.mounted) {
+                        _copyText(context, newToken, 'New token copied');
+                      }
+                    },
+                  ),
+                ],
               ),
             ),
             loading: () => const ListTile(title: Text('Browser token')),
             error: (_, _) => const SizedBox.shrink(),
           ),
-          if (kIsWeb) ...[
-            const Divider(),
-            const Text(
-              'Web client mode',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          if (!kIsWeb) ...[
+            const Divider(height: 32),
+            Text(
+              'Web client instructions',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
+            port.when(
+              data: (value) => token.when(
+                data: (tokenValue) => Text(
+                  'On another machine, open B-LAN Web or use a browser with '
+                  'this peer\'s LAN IP, port $value, and browser token. '
+                  'CORS allows all origins by default for LAN use.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                loading: () => const SizedBox.shrink(),
+                error: (_, _) => const SizedBox.shrink(),
+              ),
+              loading: () => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
+            ),
+          ],
+          const Divider(height: 32),
+          Text(
+            'Platform capabilities',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            PlatformCapabilities.platformName,
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+          const SizedBox(height: 8),
+          ...PlatformCapabilities.capabilityRows().map(
+            (row) => ListTile(
+              dense: true,
+              leading: Icon(
+                row.available ? Icons.check_circle : Icons.cancel,
+                color: row.available ? Colors.green : Colors.grey,
+              ),
+              title: Text(row.label),
+              subtitle: row.note == null ? null : Text(row.note!),
+            ),
+          ),
+          if (PlatformCapabilities.limitationNotes().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...PlatformCapabilities.limitationNotes().map(
+              (note) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(note, style: Theme.of(context).textTheme.bodySmall),
+              ),
+            ),
+          ],
+          if (!kIsWeb &&
+              (Platform.isLinux ||
+                  Platform.isWindows ||
+                  Platform.isMacOS)) ...[
+            const Divider(height: 32),
+            Text(
+              'Firewall / manual connect',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            port.when(
+              data: (value) => Text(
+                PlatformCapabilities.firewallGuidance(value),
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              loading: () => const SizedBox.shrink(),
+              error: (_, _) => const SizedBox.shrink(),
+            ),
+          ],
+          if (kIsWeb) ...[
+            const Divider(height: 32),
+            Text(
+              'Web client mode',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Web cannot share folders or discover peers. Connect manually to '
+              'a desktop peer below.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: _webHostController,
               decoration: const InputDecoration(
@@ -104,6 +227,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ],
         ],
       ),
+    );
+  }
+
+  void _copyText(BuildContext context, String text, String message) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 

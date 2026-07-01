@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../core/persistence/database.dart';
+import '../../core/platform/platform_capabilities.dart';
+import '../../core/ui/format.dart';
 import '../browse/browse_page.dart';
 
 class PeersPage extends ConsumerWidget {
@@ -26,9 +28,13 @@ class PeersPage extends ConsumerWidget {
       body: peers.when(
         data: (rows) {
           if (rows.isEmpty) {
-            return const Center(
-              child: Text(
-                'No peers yet. Add one manually or wait for LAN discovery.',
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  _emptyPeersMessage(),
+                  textAlign: TextAlign.center,
+                ),
               ),
             );
           }
@@ -42,10 +48,15 @@ class PeersPage extends ConsumerWidget {
                   peer.manual ? Icons.link : Icons.wifi,
                 ),
                 title: Text(peer.nick),
-                subtitle: Text('${peer.host}:${peer.port}'),
+                subtitle: Text(_peerSubtitle(peer)),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (peer.trusted)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 4),
+                        child: Icon(Icons.verified_user, size: 18),
+                      ),
                     IconButton(
                       icon: const Icon(Icons.delete_outline),
                       tooltip: 'Remove peer',
@@ -63,6 +74,31 @@ class PeersPage extends ConsumerWidget {
         error: (error, _) => Center(child: Text('Error: $error')),
       ),
     );
+  }
+
+  String _emptyPeersMessage() {
+    final base =
+        'No peers yet. Add one manually or wait for LAN discovery.';
+    if (PlatformCapabilities.supportsMdnsAdvertising) {
+      return base;
+    }
+    final notes = PlatformCapabilities.limitationNotes();
+    if (notes.isEmpty) {
+      return base;
+    }
+    return '$base\n\n${notes.first}';
+  }
+
+  String _peerSubtitle(Peer peer) {
+    final parts = <String>[
+      '${peer.host}:${peer.port}',
+      peer.manual ? 'Manual' : 'Discovered',
+      'seen ${formatRelativeTime(peer.lastSeen)}',
+    ];
+    if (peer.fingerprint != null && peer.fingerprint!.isNotEmpty) {
+      parts.add('fp ${peer.fingerprint!.substring(0, 8)}…');
+    }
+    return parts.join(' · ');
   }
 
   Future<void> _showManualPeerDialog(BuildContext context, WidgetRef ref) async {
@@ -126,7 +162,7 @@ class PeersPage extends ConsumerWidget {
     } catch (error) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed: $error')),
+          SnackBar(content: Text('Session/auth failed: $error')),
         );
       }
     }

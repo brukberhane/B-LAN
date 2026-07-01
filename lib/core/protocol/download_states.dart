@@ -6,6 +6,16 @@ abstract final class DownloadState {
   static const complete = 'complete';
   static const error = 'error';
   static const cancelled = 'cancelled';
+
+  static String label(String state) => switch (state) {
+        queued => 'Queued',
+        downloading => 'Downloading',
+        paused => 'Paused',
+        complete => 'Complete',
+        error => 'Error',
+        cancelled => 'Cancelled',
+        _ => state,
+      };
 }
 
 abstract final class DownloadChunkState {

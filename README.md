@@ -1,25 +1,32 @@
 # B-LAN
 
-Flutter rewrite of D-LAN: share folders on your LAN, discover peers, browse remote files, and download with resume-friendly HTTP transfers.
+Flutter rewrite of D-LAN: share folders on your LAN, discover peers, browse remote files, and download with verified chunk resume.
 
 ## Platforms
 
-- Linux, macOS, Windows: full peer (share, discover, browse, download)
-- Android: browse/download MVP; folder sharing still limited
-- Web: limited client — manually connect to a desktop peer with browser token
+| Platform | Share | Discover | Advertise | Notes |
+|----------|-------|----------|-----------|-------|
+| Linux | Yes | Yes | Yes | Bonsoir 7 + Avahi; allow TCP HTTP port on LAN |
+| macOS | Yes | Yes | Yes | Bonsoir advertise + browse |
+| Windows | Yes | Yes | No | Browse/manual connect; advertise not supported yet |
+| Android | SAF/filesystem | Yes | Yes | Foreground service for scan/download; SAF needs manual rescan |
+| Web | No | No | No | Manual connect with browser token only |
+
+See [docs/platform-test-matrix.md](docs/platform-test-matrix.md) for manual validation checklist.
 
 ## Discovery (mDNS)
 
 - Service type: `_blan._tcp`
-- **Android / macOS / Linux**: Bonsoir advertise + browse (Linux uses `bonsoir_linux_dbus` + Avahi)
-- **Windows**: browse-only via `multicast_dns` (advertise not supported yet)
-- **Web**: disabled; use manual peer URL
+- **Android / macOS / Linux**: Bonsoir `^7.1.4` advertise + browse (no `bonsoir_linux_dbus`, no `configureBonsoirPlatform()`)
+- **Linux**: requires Avahi (`avahi-daemon`) for reliable discovery
+- **Windows**: browse-only via `multicast_dns`; use manual peer connect to reach this machine
+- **Web**: disabled; enter host, port, and browser token in Settings
 - TXT records: `peerId`, `pv`, `nick`
 - On resolve: HTTP `/hello` + `/session` handshake, upsert peer by real `peerId`
 
 ## Android
 
-- **SAF folder sharing**: use folder-copy icon on Shares screen (Storage Access Framework tree URI).
+- **SAF folder sharing**: folder-copy icon on Shares screen (Storage Access Framework tree URI).
 - **Foreground service**: scan/hash/download show persistent notification while running.
 - **Multicast lock**: held while app core is active for mDNS browse.
 - Permissions: notifications, multicast, foreground `dataSync`, cleartext HTTP for LAN.
@@ -27,7 +34,7 @@ Flutter rewrite of D-LAN: share folders on your LAN, discover peers, browse remo
 ## Run
 
 ```bash
-cd /home/brukb/projects/Dart/flutter/B-LAN
+cd B-LAN
 flutter pub get
 dart run build_runner build
 flutter run -d linux
@@ -36,16 +43,16 @@ flutter run -d linux
 ## Architecture
 
 - `lib/core/persistence/` — Drift/SQLite local index and queue
-- `lib/core/indexing/` — folder scan + SHA-256 chunk hashing
-- `lib/core/transfers/` — embedded HTTP server + download client
-- `lib/core/discovery/` — mDNS browse (advertising deferred)
+- `lib/core/indexing/` — folder scan, incremental watch (desktop), SHA-256 chunk hashing
+- `lib/core/transfers/` — embedded HTTP server + verified download client
+- `lib/core/discovery/` — mDNS browse/advertise (Windows browse-only)
 - `lib/features/` — shares, peers, browse, downloads, settings UI
 
 ## Protocol (v1)
 
 - `GET /hello` — peer metadata
 - `POST /session` — native client session token
-- `GET /shares`, `GET /entries`, `GET /files/{id}` with `Range`
+- `GET /shares`, `GET /entries`, `GET /manifest/files/<id>`, `GET /chunks?hash=`, `GET /files/<id>` with `Range`
 - Web clients use browser token from Settings; native clients use `/session`
 
 ## Dev

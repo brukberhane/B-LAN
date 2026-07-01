@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/ui/format.dart';
+
 import '../../core/persistence/database.dart';
 
 class ShareProgressCard extends StatelessWidget {
@@ -38,7 +40,7 @@ class ShareProgressCard extends StatelessWidget {
           _buildHashProgress(theme),
         ] else if (share.scanStatus == 'ready') ...[
           Text(
-            '${share.totalFiles} files indexed · ${_formatBytes(share.totalHashBytes)}',
+            '${share.totalFiles} files indexed · ${formatBytes(share.totalHashBytes)}',
             style: theme.textTheme.bodySmall,
           ),
         ] else if (share.scanStatus == 'error') ...[
@@ -74,7 +76,7 @@ class ShareProgressCard extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           'Files ${share.hashedFiles} / ${share.totalFiles} · '
-          '${_formatBytes(share.hashedBytes)} / ${_formatBytes(share.totalHashBytes)}',
+          '${formatBytes(share.hashedBytes)} / ${formatBytes(share.totalHashBytes)}',
           style: theme.textTheme.bodySmall,
         ),
         if (share.currentFile != null && share.currentFile!.isNotEmpty) ...[
@@ -91,19 +93,6 @@ class ShareProgressCard extends StatelessWidget {
       ],
     );
   }
-
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) {
-      return '$bytes B';
-    }
-    if (bytes < 1024 * 1024) {
-      return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    }
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
 }
 
 class _StatusChip extends StatelessWidget {
@@ -119,6 +108,7 @@ class _StatusChip extends StatelessWidget {
       'hashing' => ('Hashing', Colors.blue),
       'ready' => ('Ready', Colors.green),
       'error' => ('Error', Colors.red),
+      'idle' => ('Idle', Colors.grey),
       _ => ('Idle', Colors.grey),
     };
 

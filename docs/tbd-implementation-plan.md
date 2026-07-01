@@ -12,7 +12,7 @@ Last reviewed: 2026-07-01
 | 3.5 Transfer alignment cleanup | **complete** | `GET /chunks?hash=`; `path_safety.dart`; `download_states.dart`; relative-path targets; `sourcePeerId`; cancel → `cancelled`; sync `queueDownload` TODO |
 | 4 Folder downloads | **complete** | `listEntriesRecursive`, `downloadFolder`, browse folder download button, one DB row per file |
 | 5 Desktop indexing hardening | **complete** | `ShareWatcher` (desktop), `scanShareIncremental`, DB helpers, schema v5 indexes, 30m reconcile fallback |
-| 6 Platform validation and UI polish | pending | — |
+| 6 Platform validation and UI polish | **complete** | UI surfacing pass, platform capabilities in Settings, README + test matrix, token rotate |
 | 7 Security UX | pending | — |
 | 8 Multi-source downloads | pending | — |
 | 9 libSQL benchmark | pending | — |

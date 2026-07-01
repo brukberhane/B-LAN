@@ -132,6 +132,22 @@ class AppService {
 
   Future<void> rescanShare(String shareId) => scanner.scanShare(shareId);
 
+  Future<void> setShareEnabled(String shareId, bool enabled) =>
+      db.setShareEnabled(shareId, enabled);
+
+  Future<String> rotateBrowserToken() async {
+    final token = _uuid.v4();
+    await db.setSetting('browser_token', token);
+    return token;
+  }
+
+  String localPeerUrl(int port) {
+    final host = Platform.isWindows || Platform.isLinux || Platform.isMacOS
+        ? '127.0.0.1'
+        : 'localhost';
+    return 'http://$host:$port';
+  }
+
   Future<void> addManualPeer(String host, int port, {String? nick}) async {
     final baseUrl = 'http://$host:$port';
     final hello = await client.hello(baseUrl);

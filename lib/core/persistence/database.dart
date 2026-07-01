@@ -540,6 +540,22 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  Future<({int verifiedChunks, int totalChunks})> downloadChunkStats(
+    String downloadId,
+  ) async {
+    final rows = await downloadChunksForDownload(downloadId);
+    final verified = rows
+        .where((row) => row.state == DownloadChunkState.verified)
+        .length;
+    return (verifiedChunks: verified, totalChunks: rows.length);
+  }
+
+  Future<void> setShareEnabled(String shareId, bool enabled) async {
+    await (update(shares)..where((t) => t.id.equals(shareId))).write(
+      SharesCompanion(enabled: Value(enabled)),
+    );
+  }
+
   String _normalizeBrowsePath(String path) {
     if (path.isEmpty || path == '/') {
       return '';

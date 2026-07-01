@@ -7,7 +7,6 @@ import 'package:uuid/uuid.dart';
 
 import '../../platform/platform_services.dart';
 import '../persistence/database.dart';
-import '../protocol/constants.dart';
 import 'hash_worker_pool.dart';
 import 'share_watcher.dart';
 
