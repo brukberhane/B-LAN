@@ -1,0 +1,43 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../core/persistence/database.dart';
+import '../core/services/app_service.dart';
+
+final databaseProvider = Provider<AppDatabase>((ref) {
+  throw UnimplementedError('Database not initialized');
+});
+
+final appServiceProvider = Provider<AppService>((ref) {
+  final db = ref.watch(databaseProvider);
+  return AppService(db);
+});
+
+final sharesProvider = StreamProvider((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.watchShares();
+});
+
+final peersProvider = StreamProvider((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.watchPeers();
+});
+
+final downloadsProvider = StreamProvider((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.watchDownloads();
+});
+
+final browserTokenProvider = FutureProvider<String>((ref) async {
+  final db = ref.watch(databaseProvider);
+  return db.ensureBrowserToken();
+});
+
+final httpPortProvider = FutureProvider<int>((ref) async {
+  final db = ref.watch(databaseProvider);
+  return db.ensureHttpPort();
+});
+
+final nickProvider = FutureProvider<String>((ref) async {
+  final db = ref.watch(databaseProvider);
+  return db.ensureNick();
+});

@@ -1,0 +1,265 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+import 'package:shelf/shelf.dart';
+import 'package:shelf/shelf_io.dart' as shelf_io;
+import 'package:shelf_router/shelf_router.dart';
+
+import '../indexing/chunker.dart';
+import '../persistence/database.dart';
+import '../protocol/constants.dart';
+import '../protocol/models.dart';
+
+class TransferServer {
+  TransferServer(this._db);
+
+  final AppDatabase _db;
+  HttpServer? _server;
+  String? _browserToken;
+  List<String> _allowedOrigins = const [];
+  final Map<String, DateTime> _sessions = {};
+
+  bool get isRunning => _server != null;
+
+  Future<int> start({
+    required int port,
+    required String browserToken,
+    List<String> allowedOrigins = const [],
+  }) async {
+    if (_server != null) {
+      return _server!.port;
+    }
+    _browserToken = browserToken;
+    _allowedOrigins = allowedOrigins;
+
+    final router = Router()
+      ..get('/hello', _hello)
+      ..post('/session', _session)
+      ..get('/shares', _shares)
+      ..get('/entries', _entries)
+      ..get('/files/<fileId>', _file)
+      ..get('/chunks/<hash>', _chunk);
+
+    final handler = Pipeline()
+        .addMiddleware(_corsMiddleware)
+        .addMiddleware(_authMiddleware)
+        .addHandler(router.call);
+
+    _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
+    return _server!.port;
+  }
+
+  Future<void> stop() async {
+    await _server?.close(force: true);
+    _server = null;
+  }
+
+  Middleware get _corsMiddleware => (Handler inner) {
+        return (Request request) async {
+          if (request.method == 'OPTIONS') {
+            return _cors(Response.ok(''));
+          }
+          final response = await inner(request);
+          return _cors(response);
+        };
+      };
+
+  Response _cors(Response response) {
+    final origin = _allowedOrigins.isEmpty ? '*' : _allowedOrigins.join(', ');
+    return response.change(headers: {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type, Range',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Expose-Headers': 'Content-Length, Content-Range',
+    });
+  }
+
+  Middleware get _authMiddleware => (Handler inner) {
+        return (Request request) async {
+          if (request.url.path == 'hello' || request.url.path == 'session') {
+            return inner(request);
+          }
+          final auth = request.headers['authorization'];
+          if (auth == null) {
+            return Response.forbidden('Missing token');
+          }
+          final token = auth.replaceFirst('Bearer ', '');
+          if (token == _browserToken || _sessions.containsKey(token)) {
+            return inner(request);
+          }
+          return Response.forbidden('Invalid token');
+        };
+      };
+
+  Future<Response> _session(Request request) async {
+    final body = await request.readAsString();
+    if (body.isEmpty) {
+      return Response.badRequest(body: 'peerId required');
+    }
+    final json = jsonDecode(body) as Map<String, dynamic>;
+    final peerId = json['peerId'] as String?;
+    if (peerId == null || peerId.isEmpty) {
+      return Response.badRequest(body: 'peerId required');
+    }
+    final token = '${peerId}_${DateTime.now().millisecondsSinceEpoch}';
+    _sessions[token] = DateTime.now().add(const Duration(hours: 24));
+    return Response.ok(
+      jsonEncode(
+        SessionResponse(token: token, expiresInSeconds: 86400).toJson(),
+      ),
+      headers: {'content-type': 'application/json'},
+    );
+  }
+
+  Future<Response> _hello(Request request) async {
+    final peerId = await _db.ensurePeerId();
+    final nick = await _db.ensureNick();
+    final body = HelloResponse(
+      protocolVersion: protocolVersion,
+      peerId: peerId,
+      nick: nick,
+      fingerprint: fingerprintFromPeerId(peerId),
+      capabilities: const ['shares', 'browse', 'download', 'range'],
+    );
+    return Response.ok(
+      jsonEncode(body.toJson()),
+      headers: {'content-type': 'application/json'},
+    );
+  }
+
+  Future<Response> _shares(Request request) async {
+    final rows = await _db.select(_db.shares).get();
+    final summaries = <ShareSummary>[];
+    for (final share in rows.where((s) => s.enabled)) {
+      final data = await _db.shareSummary(share.id);
+      summaries.add(
+        ShareSummary(
+          id: share.id,
+          name: share.displayName,
+          enabled: share.enabled,
+          entryCount: data.entryCount,
+          totalBytes: data.totalBytes,
+          scanStatus: share.scanStatus,
+        ),
+      );
+    }
+    return Response.ok(
+      jsonEncode(summaries.map((e) => e.toJson()).toList()),
+      headers: {'content-type': 'application/json'},
+    );
+  }
+
+  Future<Response> _entries(Request request) async {
+    final shareId = request.url.queryParameters['shareId'];
+    if (shareId == null) {
+      return Response.badRequest(body: 'shareId required');
+    }
+    final path = request.url.queryParameters['path'] ?? '';
+    final rows = await _db.entriesForShare(shareId, path);
+    final dtos = rows
+        .map(
+          (row) => EntryDto(
+            id: row.id,
+            name: row.name,
+            path: row.relativePath,
+            isDirectory: row.isDirectory,
+            size: row.size,
+            mtimeMs: row.mtimeMs,
+            hashReady: row.hashStatus == 'ready',
+          ),
+        )
+        .toList();
+    return Response.ok(
+      jsonEncode(dtos.map((e) => e.toJson()).toList()),
+      headers: {'content-type': 'application/json'},
+    );
+  }
+
+  Future<Response> _file(Request request, String fileId) async {
+    final entry = await (_db.select(_db.entries)
+          ..where((t) => t.id.equals(fileId)))
+        .getSingleOrNull();
+    if (entry == null || entry.isDirectory) {
+      return Response.notFound('File not found');
+    }
+    final share = await (_db.select(_db.shares)
+          ..where((t) => t.id.equals(entry.shareId)))
+        .getSingleOrNull();
+    if (share == null) {
+      return Response.notFound('Share not found');
+    }
+
+    final file = File(
+      entry.localUri ?? p.join(share.localPath, entry.relativePath),
+    );
+    if (!await file.exists()) {
+      return Response.notFound('Missing file');
+    }
+
+    final range = request.headers['range'];
+    if (range == null) {
+      return Response.ok(
+        file.openRead(),
+        headers: {
+          'content-type': 'application/octet-stream',
+          'content-length': '${entry.size}',
+        },
+      );
+    }
+
+    final match = RegExp(r'bytes=(\d+)-(\d*)').firstMatch(range);
+    if (match == null) {
+      return Response(416);
+    }
+    final start = int.parse(match.group(1)!);
+    final end = match.group(2)!.isEmpty
+        ? entry.size - 1
+        : int.parse(match.group(2)!);
+    final length = end - start + 1;
+    return Response(
+      206,
+      body: file.openRead(start, end + 1),
+      headers: {
+        'content-type': 'application/octet-stream',
+        'content-length': '$length',
+        'content-range': 'bytes $start-$end/${entry.size}',
+        'accept-ranges': 'bytes',
+      },
+    );
+  }
+
+  Future<Response> _chunk(Request request, String hash) async {
+    final chunk = await (_db.select(_db.chunks)
+          ..where((t) => t.hash.equals(hash)))
+        .getSingleOrNull();
+    if (chunk == null) {
+      return Response.notFound('Chunk not found');
+    }
+    final entry = await (_db.select(_db.entries)
+          ..where((t) => t.id.equals(chunk.entryId)))
+        .getSingleOrNull();
+    if (entry == null) {
+      return Response.notFound('Entry not found');
+    }
+    final share = await (_db.select(_db.shares)
+          ..where((t) => t.id.equals(entry.shareId)))
+        .getSingleOrNull();
+    if (share == null) {
+      return Response.notFound('Share not found');
+    }
+    final file = File(
+      entry.localUri ?? p.join(share.localPath, entry.relativePath),
+    );
+    if (!await file.exists()) {
+      return Response.notFound('Missing file');
+    }
+    return Response.ok(
+      file.openRead(chunk.offset, chunk.offset + chunk.length),
+      headers: {
+        'content-type': 'application/octet-stream',
+        'content-length': '${chunk.length}',
+      },
+    );
+  }
+}
