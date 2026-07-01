@@ -188,7 +188,17 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
           title: Text(entry.name),
           subtitle: entry.isDirectory ? null : Text(_formatBytes(entry.size)),
           trailing: entry.isDirectory
-              ? const Icon(Icons.chevron_right)
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.download),
+                      tooltip: 'Download folder',
+                      onPressed: () => _download(entry),
+                    ),
+                    const Icon(Icons.chevron_right),
+                  ],
+                )
               : IconButton(
                   icon: const Icon(Icons.download),
                   onPressed: () => _download(entry),
@@ -205,15 +215,20 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
       return;
     }
     try {
-      await ref.read(appServiceProvider).queueDownload(
+      final count = await ref.read(appServiceProvider).queueDownload(
             peer: widget.peer,
             shareId: share.id,
             entry: entry,
             token: _authToken,
           );
       if (mounted) {
+        final message = entry.isDirectory
+            ? count == 0
+                ? 'Saved empty folder ${entry.name}'
+                : 'Saved $count file${count == 1 ? '' : 's'} from ${entry.name}'
+            : 'Saved ${entry.name}';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Saved ${entry.name}')),
+          SnackBar(content: Text(message)),
         );
       }
     } catch (error) {

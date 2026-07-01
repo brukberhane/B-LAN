@@ -98,6 +98,84 @@ class TransferClient {
     );
   }
 
+  /// Breadth-first recursive listing; returns file entries only.
+  Future<List<EntryDto>> listEntriesRecursive(
+    String baseUrl, {
+    required String shareId,
+    required String rootPath,
+    String? token,
+  }) async {
+    validateRemoteEntryPath(rootPath);
+    final files = <EntryDto>[];
+    final queue = <String>[_browsePath(rootPath)];
+
+    while (queue.isNotEmpty) {
+      final path = queue.removeAt(0);
+      final entries = await listEntries(
+        baseUrl,
+        shareId: shareId,
+        path: path,
+        token: token,
+      );
+      for (final entry in entries) {
+        if (entry.isDirectory) {
+          validateRemoteEntryPath(entry.path);
+          queue.add(_browsePath(entry.path));
+        } else {
+          validateRemoteEntryPath(entry.path);
+          files.add(entry);
+        }
+      }
+    }
+    return files;
+  }
+
+  /// Downloads all files under [folder] into [targetDirectory].
+  ///
+  /// Returns number of files transferred. Creates [folder] locally even when empty.
+  Future<int> downloadFolder({
+    required Peer peer,
+    required String shareId,
+    required EntryDto folder,
+    required String targetDirectory,
+    String? token,
+    Future<void> Function(int completedFiles, int totalFiles)? onFileProgress,
+    Future<void> Function(int downloaded, int total)? onEntryProgress,
+  }) async {
+    if (!folder.isDirectory) {
+      throw ArgumentError.value(folder, 'folder', 'must be a directory entry');
+    }
+
+    final baseUrl = _peerBaseUrl(peer);
+    final files = await listEntriesRecursive(
+      baseUrl,
+      shareId: shareId,
+      rootPath: folder.path,
+      token: token,
+    );
+
+    final folderLocalPath = localTargetPath(
+      targetDirectory,
+      normalizeRemoteEntryPath(folder.path),
+    );
+    await Directory(folderLocalPath).create(recursive: true);
+
+    var completed = 0;
+    for (final file in files) {
+      await downloadEntry(
+        peer: peer,
+        shareId: shareId,
+        entry: file,
+        targetDirectory: targetDirectory,
+        token: token,
+        onProgress: onEntryProgress,
+      );
+      completed++;
+      await onFileProgress?.call(completed, files.length);
+    }
+    return files.length;
+  }
+
   Future<void> downloadEntry({
     required Peer peer,
     required String shareId,
@@ -474,6 +552,20 @@ class TransferClient {
   Map<String, String> _authHeaders(String? token) => {
         if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
       };
+
+  String _browsePath(String path) {
+    if (path.isEmpty) {
+      return '';
+    }
+    var normalized = path.replaceAll('\\', '/');
+    if (normalized.startsWith('/')) {
+      normalized = normalized.substring(1);
+    }
+    if (!normalized.endsWith('/')) {
+      normalized = '$normalized/';
+    }
+    return normalized;
+  }
 }
 
 class _DownloadCancelled implements Exception {

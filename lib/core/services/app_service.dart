@@ -169,10 +169,12 @@ class AppService {
     return session;
   }
 
-  /// Downloads a remote file into the local downloads directory.
+  /// Downloads a remote file or folder into the local downloads directory.
   ///
   /// TODO: still blocks until the transfer finishes; background queue deferred.
-  Future<void> queueDownload({
+  ///
+  /// Returns number of files saved (1 for single file, 0 for empty folder).
+  Future<int> queueDownload({
     required Peer peer,
     required String shareId,
     required EntryDto entry,
@@ -187,6 +189,23 @@ class AppService {
       body: 'From ${peer.nick}',
     );
     try {
+      if (entry.isDirectory) {
+        return await client.downloadFolder(
+          peer: peer,
+          shareId: shareId,
+          folder: entry,
+          targetDirectory: targetDir,
+          token: authToken,
+          onFileProgress: (completed, total) async {
+            await platform.updateForegroundTask(
+              taskId: taskId,
+              title: 'Downloading ${entry.name}',
+              body: '$completed / $total files',
+            );
+          },
+        );
+      }
+
       await client.downloadEntry(
         peer: peer,
         shareId: shareId,
@@ -201,6 +220,7 @@ class AppService {
           );
         },
       );
+      return 1;
     } finally {
       await platform.stopForegroundTask(taskId);
     }
