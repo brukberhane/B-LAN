@@ -8,7 +8,9 @@ import 'package:path/path.dart' as p;
 import '../indexing/chunker.dart';
 import '../persistence/database.dart';
 import '../protocol/constants.dart';
+import '../protocol/download_states.dart';
 import '../protocol/models.dart';
+import '../protocol/path_safety.dart';
 
 class TransferClient {
   TransferClient(
@@ -26,6 +28,7 @@ class TransferClient {
   static const _chunkFetchMaxAttempts = 3;
 
   bool _downloadCancelled = false;
+  String? _activeDownloadId;
 
   Future<HelloResponse> hello(String baseUrl, {String? token}) async {
     final response = await _get('$baseUrl/hello', token: token);
@@ -113,7 +116,8 @@ class TransferClient {
       throw HttpException('Remote file hashing not complete');
     }
 
-    final targetPath = p.join(targetDirectory, entry.name);
+    final relativePath = normalizeRemoteEntryPath(entry.path);
+    final targetPath = localTargetPath(targetDirectory, relativePath);
     final partialPath = '$targetPath.partial';
     final finalFile = File(targetPath);
     final partialFile = File(partialPath);
@@ -124,7 +128,7 @@ class TransferClient {
         peerId: peer.id,
         shareId: shareId,
         entryId: entry.id,
-        relativePath: entry.path,
+        relativePath: relativePath,
         targetPath: targetPath,
         totalBytes: manifest.totalBytes,
       );
@@ -138,7 +142,7 @@ class TransferClient {
       peerId: peer.id,
       shareId: shareId,
       entryId: entry.id,
-      relativePath: entry.path,
+      relativePath: relativePath,
       targetPath: targetPath,
       totalBytes: manifest.totalBytes,
     );
@@ -159,6 +163,7 @@ class TransferClient {
       manifest: manifest,
     );
 
+    _activeDownloadId = downloadId;
     try {
       _downloadCancelled = false;
       await _downloadPendingChunks(
@@ -167,6 +172,7 @@ class TransferClient {
         manifest: manifest,
         baseUrl: baseUrl,
         fileId: entry.id,
+        peerId: peer.id,
         token: token,
         onProgress: onProgress,
       );
@@ -179,8 +185,14 @@ class TransferClient {
       }
       await _db.completeDownload(downloadId, manifest.totalBytes);
     } catch (error) {
-      await _db.failDownload(downloadId, '$error');
+      if (error is _DownloadCancelled) {
+        await _db.cancelDownload(downloadId);
+      } else {
+        await _db.failDownload(downloadId, '$error');
+      }
       rethrow;
+    } finally {
+      _activeDownloadId = null;
     }
   }
 
@@ -192,6 +204,7 @@ class TransferClient {
     required FileManifestDto manifest,
     required String baseUrl,
     required String fileId,
+    required String peerId,
     String? token,
     Future<void> Function(int downloaded, int total)? onProgress,
   }) async {
@@ -223,6 +236,7 @@ class TransferClient {
               manifest: manifest,
               baseUrl: baseUrl,
               fileId: fileId,
+              peerId: peerId,
               token: token,
               writeLock: writeLock,
               downloadId: downloadId,
@@ -237,7 +251,7 @@ class TransferClient {
 
       await Future.wait(List.generate(workerCount, (_) => worker()));
       if (_downloadCancelled) {
-        throw HttpException('Download cancelled');
+        throw const _DownloadCancelled();
       }
       if (error != null) {
         throw error!;
@@ -251,6 +265,7 @@ class TransferClient {
     required FileManifestDto manifest,
     required String baseUrl,
     required String fileId,
+    required String peerId,
     String? token,
     required _AsyncSerialLock writeLock,
     required String downloadId,
@@ -290,7 +305,7 @@ class TransferClient {
       }
     });
 
-    await _db.markDownloadChunkVerified(row.id);
+    await _db.markDownloadChunkVerified(row.id, sourcePeerId: peerId);
     final progress = await _downloadProgress(downloadId);
     await onProgress?.call(progress, manifest.totalBytes);
   }
@@ -305,7 +320,7 @@ class TransferClient {
     }
     final rows = await _db.downloadChunksForDownload(downloadId);
     for (final row in rows) {
-      if (row.state != 'verified') {
+      if (row.state != DownloadChunkState.verified) {
         continue;
       }
       final chunk = manifest.chunks.firstWhere(
@@ -400,7 +415,9 @@ class TransferClient {
     required ChunkDto chunk,
     String? token,
   }) async {
-    final chunkUri = Uri.parse('$baseUrl/chunks/${chunk.hash}');
+    final chunkUri = Uri.parse('$baseUrl/chunks').replace(
+      queryParameters: {'hash': chunk.hash},
+    );
     final chunkResponse = await _httpClient
         .get(
           chunkUri,
@@ -457,6 +474,13 @@ class TransferClient {
   Map<String, String> _authHeaders(String? token) => {
         if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
       };
+}
+
+class _DownloadCancelled implements Exception {
+  const _DownloadCancelled();
+
+  @override
+  String toString() => 'Download cancelled';
 }
 
 class _AsyncSerialLock {

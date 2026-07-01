@@ -42,6 +42,7 @@ class TransferServer {
       ..get('/entries', _entries)
       ..get('/manifest/files/<fileId>', _manifestFile)
       ..get('/files/<fileId>', _file)
+      ..get('/chunks', _chunkByQuery)
       ..get('/chunks/<hash>', _chunk);
 
     final handler = Pipeline()
@@ -255,7 +256,17 @@ class TransferServer {
     );
   }
 
-  Future<Response> _chunk(Request request, String hash) async {
+  Future<Response> _chunkByQuery(Request request) async {
+    final hash = request.url.queryParameters['hash'];
+    if (hash == null || hash.isEmpty) {
+      return Response.badRequest(body: 'hash required');
+    }
+    return _serveChunk(hash);
+  }
+
+  Future<Response> _chunk(Request request, String hash) => _serveChunk(hash);
+
+  Future<Response> _serveChunk(String hash) async {
     final chunk = await (_db.select(_db.chunks)
           ..where((t) => t.hash.equals(hash)))
         .getSingleOrNull();

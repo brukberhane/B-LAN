@@ -2,7 +2,9 @@ import 'dart:io';
 
 import 'package:blan/core/indexing/chunker.dart';
 import 'package:blan/core/persistence/database.dart';
+import 'package:blan/core/protocol/download_states.dart';
 import 'package:blan/core/protocol/models.dart';
+import 'package:blan/core/protocol/path_safety.dart';
 import 'package:blan/core/transfers/transfer_client.dart';
 import 'package:blan/core/transfers/transfer_server.dart';
 import 'package:drift/drift.dart';
@@ -135,11 +137,11 @@ void main() {
 
     final rows = await db.select(db.downloads).get();
     expect(rows, hasLength(1));
-    expect(rows.single.state, 'complete');
+    expect(rows.single.state, DownloadState.complete);
     expect(rows.single.downloadedBytes, 10);
 
     final chunkRows = await db.downloadChunksForDownload(rows.single.id);
-    expect(chunkRows.every((row) => row.state == 'verified'), isTrue);
+    expect(chunkRows.every((row) => row.state == DownloadChunkState.verified), isTrue);
   });
 
   test('resume skips already verified chunks', () async {
@@ -327,7 +329,7 @@ void main() {
     expect(await target.exists(), isFalse);
 
     final rows = await db.select(db.downloads).get();
-    expect(rows.single.state, 'error');
+    expect(rows.single.state, DownloadState.error);
     expect(rows.single.errorMessage, isNotEmpty);
   });
 
@@ -349,7 +351,138 @@ void main() {
       expect(countingClient.manifestRequests, 1);
 
       final rows = await db.select(db.downloads).get();
-      expect(rows.single.state, 'complete');
+      expect(rows.single.state, DownloadState.complete);
+    } finally {
+      countingClient.close();
+    }
+  });
+
+  test('download preserves nested relative path', () async {
+    final nestedDir = Directory('${tempDir.path}/nested/dir');
+    await nestedDir.create(recursive: true);
+    await sourceFile.copy('${nestedDir.path}/data.bin');
+
+    await (db.update(db.entries)..where((t) => t.id.equals(fileId))).write(
+      const EntriesCompanion(
+        relativePath: Value('nested/dir/data.bin'),
+        name: Value('data.bin'),
+      ),
+    );
+
+    await client.downloadEntry(
+      peer: peer,
+      shareId: shareId,
+      entry: const EntryDto(
+        id: fileId,
+        name: 'data.bin',
+        path: 'nested/dir/data.bin',
+        isDirectory: false,
+        size: 10,
+        mtimeMs: 0,
+        hashReady: true,
+      ),
+      targetDirectory: downloadDir.path,
+      token: browserToken,
+    );
+
+    final target = File('${downloadDir.path}/nested/dir/data.bin');
+    expect(await target.exists(), isTrue);
+    expect(await target.readAsBytes(), await sourceFile.readAsBytes());
+  });
+
+  test('unsafe remote path is rejected', () async {
+    await expectLater(
+      client.downloadEntry(
+        peer: peer,
+        shareId: shareId,
+        entry: const EntryDto(
+          id: fileId,
+          name: 'secret.txt',
+          path: '../secret.txt',
+          isDirectory: false,
+          size: 10,
+          mtimeMs: 0,
+          hashReady: true,
+        ),
+        targetDirectory: downloadDir.path,
+        token: browserToken,
+      ),
+      throwsA(isA<PathSafetyException>()),
+    );
+  });
+
+  test('cancel leaves download cancelled in db', () async {
+    final slowClient = _SlowChunkClient();
+    final slowTransfer = TransferClient(db, httpClient: slowClient);
+    try {
+      final future = slowTransfer.downloadEntry(
+        peer: peer,
+        shareId: shareId,
+        entry: entryDto(),
+        targetDirectory: downloadDir.path,
+        token: browserToken,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      slowTransfer.cancelActiveDownload();
+      await expectLater(
+        future,
+        throwsA(predicate<Object>((error) => '$error'.contains('cancelled'))),
+      );
+
+      final rows = await db.select(db.downloads).get();
+      expect(rows.single.state, DownloadState.cancelled);
+    } finally {
+      slowClient.close();
+      slowTransfer.close();
+    }
+  });
+
+  test('verified chunks record source peer id', () async {
+    await download();
+
+    final rows = await db.select(db.downloads).get();
+    final chunkRows = await db.downloadChunksForDownload(rows.single.id);
+    expect(chunkRows.every((row) => row.sourcePeerId == peerId), isTrue);
+  });
+
+  test('chunk fetch uses hash query route', () async {
+    final bytes = [1, 2, 3, 4];
+    final chunkHash = hashChunkBytes(bytes);
+    await sourceFile.writeAsBytes(bytes);
+    await (db.delete(db.chunks)..where((t) => t.entryId.equals(fileId))).go();
+    await db.into(db.chunks).insert(
+          ChunksCompanion.insert(
+            entryId: fileId,
+            chunkIndex: 0,
+            offset: 0,
+            length: bytes.length,
+            hash: chunkHash,
+            status: const Value('ready'),
+          ),
+        );
+    await (db.update(db.entries)..where((t) => t.id.equals(fileId))).write(
+      const EntriesCompanion(
+        size: Value(4),
+        chunkSize: Value(32),
+      ),
+    );
+
+    final countingClient = _CountingClient();
+    try {
+      await TransferClient(db, httpClient: countingClient).downloadEntry(
+        peer: peer,
+        shareId: shareId,
+        entry: entryDto(),
+        targetDirectory: downloadDir.path,
+        token: browserToken,
+      );
+
+      expect(countingClient.chunkRequests, greaterThan(0));
+      expect(countingClient.chunkQueryRequests, greaterThan(0));
+      expect(
+        await File('${downloadDir.path}/data.bin').readAsBytes(),
+        bytes,
+      );
     } finally {
       countingClient.close();
     }
@@ -361,14 +494,17 @@ class _CountingClient extends http.BaseClient {
 
   final http.Client _inner;
   int chunkRequests = 0;
+  int chunkQueryRequests = 0;
   int manifestRequests = 0;
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    final path = request.url.path;
-    if (path.contains('/chunks/')) {
+    if (_isChunkRequest(request.url)) {
       chunkRequests++;
-    } else if (path.contains('/manifest/files/')) {
+      if (request.url.queryParameters.containsKey('hash')) {
+        chunkQueryRequests++;
+      }
+    } else if (request.url.path.contains('/manifest/files/')) {
       manifestRequests++;
     }
     return _inner.send(request);
@@ -377,6 +513,9 @@ class _CountingClient extends http.BaseClient {
   @override
   void close() => _inner.close();
 }
+
+bool _isChunkRequest(Uri uri) =>
+    uri.path.endsWith('/chunks') || uri.path.contains('/chunks/');
 
 class _ConcurrencyTrackingClient extends http.BaseClient {
   _ConcurrencyTrackingClient() : _inner = http.Client();
@@ -387,7 +526,7 @@ class _ConcurrencyTrackingClient extends http.BaseClient {
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    if (request.url.path.contains('/chunks/')) {
+    if (_isChunkRequest(request.url)) {
       inFlight++;
       if (inFlight > maxInFlight) {
         maxInFlight = inFlight;
@@ -397,7 +536,7 @@ class _ConcurrencyTrackingClient extends http.BaseClient {
     try {
       return await _inner.send(request);
     } finally {
-      if (request.url.path.contains('/chunks/')) {
+      if (_isChunkRequest(request.url)) {
         inFlight--;
       }
     }
@@ -416,7 +555,7 @@ class _FlakyChunkClient extends http.BaseClient {
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    if (request.url.path.contains('/chunks/') && chunkFailures < failuresBeforeSuccess) {
+    if (_isChunkRequest(request.url) && chunkFailures < failuresBeforeSuccess) {
       chunkFailures++;
       return http.StreamedResponse(
         Stream<List<int>>.value(const []),
@@ -440,7 +579,7 @@ class _CorruptChunkClient extends http.BaseClient {
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    if (request.url.path.contains('/chunks/')) {
+    if (_isChunkRequest(request.url)) {
       chunkRequests++;
       if (chunkRequests >= corruptFromChunkRequest) {
         return http.StreamedResponse(
@@ -448,6 +587,23 @@ class _CorruptChunkClient extends http.BaseClient {
           200,
         );
       }
+    }
+    return _inner.send(request);
+  }
+
+  @override
+  void close() => _inner.close();
+}
+
+class _SlowChunkClient extends http.BaseClient {
+  _SlowChunkClient() : _inner = http.Client();
+
+  final http.Client _inner;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (_isChunkRequest(request.url)) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
     }
     return _inner.send(request);
   }

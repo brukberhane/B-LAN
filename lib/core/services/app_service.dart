@@ -169,6 +169,9 @@ class AppService {
     return session;
   }
 
+  /// Downloads a remote file into the local downloads directory.
+  ///
+  /// TODO: still blocks until the transfer finishes; background queue deferred.
   Future<void> queueDownload({
     required Peer peer,
     required String shareId,

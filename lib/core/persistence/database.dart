@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../protocol/constants.dart';
+import '../protocol/download_states.dart';
 import '../protocol/models.dart';
 import 'tables.dart';
 
@@ -260,7 +261,10 @@ class AppDatabase extends _$AppDatabase {
                   t.peerId.equals(peerId) &
                   t.entryId.equals(entryId) &
                   t.targetPath.equals(targetPath) &
-                  t.state.isNotIn(const ['complete', 'cancelled']),
+                  t.state.isNotIn(const [
+                    DownloadState.complete,
+                    DownloadState.cancelled,
+                  ]),
             ))
           .getSingleOrNull();
 
@@ -280,9 +284,10 @@ class AppDatabase extends _$AppDatabase {
     if (existing != null) {
       await (update(downloads)..where((t) => t.id.equals(existing.id))).write(
         DownloadsCompanion(
-          state: const Value('downloading'),
+          state: const Value(DownloadState.downloading),
           errorMessage: const Value(null),
           totalBytes: Value(totalBytes),
+          relativePath: Value(relativePath),
         ),
       );
       return existing.id;
@@ -297,7 +302,7 @@ class AppDatabase extends _$AppDatabase {
         entryId: entryId,
         relativePath: relativePath,
         targetPath: targetPath,
-        state: const Value('downloading'),
+        state: const Value(DownloadState.downloading),
         totalBytes: Value(totalBytes),
       ),
     );
@@ -334,7 +339,7 @@ class AppDatabase extends _$AppDatabase {
             hash: Value(chunk.hash),
             offset: Value(chunk.offset),
             length: Value(chunk.length),
-            state: const Value('pending'),
+            state: const Value(DownloadChunkState.pending),
             errorMessage: const Value(null),
             sourcePeerId: const Value(null),
           ),
@@ -354,7 +359,7 @@ class AppDatabase extends _$AppDatabase {
             ..where(
               (t) =>
                   t.downloadId.equals(downloadId) &
-                  t.state.equals('pending'),
+                  t.state.equals(DownloadChunkState.pending),
             )
             ..orderBy([(t) => OrderingTerm.asc(t.chunkIndex)]))
           .get();
@@ -362,17 +367,23 @@ class AppDatabase extends _$AppDatabase {
   Future<void> markDownloadChunkWriting(int chunkRowId) async {
     await (update(downloadChunks)..where((t) => t.id.equals(chunkRowId))).write(
       const DownloadChunksCompanion(
-        state: Value('writing'),
+        state: Value(DownloadChunkState.writing),
         errorMessage: Value(null),
       ),
     );
   }
 
-  Future<void> markDownloadChunkVerified(int chunkRowId) async {
+  Future<void> markDownloadChunkVerified(
+    int chunkRowId, {
+    String? sourcePeerId,
+  }) async {
     await (update(downloadChunks)..where((t) => t.id.equals(chunkRowId))).write(
-      const DownloadChunksCompanion(
-        state: Value('verified'),
-        errorMessage: Value(null),
+      DownloadChunksCompanion(
+        state: const Value(DownloadChunkState.verified),
+        errorMessage: const Value(null),
+        sourcePeerId: sourcePeerId == null
+            ? const Value.absent()
+            : Value(sourcePeerId),
       ),
     );
     await updateDownloadProgressFromChunks(
@@ -385,7 +396,7 @@ class AppDatabase extends _$AppDatabase {
   Future<void> markDownloadChunkError(int chunkRowId, String message) async {
     await (update(downloadChunks)..where((t) => t.id.equals(chunkRowId))).write(
       DownloadChunksCompanion(
-        state: const Value('error'),
+        state: const Value(DownloadChunkState.error),
         errorMessage: Value(message),
       ),
     );
@@ -400,7 +411,7 @@ class AppDatabase extends _$AppDatabase {
           ))
         .write(
       const DownloadChunksCompanion(
-        state: Value('pending'),
+        state: Value(DownloadChunkState.pending),
         errorMessage: Value(null),
         sourcePeerId: Value(null),
       ),
@@ -410,7 +421,7 @@ class AppDatabase extends _$AppDatabase {
   Future<void> updateDownloadProgressFromChunks(String downloadId) async {
     final rows = await downloadChunksForDownload(downloadId);
     final verifiedBytes = rows
-        .where((row) => row.state == 'verified')
+        .where((row) => row.state == DownloadChunkState.verified)
         .fold<int>(0, (sum, row) => sum + row.length);
     await (update(downloads)..where((t) => t.id.equals(downloadId))).write(
       DownloadsCompanion(downloadedBytes: Value(verifiedBytes)),
@@ -420,7 +431,7 @@ class AppDatabase extends _$AppDatabase {
   Future<void> completeDownload(String downloadId, int totalBytes) async {
     await (update(downloads)..where((t) => t.id.equals(downloadId))).write(
       DownloadsCompanion(
-        state: const Value('complete'),
+        state: const Value(DownloadState.complete),
         downloadedBytes: Value(totalBytes),
         errorMessage: const Value(null),
       ),
@@ -430,8 +441,17 @@ class AppDatabase extends _$AppDatabase {
   Future<void> failDownload(String downloadId, String message) async {
     await (update(downloads)..where((t) => t.id.equals(downloadId))).write(
       DownloadsCompanion(
-        state: const Value('error'),
+        state: const Value(DownloadState.error),
         errorMessage: Value(message),
+      ),
+    );
+  }
+
+  Future<void> cancelDownload(String downloadId) async {
+    await (update(downloads)..where((t) => t.id.equals(downloadId))).write(
+      const DownloadsCompanion(
+        state: Value(DownloadState.cancelled),
+        errorMessage: Value(null),
       ),
     );
   }

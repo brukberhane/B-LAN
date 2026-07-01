@@ -213,7 +213,7 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
           );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Downloading ${entry.name}')),
+          SnackBar(content: Text('Saved ${entry.name}')),
         );
       }
     } catch (error) {

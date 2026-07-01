@@ -170,4 +170,26 @@ void main() {
     expect(response.statusCode, 200);
     expect(response.bodyBytes, await testFile.readAsBytes());
   });
+
+  test('chunk serves bytes via hash query param', () async {
+    const awkwardHash = 'a/b+c=';
+    await (db.update(db.chunks)..where((t) => t.entryId.equals(fileId))).write(
+      ChunksCompanion(hash: const Value(awkwardHash)),
+    );
+
+    final response = await http.get(
+      uri('/chunks').replace(queryParameters: {'hash': awkwardHash}),
+      headers: authHeaders(),
+    );
+    expect(response.statusCode, 200);
+    expect(response.bodyBytes, await testFile.readAsBytes());
+  });
+
+  test('chunk query without hash returns 400', () async {
+    final response = await http.get(
+      uri('/chunks'),
+      headers: authHeaders(),
+    );
+    expect(response.statusCode, 400);
+  });
 }

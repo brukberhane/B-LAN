@@ -9,7 +9,7 @@ Last reviewed: 2026-07-01
 | 1 Transfer protocol contract | **complete** | Manifest DTOs, `/manifest/files/<id>`, chunk route tightened, client `fetchFileManifest`, tests pass |
 | 2 Verified resumable downloads | **complete** | Schema v4, `download_chunks` wired, manifest-based verify/resume; hash format is base64 SHA-256 (matches indexer, not hex per plan) |
 | 3 Parallel chunk downloads | **complete** | Pool up to `maxConcurrentDownloads`; per-chunk open/write/close behind serial lock; fetch retry x3; `cancelActiveDownload()` groundwork |
-| 3.5 Transfer alignment cleanup | pending | Bring Phase 1-3 shortcuts back into alignment before folder downloads and UI expansion |
+| 3.5 Transfer alignment cleanup | **complete** | `GET /chunks?hash=`; `path_safety.dart`; `download_states.dart`; relative-path targets; `sourcePeerId`; cancel → `cancelled`; sync `queueDownload` TODO |
 | 4 Folder downloads | pending | — |
 | 5 Desktop indexing hardening | pending | — |
 | 6 Platform validation and UI polish | pending | — |
