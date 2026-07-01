@@ -79,6 +79,26 @@ Future<List<ChunkDescriptor>> hashFileChunks({
   return hashed;
 }
 
+String hashChunkBytes(List<int> bytes) {
+  return base64Encode(sha256.convert(Uint8List.fromList(bytes)).bytes);
+}
+
+Future<bool> verifyChunkOnDisk({
+  required File file,
+  required int offset,
+  required int length,
+  required String expectedHash,
+}) async {
+  final handle = await file.open();
+  try {
+    await handle.setPosition(offset);
+    final bytes = await handle.read(length);
+    return hashChunkBytes(bytes) == expectedHash;
+  } finally {
+    await handle.close();
+  }
+}
+
 String fingerprintFromPeerId(String peerId) {
   final digest = sha256.convert(utf8.encode(peerId));
   return digest.toString().substring(0, 16);

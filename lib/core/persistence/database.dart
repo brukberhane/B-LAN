@@ -29,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -44,6 +44,11 @@ class AppDatabase extends _$AppDatabase {
             await migrator.addColumn(shares, shares.totalHashBytes);
             await migrator.addColumn(shares, shares.hashedBytes);
             await migrator.addColumn(shares, shares.currentFile);
+          }
+          if (from < 4) {
+            await migrator.addColumn(downloads, downloads.errorMessage);
+            await migrator.addColumn(downloadChunks, downloadChunks.errorMessage);
+            await migrator.addColumn(downloadChunks, downloadChunks.sourcePeerId);
           }
         },
       );
@@ -242,6 +247,193 @@ class AppDatabase extends _$AppDatabase {
       await (delete(chunks)..where((t) => t.entryId.equals(entry.id))).go();
     }
     await (delete(entries)..where((t) => t.shareId.equals(shareId))).go();
+  }
+
+  Future<Download?> findResumableDownload({
+    required String peerId,
+    required String entryId,
+    required String targetPath,
+  }) =>
+      (select(downloads)
+            ..where(
+              (t) =>
+                  t.peerId.equals(peerId) &
+                  t.entryId.equals(entryId) &
+                  t.targetPath.equals(targetPath) &
+                  t.state.isNotIn(const ['complete', 'cancelled']),
+            ))
+          .getSingleOrNull();
+
+  Future<String> createOrResumeDownload({
+    required String peerId,
+    required String shareId,
+    required String entryId,
+    required String relativePath,
+    required String targetPath,
+    required int totalBytes,
+  }) async {
+    final existing = await findResumableDownload(
+      peerId: peerId,
+      entryId: entryId,
+      targetPath: targetPath,
+    );
+    if (existing != null) {
+      await (update(downloads)..where((t) => t.id.equals(existing.id))).write(
+        DownloadsCompanion(
+          state: const Value('downloading'),
+          errorMessage: const Value(null),
+          totalBytes: Value(totalBytes),
+        ),
+      );
+      return existing.id;
+    }
+
+    final id = DateTime.now().microsecondsSinceEpoch.toString();
+    await into(downloads).insert(
+      DownloadsCompanion.insert(
+        id: id,
+        peerId: peerId,
+        shareId: shareId,
+        entryId: entryId,
+        relativePath: relativePath,
+        targetPath: targetPath,
+        state: const Value('downloading'),
+        totalBytes: Value(totalBytes),
+      ),
+    );
+    return id;
+  }
+
+  Future<void> upsertDownloadChunks(
+    String downloadId,
+    List<ChunkDto> manifestChunks,
+  ) async {
+    final existing = await downloadChunksForDownload(downloadId);
+    final byIndex = {for (final row in existing) row.chunkIndex: row};
+
+    for (final chunk in manifestChunks) {
+      final current = byIndex[chunk.index];
+      if (current == null) {
+        await into(downloadChunks).insert(
+          DownloadChunksCompanion.insert(
+            downloadId: downloadId,
+            chunkIndex: chunk.index,
+            hash: chunk.hash,
+            offset: chunk.offset,
+            length: chunk.length,
+          ),
+        );
+        continue;
+      }
+      if (current.hash != chunk.hash ||
+          current.offset != chunk.offset ||
+          current.length != chunk.length) {
+        await (update(downloadChunks)..where((t) => t.id.equals(current.id)))
+            .write(
+          DownloadChunksCompanion(
+            hash: Value(chunk.hash),
+            offset: Value(chunk.offset),
+            length: Value(chunk.length),
+            state: const Value('pending'),
+            errorMessage: const Value(null),
+            sourcePeerId: const Value(null),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<List<DownloadChunk>> downloadChunksForDownload(String downloadId) =>
+      (select(downloadChunks)
+            ..where((t) => t.downloadId.equals(downloadId))
+            ..orderBy([(t) => OrderingTerm.asc(t.chunkIndex)]))
+          .get();
+
+  Future<List<DownloadChunk>> pendingDownloadChunks(String downloadId) =>
+      (select(downloadChunks)
+            ..where(
+              (t) =>
+                  t.downloadId.equals(downloadId) &
+                  t.state.equals('pending'),
+            )
+            ..orderBy([(t) => OrderingTerm.asc(t.chunkIndex)]))
+          .get();
+
+  Future<void> markDownloadChunkWriting(int chunkRowId) async {
+    await (update(downloadChunks)..where((t) => t.id.equals(chunkRowId))).write(
+      const DownloadChunksCompanion(
+        state: Value('writing'),
+        errorMessage: Value(null),
+      ),
+    );
+  }
+
+  Future<void> markDownloadChunkVerified(int chunkRowId) async {
+    await (update(downloadChunks)..where((t) => t.id.equals(chunkRowId))).write(
+      const DownloadChunksCompanion(
+        state: Value('verified'),
+        errorMessage: Value(null),
+      ),
+    );
+    await updateDownloadProgressFromChunks(
+      (await (select(downloadChunks)..where((t) => t.id.equals(chunkRowId)))
+              .getSingle())
+          .downloadId,
+    );
+  }
+
+  Future<void> markDownloadChunkError(int chunkRowId, String message) async {
+    await (update(downloadChunks)..where((t) => t.id.equals(chunkRowId))).write(
+      DownloadChunksCompanion(
+        state: const Value('error'),
+        errorMessage: Value(message),
+      ),
+    );
+  }
+
+  Future<void> resetDownloadChunk(String downloadId, int chunkIndex) async {
+    await (update(downloadChunks)
+          ..where(
+            (t) =>
+                t.downloadId.equals(downloadId) &
+                t.chunkIndex.equals(chunkIndex),
+          ))
+        .write(
+      const DownloadChunksCompanion(
+        state: Value('pending'),
+        errorMessage: Value(null),
+        sourcePeerId: Value(null),
+      ),
+    );
+  }
+
+  Future<void> updateDownloadProgressFromChunks(String downloadId) async {
+    final rows = await downloadChunksForDownload(downloadId);
+    final verifiedBytes = rows
+        .where((row) => row.state == 'verified')
+        .fold<int>(0, (sum, row) => sum + row.length);
+    await (update(downloads)..where((t) => t.id.equals(downloadId))).write(
+      DownloadsCompanion(downloadedBytes: Value(verifiedBytes)),
+    );
+  }
+
+  Future<void> completeDownload(String downloadId, int totalBytes) async {
+    await (update(downloads)..where((t) => t.id.equals(downloadId))).write(
+      DownloadsCompanion(
+        state: const Value('complete'),
+        downloadedBytes: Value(totalBytes),
+        errorMessage: const Value(null),
+      ),
+    );
+  }
+
+  Future<void> failDownload(String downloadId, String message) async {
+    await (update(downloads)..where((t) => t.id.equals(downloadId))).write(
+      DownloadsCompanion(
+        state: const Value('error'),
+        errorMessage: Value(message),
+      ),
+    );
   }
 
   String _normalizeBrowsePath(String path) {

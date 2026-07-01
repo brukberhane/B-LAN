@@ -25,9 +25,12 @@ class DownloadsPage extends ConsumerWidget {
               final progress = download.totalBytes == 0
                   ? null
                   : download.downloadedBytes / download.totalBytes;
+              final status = download.errorMessage?.isNotEmpty == true
+                  ? '${download.state}: ${download.errorMessage}'
+                  : download.state;
               return ListTile(
                 title: Text(download.relativePath),
-                subtitle: Text(download.state),
+                subtitle: Text(status),
                 trailing: progress == null
                     ? null
                     : SizedBox(

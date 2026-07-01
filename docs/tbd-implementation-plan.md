@@ -7,7 +7,7 @@ Last reviewed: 2026-07-01
 | Phase | Status | Notes |
 |-------|--------|-------|
 | 1 Transfer protocol contract | **complete** | Manifest DTOs, `/manifest/files/<id>`, chunk route tightened, client `fetchFileManifest`, tests pass |
-| 2 Verified resumable downloads | pending | — |
+| 2 Verified resumable downloads | **complete** | Schema v4, `download_chunks` wired, manifest-based verify/resume; hash format is base64 SHA-256 (matches indexer, not hex per plan) |
 | 3 Parallel chunk downloads | pending | — |
 | 4 Folder downloads | pending | — |
 | 5 Desktop indexing hardening | pending | — |
@@ -195,6 +195,11 @@ Original suggested order was useful, but transfer work should be split and pulle
 
 - Killing app mid-download leaves resumable `*.partial`.
 - Restart resumes and final file hash matches source manifest.
+
+**Status: complete (2026-07-01).** Implementation notes:
+- Chunk hashes verified as base64 SHA-256 to match `hashFileChunks`, not lowercase hex.
+- Partial writes use `FileMode.append` + `setPosition` — `FileMode.write` truncates on each open.
+- Sequential chunk download only; parallel fetch is Phase 3.
 
 ## Phase 3: Parallel Chunk Downloads And Queue Control
 

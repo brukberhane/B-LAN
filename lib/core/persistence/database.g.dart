@@ -3104,6 +3104,17 @@ class $DownloadsTable extends Downloads
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _errorMessageMeta = const VerificationMeta(
+    'errorMessage',
+  );
+  @override
+  late final GeneratedColumn<String> errorMessage = GeneratedColumn<String>(
+    'error_message',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -3127,6 +3138,7 @@ class $DownloadsTable extends Downloads
     state,
     totalBytes,
     downloadedBytes,
+    errorMessage,
     createdAt,
   ];
   @override
@@ -3210,6 +3222,15 @@ class $DownloadsTable extends Downloads
         ),
       );
     }
+    if (data.containsKey('error_message')) {
+      context.handle(
+        _errorMessageMeta,
+        errorMessage.isAcceptableOrUnknown(
+          data['error_message']!,
+          _errorMessageMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -3261,6 +3282,10 @@ class $DownloadsTable extends Downloads
         DriftSqlType.int,
         data['${effectivePrefix}downloaded_bytes'],
       )!,
+      errorMessage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error_message'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -3284,6 +3309,7 @@ class Download extends DataClass implements Insertable<Download> {
   final String state;
   final int totalBytes;
   final int downloadedBytes;
+  final String? errorMessage;
   final DateTime createdAt;
   const Download({
     required this.id,
@@ -3295,6 +3321,7 @@ class Download extends DataClass implements Insertable<Download> {
     required this.state,
     required this.totalBytes,
     required this.downloadedBytes,
+    this.errorMessage,
     required this.createdAt,
   });
   @override
@@ -3309,6 +3336,9 @@ class Download extends DataClass implements Insertable<Download> {
     map['state'] = Variable<String>(state);
     map['total_bytes'] = Variable<int>(totalBytes);
     map['downloaded_bytes'] = Variable<int>(downloadedBytes);
+    if (!nullToAbsent || errorMessage != null) {
+      map['error_message'] = Variable<String>(errorMessage);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -3324,6 +3354,9 @@ class Download extends DataClass implements Insertable<Download> {
       state: Value(state),
       totalBytes: Value(totalBytes),
       downloadedBytes: Value(downloadedBytes),
+      errorMessage: errorMessage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(errorMessage),
       createdAt: Value(createdAt),
     );
   }
@@ -3343,6 +3376,7 @@ class Download extends DataClass implements Insertable<Download> {
       state: serializer.fromJson<String>(json['state']),
       totalBytes: serializer.fromJson<int>(json['totalBytes']),
       downloadedBytes: serializer.fromJson<int>(json['downloadedBytes']),
+      errorMessage: serializer.fromJson<String?>(json['errorMessage']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -3359,6 +3393,7 @@ class Download extends DataClass implements Insertable<Download> {
       'state': serializer.toJson<String>(state),
       'totalBytes': serializer.toJson<int>(totalBytes),
       'downloadedBytes': serializer.toJson<int>(downloadedBytes),
+      'errorMessage': serializer.toJson<String?>(errorMessage),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -3373,6 +3408,7 @@ class Download extends DataClass implements Insertable<Download> {
     String? state,
     int? totalBytes,
     int? downloadedBytes,
+    Value<String?> errorMessage = const Value.absent(),
     DateTime? createdAt,
   }) => Download(
     id: id ?? this.id,
@@ -3384,6 +3420,7 @@ class Download extends DataClass implements Insertable<Download> {
     state: state ?? this.state,
     totalBytes: totalBytes ?? this.totalBytes,
     downloadedBytes: downloadedBytes ?? this.downloadedBytes,
+    errorMessage: errorMessage.present ? errorMessage.value : this.errorMessage,
     createdAt: createdAt ?? this.createdAt,
   );
   Download copyWithCompanion(DownloadsCompanion data) {
@@ -3405,6 +3442,9 @@ class Download extends DataClass implements Insertable<Download> {
       downloadedBytes: data.downloadedBytes.present
           ? data.downloadedBytes.value
           : this.downloadedBytes,
+      errorMessage: data.errorMessage.present
+          ? data.errorMessage.value
+          : this.errorMessage,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -3421,6 +3461,7 @@ class Download extends DataClass implements Insertable<Download> {
           ..write('state: $state, ')
           ..write('totalBytes: $totalBytes, ')
           ..write('downloadedBytes: $downloadedBytes, ')
+          ..write('errorMessage: $errorMessage, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -3437,6 +3478,7 @@ class Download extends DataClass implements Insertable<Download> {
     state,
     totalBytes,
     downloadedBytes,
+    errorMessage,
     createdAt,
   );
   @override
@@ -3452,6 +3494,7 @@ class Download extends DataClass implements Insertable<Download> {
           other.state == this.state &&
           other.totalBytes == this.totalBytes &&
           other.downloadedBytes == this.downloadedBytes &&
+          other.errorMessage == this.errorMessage &&
           other.createdAt == this.createdAt);
 }
 
@@ -3465,6 +3508,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
   final Value<String> state;
   final Value<int> totalBytes;
   final Value<int> downloadedBytes;
+  final Value<String?> errorMessage;
   final Value<DateTime> createdAt;
   final Value<int> rowid;
   const DownloadsCompanion({
@@ -3477,6 +3521,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     this.state = const Value.absent(),
     this.totalBytes = const Value.absent(),
     this.downloadedBytes = const Value.absent(),
+    this.errorMessage = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -3490,6 +3535,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     this.state = const Value.absent(),
     this.totalBytes = const Value.absent(),
     this.downloadedBytes = const Value.absent(),
+    this.errorMessage = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -3508,6 +3554,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     Expression<String>? state,
     Expression<int>? totalBytes,
     Expression<int>? downloadedBytes,
+    Expression<String>? errorMessage,
     Expression<DateTime>? createdAt,
     Expression<int>? rowid,
   }) {
@@ -3521,6 +3568,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
       if (state != null) 'state': state,
       if (totalBytes != null) 'total_bytes': totalBytes,
       if (downloadedBytes != null) 'downloaded_bytes': downloadedBytes,
+      if (errorMessage != null) 'error_message': errorMessage,
       if (createdAt != null) 'created_at': createdAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -3536,6 +3584,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     Value<String>? state,
     Value<int>? totalBytes,
     Value<int>? downloadedBytes,
+    Value<String?>? errorMessage,
     Value<DateTime>? createdAt,
     Value<int>? rowid,
   }) {
@@ -3549,6 +3598,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
       state: state ?? this.state,
       totalBytes: totalBytes ?? this.totalBytes,
       downloadedBytes: downloadedBytes ?? this.downloadedBytes,
+      errorMessage: errorMessage ?? this.errorMessage,
       createdAt: createdAt ?? this.createdAt,
       rowid: rowid ?? this.rowid,
     );
@@ -3584,6 +3634,9 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     if (downloadedBytes.present) {
       map['downloaded_bytes'] = Variable<int>(downloadedBytes.value);
     }
+    if (errorMessage.present) {
+      map['error_message'] = Variable<String>(errorMessage.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -3605,6 +3658,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
           ..write('state: $state, ')
           ..write('totalBytes: $totalBytes, ')
           ..write('downloadedBytes: $downloadedBytes, ')
+          ..write('errorMessage: $errorMessage, ')
           ..write('createdAt: $createdAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -3693,6 +3747,28 @@ class $DownloadChunksTable extends DownloadChunks
     requiredDuringInsert: false,
     defaultValue: const Constant('pending'),
   );
+  static const VerificationMeta _errorMessageMeta = const VerificationMeta(
+    'errorMessage',
+  );
+  @override
+  late final GeneratedColumn<String> errorMessage = GeneratedColumn<String>(
+    'error_message',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sourcePeerIdMeta = const VerificationMeta(
+    'sourcePeerId',
+  );
+  @override
+  late final GeneratedColumn<String> sourcePeerId = GeneratedColumn<String>(
+    'source_peer_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -3702,6 +3778,8 @@ class $DownloadChunksTable extends DownloadChunks
     offset,
     length,
     state,
+    errorMessage,
+    sourcePeerId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3764,6 +3842,24 @@ class $DownloadChunksTable extends DownloadChunks
         state.isAcceptableOrUnknown(data['state']!, _stateMeta),
       );
     }
+    if (data.containsKey('error_message')) {
+      context.handle(
+        _errorMessageMeta,
+        errorMessage.isAcceptableOrUnknown(
+          data['error_message']!,
+          _errorMessageMeta,
+        ),
+      );
+    }
+    if (data.containsKey('source_peer_id')) {
+      context.handle(
+        _sourcePeerIdMeta,
+        sourcePeerId.isAcceptableOrUnknown(
+          data['source_peer_id']!,
+          _sourcePeerIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3801,6 +3897,14 @@ class $DownloadChunksTable extends DownloadChunks
         DriftSqlType.string,
         data['${effectivePrefix}state'],
       )!,
+      errorMessage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error_message'],
+      ),
+      sourcePeerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_peer_id'],
+      ),
     );
   }
 
@@ -3818,6 +3922,8 @@ class DownloadChunk extends DataClass implements Insertable<DownloadChunk> {
   final int offset;
   final int length;
   final String state;
+  final String? errorMessage;
+  final String? sourcePeerId;
   const DownloadChunk({
     required this.id,
     required this.downloadId,
@@ -3826,6 +3932,8 @@ class DownloadChunk extends DataClass implements Insertable<DownloadChunk> {
     required this.offset,
     required this.length,
     required this.state,
+    this.errorMessage,
+    this.sourcePeerId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3837,6 +3945,12 @@ class DownloadChunk extends DataClass implements Insertable<DownloadChunk> {
     map['offset'] = Variable<int>(offset);
     map['length'] = Variable<int>(length);
     map['state'] = Variable<String>(state);
+    if (!nullToAbsent || errorMessage != null) {
+      map['error_message'] = Variable<String>(errorMessage);
+    }
+    if (!nullToAbsent || sourcePeerId != null) {
+      map['source_peer_id'] = Variable<String>(sourcePeerId);
+    }
     return map;
   }
 
@@ -3849,6 +3963,12 @@ class DownloadChunk extends DataClass implements Insertable<DownloadChunk> {
       offset: Value(offset),
       length: Value(length),
       state: Value(state),
+      errorMessage: errorMessage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(errorMessage),
+      sourcePeerId: sourcePeerId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourcePeerId),
     );
   }
 
@@ -3865,6 +3985,8 @@ class DownloadChunk extends DataClass implements Insertable<DownloadChunk> {
       offset: serializer.fromJson<int>(json['offset']),
       length: serializer.fromJson<int>(json['length']),
       state: serializer.fromJson<String>(json['state']),
+      errorMessage: serializer.fromJson<String?>(json['errorMessage']),
+      sourcePeerId: serializer.fromJson<String?>(json['sourcePeerId']),
     );
   }
   @override
@@ -3878,6 +4000,8 @@ class DownloadChunk extends DataClass implements Insertable<DownloadChunk> {
       'offset': serializer.toJson<int>(offset),
       'length': serializer.toJson<int>(length),
       'state': serializer.toJson<String>(state),
+      'errorMessage': serializer.toJson<String?>(errorMessage),
+      'sourcePeerId': serializer.toJson<String?>(sourcePeerId),
     };
   }
 
@@ -3889,6 +4013,8 @@ class DownloadChunk extends DataClass implements Insertable<DownloadChunk> {
     int? offset,
     int? length,
     String? state,
+    Value<String?> errorMessage = const Value.absent(),
+    Value<String?> sourcePeerId = const Value.absent(),
   }) => DownloadChunk(
     id: id ?? this.id,
     downloadId: downloadId ?? this.downloadId,
@@ -3897,6 +4023,8 @@ class DownloadChunk extends DataClass implements Insertable<DownloadChunk> {
     offset: offset ?? this.offset,
     length: length ?? this.length,
     state: state ?? this.state,
+    errorMessage: errorMessage.present ? errorMessage.value : this.errorMessage,
+    sourcePeerId: sourcePeerId.present ? sourcePeerId.value : this.sourcePeerId,
   );
   DownloadChunk copyWithCompanion(DownloadChunksCompanion data) {
     return DownloadChunk(
@@ -3911,6 +4039,12 @@ class DownloadChunk extends DataClass implements Insertable<DownloadChunk> {
       offset: data.offset.present ? data.offset.value : this.offset,
       length: data.length.present ? data.length.value : this.length,
       state: data.state.present ? data.state.value : this.state,
+      errorMessage: data.errorMessage.present
+          ? data.errorMessage.value
+          : this.errorMessage,
+      sourcePeerId: data.sourcePeerId.present
+          ? data.sourcePeerId.value
+          : this.sourcePeerId,
     );
   }
 
@@ -3923,14 +4057,25 @@ class DownloadChunk extends DataClass implements Insertable<DownloadChunk> {
           ..write('hash: $hash, ')
           ..write('offset: $offset, ')
           ..write('length: $length, ')
-          ..write('state: $state')
+          ..write('state: $state, ')
+          ..write('errorMessage: $errorMessage, ')
+          ..write('sourcePeerId: $sourcePeerId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, downloadId, chunkIndex, hash, offset, length, state);
+  int get hashCode => Object.hash(
+    id,
+    downloadId,
+    chunkIndex,
+    hash,
+    offset,
+    length,
+    state,
+    errorMessage,
+    sourcePeerId,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3941,7 +4086,9 @@ class DownloadChunk extends DataClass implements Insertable<DownloadChunk> {
           other.hash == this.hash &&
           other.offset == this.offset &&
           other.length == this.length &&
-          other.state == this.state);
+          other.state == this.state &&
+          other.errorMessage == this.errorMessage &&
+          other.sourcePeerId == this.sourcePeerId);
 }
 
 class DownloadChunksCompanion extends UpdateCompanion<DownloadChunk> {
@@ -3952,6 +4099,8 @@ class DownloadChunksCompanion extends UpdateCompanion<DownloadChunk> {
   final Value<int> offset;
   final Value<int> length;
   final Value<String> state;
+  final Value<String?> errorMessage;
+  final Value<String?> sourcePeerId;
   const DownloadChunksCompanion({
     this.id = const Value.absent(),
     this.downloadId = const Value.absent(),
@@ -3960,6 +4109,8 @@ class DownloadChunksCompanion extends UpdateCompanion<DownloadChunk> {
     this.offset = const Value.absent(),
     this.length = const Value.absent(),
     this.state = const Value.absent(),
+    this.errorMessage = const Value.absent(),
+    this.sourcePeerId = const Value.absent(),
   });
   DownloadChunksCompanion.insert({
     this.id = const Value.absent(),
@@ -3969,6 +4120,8 @@ class DownloadChunksCompanion extends UpdateCompanion<DownloadChunk> {
     required int offset,
     required int length,
     this.state = const Value.absent(),
+    this.errorMessage = const Value.absent(),
+    this.sourcePeerId = const Value.absent(),
   }) : downloadId = Value(downloadId),
        chunkIndex = Value(chunkIndex),
        hash = Value(hash),
@@ -3982,6 +4135,8 @@ class DownloadChunksCompanion extends UpdateCompanion<DownloadChunk> {
     Expression<int>? offset,
     Expression<int>? length,
     Expression<String>? state,
+    Expression<String>? errorMessage,
+    Expression<String>? sourcePeerId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3991,6 +4146,8 @@ class DownloadChunksCompanion extends UpdateCompanion<DownloadChunk> {
       if (offset != null) 'offset': offset,
       if (length != null) 'length': length,
       if (state != null) 'state': state,
+      if (errorMessage != null) 'error_message': errorMessage,
+      if (sourcePeerId != null) 'source_peer_id': sourcePeerId,
     });
   }
 
@@ -4002,6 +4159,8 @@ class DownloadChunksCompanion extends UpdateCompanion<DownloadChunk> {
     Value<int>? offset,
     Value<int>? length,
     Value<String>? state,
+    Value<String?>? errorMessage,
+    Value<String?>? sourcePeerId,
   }) {
     return DownloadChunksCompanion(
       id: id ?? this.id,
@@ -4011,6 +4170,8 @@ class DownloadChunksCompanion extends UpdateCompanion<DownloadChunk> {
       offset: offset ?? this.offset,
       length: length ?? this.length,
       state: state ?? this.state,
+      errorMessage: errorMessage ?? this.errorMessage,
+      sourcePeerId: sourcePeerId ?? this.sourcePeerId,
     );
   }
 
@@ -4038,6 +4199,12 @@ class DownloadChunksCompanion extends UpdateCompanion<DownloadChunk> {
     if (state.present) {
       map['state'] = Variable<String>(state.value);
     }
+    if (errorMessage.present) {
+      map['error_message'] = Variable<String>(errorMessage.value);
+    }
+    if (sourcePeerId.present) {
+      map['source_peer_id'] = Variable<String>(sourcePeerId.value);
+    }
     return map;
   }
 
@@ -4050,7 +4217,9 @@ class DownloadChunksCompanion extends UpdateCompanion<DownloadChunk> {
           ..write('hash: $hash, ')
           ..write('offset: $offset, ')
           ..write('length: $length, ')
-          ..write('state: $state')
+          ..write('state: $state, ')
+          ..write('errorMessage: $errorMessage, ')
+          ..write('sourcePeerId: $sourcePeerId')
           ..write(')'))
         .toString();
   }
@@ -6808,6 +6977,7 @@ typedef $$DownloadsTableCreateCompanionBuilder =
       Value<String> state,
       Value<int> totalBytes,
       Value<int> downloadedBytes,
+      Value<String?> errorMessage,
       Value<DateTime> createdAt,
       Value<int> rowid,
     });
@@ -6822,6 +6992,7 @@ typedef $$DownloadsTableUpdateCompanionBuilder =
       Value<String> state,
       Value<int> totalBytes,
       Value<int> downloadedBytes,
+      Value<String?> errorMessage,
       Value<DateTime> createdAt,
       Value<int> rowid,
     });
@@ -6912,6 +7083,11 @@ class $$DownloadsTableFilterComposer
 
   ColumnFilters<int> get downloadedBytes => $composableBuilder(
     column: $table.downloadedBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7018,6 +7194,11 @@ class $$DownloadsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -7085,6 +7266,11 @@ class $$DownloadsTableAnnotationComposer
 
   GeneratedColumn<int> get downloadedBytes => $composableBuilder(
     column: $table.downloadedBytes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
     builder: (column) => column,
   );
 
@@ -7177,6 +7363,7 @@ class $$DownloadsTableTableManager
                 Value<String> state = const Value.absent(),
                 Value<int> totalBytes = const Value.absent(),
                 Value<int> downloadedBytes = const Value.absent(),
+                Value<String?> errorMessage = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DownloadsCompanion(
@@ -7189,6 +7376,7 @@ class $$DownloadsTableTableManager
                 state: state,
                 totalBytes: totalBytes,
                 downloadedBytes: downloadedBytes,
+                errorMessage: errorMessage,
                 createdAt: createdAt,
                 rowid: rowid,
               ),
@@ -7203,6 +7391,7 @@ class $$DownloadsTableTableManager
                 Value<String> state = const Value.absent(),
                 Value<int> totalBytes = const Value.absent(),
                 Value<int> downloadedBytes = const Value.absent(),
+                Value<String?> errorMessage = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DownloadsCompanion.insert(
@@ -7215,6 +7404,7 @@ class $$DownloadsTableTableManager
                 state: state,
                 totalBytes: totalBytes,
                 downloadedBytes: downloadedBytes,
+                errorMessage: errorMessage,
                 createdAt: createdAt,
                 rowid: rowid,
               ),
@@ -7319,6 +7509,8 @@ typedef $$DownloadChunksTableCreateCompanionBuilder =
       required int offset,
       required int length,
       Value<String> state,
+      Value<String?> errorMessage,
+      Value<String?> sourcePeerId,
     });
 typedef $$DownloadChunksTableUpdateCompanionBuilder =
     DownloadChunksCompanion Function({
@@ -7329,6 +7521,8 @@ typedef $$DownloadChunksTableUpdateCompanionBuilder =
       Value<int> offset,
       Value<int> length,
       Value<String> state,
+      Value<String?> errorMessage,
+      Value<String?> sourcePeerId,
     });
 
 final class $$DownloadChunksTableReferences
@@ -7396,6 +7590,16 @@ class $$DownloadChunksTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourcePeerId => $composableBuilder(
+    column: $table.sourcePeerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$DownloadsTableFilterComposer get downloadId {
     final $$DownloadsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -7459,6 +7663,16 @@ class $$DownloadChunksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourcePeerId => $composableBuilder(
+    column: $table.sourcePeerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$DownloadsTableOrderingComposer get downloadId {
     final $$DownloadsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -7511,6 +7725,16 @@ class $$DownloadChunksTableAnnotationComposer
 
   GeneratedColumn<String> get state =>
       $composableBuilder(column: $table.state, builder: (column) => column);
+
+  GeneratedColumn<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sourcePeerId => $composableBuilder(
+    column: $table.sourcePeerId,
+    builder: (column) => column,
+  );
 
   $$DownloadsTableAnnotationComposer get downloadId {
     final $$DownloadsTableAnnotationComposer composer = $composerBuilder(
@@ -7573,6 +7797,8 @@ class $$DownloadChunksTableTableManager
                 Value<int> offset = const Value.absent(),
                 Value<int> length = const Value.absent(),
                 Value<String> state = const Value.absent(),
+                Value<String?> errorMessage = const Value.absent(),
+                Value<String?> sourcePeerId = const Value.absent(),
               }) => DownloadChunksCompanion(
                 id: id,
                 downloadId: downloadId,
@@ -7581,6 +7807,8 @@ class $$DownloadChunksTableTableManager
                 offset: offset,
                 length: length,
                 state: state,
+                errorMessage: errorMessage,
+                sourcePeerId: sourcePeerId,
               ),
           createCompanionCallback:
               ({
@@ -7591,6 +7819,8 @@ class $$DownloadChunksTableTableManager
                 required int offset,
                 required int length,
                 Value<String> state = const Value.absent(),
+                Value<String?> errorMessage = const Value.absent(),
+                Value<String?> sourcePeerId = const Value.absent(),
               }) => DownloadChunksCompanion.insert(
                 id: id,
                 downloadId: downloadId,
@@ -7599,6 +7829,8 @@ class $$DownloadChunksTableTableManager
                 offset: offset,
                 length: length,
                 state: state,
+                errorMessage: errorMessage,
+                sourcePeerId: sourcePeerId,
               ),
           withReferenceMapper: (p0) => p0
               .map(
