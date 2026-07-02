@@ -68,6 +68,12 @@ class AndroidPlatformServices implements PlatformServices {
   }
 
   @override
+  Future<bool> notificationsEnabled() async {
+    final status = await Permission.notification.status;
+    return status.isGranted;
+  }
+
+  @override
   Future<String?> pickSafTreeUri() async {
     final granted = await Saf.getDynamicDirectoryPermission(
       grantWritePermission: false,

@@ -22,7 +22,7 @@ Last reviewed: 2026-07-01
 | 12 Global search and remote index | **complete** | Schema v9 search tokens + `remote_files`, `GET /search`, share manifest page, `SearchService`, Search UI, signature merge |
 | 12.5 Chunk-level swarm scheduling | **complete** | Schema v11 `remote_chunk_sources`, `POST /chunks/availability`, `SwarmScheduler`, rarest-first striping, waiting-for-source UI |
 | 13 Upload visibility and network health | **complete** | Schema v12 transfer telemetry, `UploadManager`, Uploads page, settings limits, range 416 hardening |
-| 14 Platform proof and native UX | pending | Execute matrix, platform help, Android/Windows/Linux/Web validation |
+| 14 Platform proof and native UX | **partial** | Network health UI, LAN URL copy, open-folder actions, matrix auto rows; device matrix mostly pending |
 | 15 Security hardening | pending | Secure storage, session binding, suspicious peer state, token expiry |
 | 16 Remote control / headless mode | optional | Decide scope; CLI/admin API/daemon if wanted |
 | 17 Chat and LAN presence | optional | Decide scope; D-LAN-style chat if wanted |
@@ -1340,6 +1340,8 @@ This phase must include a full walk through implemented backend capability and m
 - README platform table reflects measured behavior.
 - Matrix has current pass/fail notes, not generic pending checkboxes.
 - Users see actionable help when discovery/sharing fails.
+
+**Status: partial (2026-07-02).** Settings network health panel (Avahi probe on Linux, advertise status, LAN addresses, Android multicast/AP + notification hints, Windows firewall note); copy LAN URL; open downloads/share folders; user-pickable download directory; lifecycle note that closing app stops sharing. Tray/start-at-login deferred. Manual device matrix rows still pending — see `docs/platform-test-matrix.md`.
 
 ## Phase 15: Security Hardening
 

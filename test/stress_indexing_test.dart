@@ -148,6 +148,9 @@ class _NoopPlatform implements PlatformServices {
   Future<bool> requestNotificationPermission() async => true;
 
   @override
+  Future<bool> notificationsEnabled() async => true;
+
+  @override
   Future<String?> pickSafTreeUri() async => null;
 
   @override

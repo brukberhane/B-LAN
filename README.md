@@ -12,6 +12,8 @@ Flutter rewrite of D-LAN: share folders on your LAN, discover peers, browse remo
 | Android | SAF/filesystem | Yes | Yes | Foreground service for scan/download; SAF needs manual rescan |
 | Web | No | No | No | Manual connect with browser token only |
 
+Desktop: Settings shows network health checks, copy LAN URL, open downloads/share folders. Tray/background mode not implemented — closing the app stops sharing.
+
 See [docs/platform-test-matrix.md](docs/platform-test-matrix.md) for manual validation checklist.
 
 ## Discovery (mDNS)
@@ -70,6 +72,7 @@ Automated MVP suite (`flutter test`):
 | DB schema, indexes, queue states | `database_test.dart` |
 | Security trust/sessions | `security_test.dart` |
 | UI smoke + feature widgets | `widget_test.dart`, `widget_features_test.dart` |
+| Platform health + LAN helpers | `platform_health_test.dart`, `lan_addresses_test.dart`, `platform_services_mock_test.dart` |
 
 Optional DB benchmark: `dart run tool/db_benchmark.dart --quick` — see [docs/db-benchmark-decision.md](docs/db-benchmark-decision.md).
 

@@ -58,9 +58,30 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
               color: Theme.of(context).colorScheme.surfaceContainerHighest,
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(
-                  'Save location: $path',
-                  style: Theme.of(context).textTheme.bodySmall,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Save location: $path',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Open downloads folder',
+                      onPressed: () async {
+                        final opened =
+                            await app.openPathInFileManager(path);
+                        if (mounted && !opened) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Could not open folder'),
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.folder_open),
+                    ),
+                  ],
                 ),
               ),
             ),

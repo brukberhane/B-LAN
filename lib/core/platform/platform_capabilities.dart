@@ -4,6 +4,10 @@ import 'package:flutter/foundation.dart';
 
 /// Human-readable platform capability summary for settings and docs alignment.
 abstract final class PlatformCapabilities {
+  static const windowsAdvertiseLimitation =
+      'Windows can discover and browse LAN peers but does not advertise '
+      'itself yet. Use manual connect on other devices.';
+
   static bool get isWeb => kIsWeb;
 
   static bool get supportsLocalSharing => !kIsWeb;
@@ -80,10 +84,7 @@ abstract final class PlatformCapabilities {
       return notes;
     }
     if (Platform.isWindows) {
-      notes.add(
-        'Windows can discover and browse LAN peers but does not advertise '
-        'itself yet. Use manual connect on other devices.',
-      );
+      notes.add(windowsAdvertiseLimitation);
     }
     if (Platform.isLinux) {
       notes.add(
@@ -94,7 +95,8 @@ abstract final class PlatformCapabilities {
     if (Platform.isAndroid) {
       notes.add(
         'Android uses SAF for folder shares; large trees may need manual rescan. '
-        'Scan/download run in a foreground notification while active.',
+        'Scan/download run in a foreground notification while active. '
+        'If discovery fails, check router AP isolation and use manual connect.',
       );
     }
     return notes;

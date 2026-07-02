@@ -1,7 +1,9 @@
 import 'package:blan/app/providers.dart';
 import 'package:blan/core/persistence/database.dart';
+import 'package:blan/core/platform/platform_health.dart';
 import 'package:blan/core/security/peer_identity.dart';
 import 'package:blan/core/services/app_service.dart';
+import 'package:blan/platform/platform_services.dart';
 import 'package:blan/features/downloads/downloads_page.dart';
 import 'package:blan/features/peers/peers_page.dart';
 import 'package:blan/features/settings/settings_page.dart';
@@ -100,20 +102,46 @@ void main() {
       ProviderScope(
         overrides: [
           databaseProvider.overrideWithValue(db),
+          appServiceProvider.overrideWith(
+            (ref) => AppService(db, platform: _NoopPlatform()),
+          ),
           nickProvider.overrideWith((ref) async => 'test-host'),
           httpPortProvider.overrideWith((ref) async => 59487),
           browserTokenProvider.overrideWith((ref) async => 'browser-token'),
           serverRunningProvider.overrideWithValue(true),
           discoveryAdvertisingProvider.overrideWithValue(true),
           deviceFingerprintProvider.overrideWith((ref) async => 'fp12345678'),
+          lanAddressesProvider.overrideWith((ref) async => ['192.168.1.20']),
+          platformHealthProvider.overrideWith(
+            (ref) async => const PlatformHealthReport([
+              PlatformHealthItem(
+                label: 'HTTP server',
+                level: PlatformHealthLevel.ok,
+                message: 'Listening on port 59487',
+              ),
+            ]),
+          ),
+          downloadsDirectoryProvider.overrideWith(
+            (ref) async => '/tmp/blan-downloads',
+          ),
         ],
         child: const MaterialApp(home: SettingsPage()),
       ),
     );
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.text('Network health'),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+
     expect(find.text('Browser token'), findsOneWidget);
     expect(find.text('browser-token'), findsOneWidget);
+    expect(find.byTooltip('Copy localhost URL'), findsOneWidget);
+    expect(find.byTooltip('Copy LAN URL'), findsOneWidget);
+    expect(find.text('Network health'), findsOneWidget);
+    expect(find.textContaining('Closing the app stops'), findsOneWidget);
     expect(find.byTooltip('Copy token'), findsOneWidget);
     expect(find.byTooltip('Rotate token'), findsOneWidget);
     expect(find.byTooltip('Revoke token'), findsOneWidget);
@@ -180,6 +208,9 @@ class _NoopPlatform implements PlatformServices {
 
   @override
   Future<bool> requestNotificationPermission() async => true;
+
+  @override
+  Future<bool> notificationsEnabled() async => true;
 
   @override
   Future<String?> pickSafTreeUri() async => null;

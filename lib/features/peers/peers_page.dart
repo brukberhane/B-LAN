@@ -120,15 +120,16 @@ class PeersPage extends ConsumerWidget {
 
   String _emptyPeersMessage() {
     final base =
-        'No peers yet. Add one manually or wait for LAN discovery.';
-    if (PlatformCapabilities.supportsMdnsAdvertising) {
+        'No peers yet. Add one manually (+) or wait for LAN discovery.';
+    final hints = <String>[
+      if (!PlatformCapabilities.supportsMdnsAdvertising)
+        ...PlatformCapabilities.limitationNotes(),
+      'Check Settings → Network health if discovery fails.',
+    ];
+    if (hints.isEmpty) {
       return base;
     }
-    final notes = PlatformCapabilities.limitationNotes();
-    if (notes.isEmpty) {
-      return base;
-    }
-    return '$base\n\n${notes.first}';
+    return '$base\n\n${hints.join('\n\n')}';
   }
 
   String _peerSubtitle(Peer peer) {

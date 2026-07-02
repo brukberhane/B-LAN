@@ -23,6 +23,9 @@ abstract class PlatformServices {
 
   Future<bool> requestNotificationPermission();
 
+  /// Whether notifications are already granted (does not prompt).
+  Future<bool> notificationsEnabled();
+
   Future<String?> pickSafTreeUri();
 
   Future<List<SafFileEntry>> listSafFiles(String treeUri);

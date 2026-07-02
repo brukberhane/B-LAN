@@ -194,6 +194,20 @@ class _ShareTile extends ConsumerWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (share.storageType != 'saf')
+            IconButton(
+              tooltip: 'Open share folder',
+              onPressed: () async {
+                final opened =
+                    await service.openPathInFileManager(share.localPath);
+                if (context.mounted && !opened) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Could not open folder')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.folder_open),
+            ),
           Switch(
             value: share.enabled,
             onChanged: (value) => service.setShareEnabled(share.id, value),

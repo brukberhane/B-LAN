@@ -9,6 +9,8 @@ import 'package:uuid/uuid.dart';
 
 import '../../platform/platform_factory.dart';
 import '../../platform/platform_services.dart';
+import '../platform/lan_addresses.dart';
+import '../platform/desktop_shell.dart';
 import '../discovery/mdns_discovery.dart';
 import '../indexing/share_scanner.dart';
 import '../indexing/share_watcher.dart';
@@ -209,12 +211,22 @@ class AppService {
 
   Future<String> revokeBrowserToken() => rotateBrowserToken();
 
-  String localPeerUrl(int port) {
-    final host = Platform.isWindows || Platform.isLinux || Platform.isMacOS
-        ? '127.0.0.1'
-        : 'localhost';
-    return 'http://$host:$port';
+  String localPeerUrl(int port) => peerUrl('127.0.0.1', port);
+
+  Future<List<String>> lanIpv4Addresses() => listLanIpv4Addresses();
+
+  Future<String?> primaryLanPeerUrl(int port) async {
+    final addresses = await lanIpv4Addresses();
+    if (addresses.isEmpty) {
+      return null;
+    }
+    return peerUrl(addresses.first, port);
   }
+
+  Future<bool> openPathInFileManager(String path) => openPathInShell(path);
+
+  Future<void> setDownloadsDirectory(String path) =>
+      db.setSetting('downloads_path', path);
 
   Future<void> trustPeer(String peerId) => db.trustPeer(peerId);
 
@@ -251,6 +263,14 @@ class AppService {
   }
 
   Future<String> downloadsDirectory() async {
+    final custom = await db.getSetting('downloads_path');
+    if (custom != null && custom.isNotEmpty) {
+      final dir = Directory(custom);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      return custom;
+    }
     final dir =
         await getDownloadsDirectory() ??
         await getApplicationDocumentsDirectory();

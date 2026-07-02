@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/persistence/database.dart';
+import '../core/platform/platform_health.dart';
 import '../core/security/device_identity.dart';
 import '../core/services/app_service.dart';
 
@@ -73,4 +74,20 @@ final deviceFingerprintProvider = FutureProvider<String>((ref) async {
   final identity =
       await DeviceIdentity(ref.watch(databaseProvider)).ensureIdentity();
   return identity.fingerprint;
+});
+
+final lanAddressesProvider = FutureProvider<List<String>>((ref) async {
+  return ref.watch(appServiceProvider).lanIpv4Addresses();
+});
+
+final platformHealthProvider = FutureProvider((ref) async {
+  final app = ref.watch(appServiceProvider);
+  final port = await ref.watch(httpPortProvider.future);
+  return buildPlatformHealthReport(
+    serverRunning: app.server.isRunning,
+    advertising: app.discovery.isAdvertising,
+    supportsAdvertising: app.discovery.supportsAdvertising,
+    platform: app.platform,
+    httpPort: port,
+  );
 });

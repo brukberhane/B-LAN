@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../core/platform/platform_capabilities.dart';
+import 'platform_sections.dart';
 import '../browse/browse_page.dart';
 import '../../core/persistence/database.dart';
 import '../../core/security/peer_identity.dart';
@@ -67,19 +68,69 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             error: (_, _) => const SizedBox.shrink(),
           ),
           port.when(
-            data: (value) => ListTile(
-              title: const Text('HTTP port'),
-              subtitle: Text('$value'),
-              trailing: IconButton(
-                icon: const Icon(Icons.copy),
-                tooltip: 'Copy local URL',
-                onPressed: () => _copyText(
-                  context,
-                  ref.read(appServiceProvider).localPeerUrl(value),
-                  'Local URL copied',
-                ),
-              ),
-            ),
+            data: (value) {
+              final lan = ref.watch(lanAddressesProvider);
+              return Column(
+                children: [
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('HTTP port'),
+                    subtitle: Text('$value'),
+                    trailing: Wrap(
+                      spacing: 4,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.copy),
+                          tooltip: 'Copy localhost URL',
+                          onPressed: () => _copyText(
+                            context,
+                            ref.read(appServiceProvider).localPeerUrl(value),
+                            'Localhost URL copied',
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.lan),
+                          tooltip: 'Copy LAN URL',
+                          onPressed: () async {
+                            final url = await ref
+                                .read(appServiceProvider)
+                                .primaryLanPeerUrl(value);
+                            if (!context.mounted) {
+                              return;
+                            }
+                            if (url == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('No LAN address found'),
+                                ),
+                              );
+                              return;
+                            }
+                            _copyText(context, url, 'LAN URL copied');
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  lan.when(
+                    data: (addresses) => addresses.isEmpty
+                        ? const ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            subtitle: Text('No LAN IPv4 address detected'),
+                          )
+                        : ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            title: const Text('LAN addresses'),
+                            subtitle: Text(addresses.join(', ')),
+                          ),
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, _) => const SizedBox.shrink(),
+                  ),
+                ],
+              );
+            },
             loading: () => const ListTile(title: Text('HTTP port')),
             error: (_, _) => const SizedBox.shrink(),
           ),
@@ -146,6 +197,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             loading: () => const ListTile(title: Text('Browser token')),
             error: (_, _) => const SizedBox.shrink(),
           ),
+          if (!kIsWeb) ...[
+            const Divider(height: 32),
+            const DownloadsLocationSection(),
+            const Divider(height: 32),
+            const PlatformTroubleshootingSection(),
+          ],
           if (!kIsWeb) ...[
             const Divider(height: 32),
             const _TransferLimitsSection(),
