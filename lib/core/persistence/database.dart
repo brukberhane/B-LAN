@@ -1,9 +1,7 @@
 import 'dart:io';
 
 import 'package:drift/drift.dart';
-import 'package:drift_flutter/drift_flutter.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+import 'package:drift/native.dart';
 import 'package:uuid/uuid.dart';
 
 import '../protocol/constants.dart';
@@ -71,12 +69,17 @@ class AppDatabase extends _$AppDatabase {
         },
       );
 
-  static Future<AppDatabase> open() async {
-    final dir = await getApplicationSupportDirectory();
-    final dbPath = p.join(dir.path, 'blan.db');
-    return AppDatabase(
-      driftDatabase(name: dbPath),
-    );
+  static AppDatabase openForBenchmark({
+    String? filePath,
+    bool inMemory = false,
+  }) {
+    if (inMemory) {
+      return AppDatabase(NativeDatabase.memory());
+    }
+    if (filePath == null) {
+      throw ArgumentError('filePath required when inMemory is false');
+    }
+    return AppDatabase(NativeDatabase(File(filePath)));
   }
 
   Future<String> getSetting(String key, {String defaultValue = ''}) async {
@@ -235,6 +238,9 @@ class AppDatabase extends _$AppDatabase {
         ..where((t) => t.entryId.equals(entryId))
         ..orderBy([(t) => OrderingTerm.asc(t.chunkIndex)]))
       .get();
+
+  Future<Chunk?> chunkByHash(String hash) =>
+      (select(chunks)..where((t) => t.hash.equals(hash))).getSingleOrNull();
 
   Future<FileManifestData?> fileManifest(String entryId) async {
     final entry = await entryById(entryId);

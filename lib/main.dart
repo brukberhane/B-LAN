@@ -5,11 +5,12 @@ import 'package:logging/logging.dart';
 
 import 'app/app.dart';
 import 'core/persistence/database.dart';
+import 'core/persistence/database_open.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _configureLogging();
-  final database = await AppDatabase.open();
+  final database = await openAppDatabase();
   runApp(AppBootstrap(database: database));
 }
 

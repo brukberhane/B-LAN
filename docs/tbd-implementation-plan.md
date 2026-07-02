@@ -15,7 +15,7 @@ Last reviewed: 2026-07-01
 | 6 Platform validation and UI polish | **complete** | UI surfacing pass, platform capabilities in Settings, README + test matrix, token rotate |
 | 7 Security UX | **complete** | Ed25519 device identity, trust/identity_changed workflow, session expiry, token rotate/revoke |
 | 8 Multi-source downloads | **complete** | Manifest cache, chunk scheduler, per-chunk source failover, source count in UI |
-| 9 libSQL benchmark | pending | — |
+| 9 Persistence engine benchmark | **complete** | `tool/db_benchmark.dart`, SQLite baseline JSON, decision doc — keep SQLite |
 | 10 Tests / stress / release | pending | — |
 
 This document replaces the loose TBD list with an implementation order and detailed work plan. It assumes the current app state:
@@ -653,7 +653,7 @@ This phase must include a full walk through implemented backend capability and m
 
 ### Current State
 
-- `AppDatabase.open()` uses `driftDatabase(name: dbPath)`.
+- `openAppDatabase()` in `database_open.dart` uses `driftDatabase(name: dbPath)`.
 - `sqlite3_flutter_libs` is included.
 - No libSQL dependency exists.
 
@@ -673,7 +673,7 @@ This phase must include a full walk through implemented backend capability and m
    - Print JSON results for easy comparison.
 
 3. Backend abstraction:
-   - Keep `AppDatabase.open()` default unchanged.
+   - Keep `openAppDatabase()` default unchanged.
    - Add optional factory only for benchmark.
    - Do not put experimental libSQL path in production app until package works on desktop and Android.
 
