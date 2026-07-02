@@ -96,7 +96,8 @@ class AppService {
     server.attachSecrets(_secrets!);
     await DeviceIdentity(_secrets!).ensureIdentity();
     await db.ensurePeerId();
-    await db.ensureNick();
+    final deviceName = await platform.defaultDeviceName();
+    await db.ensureNick(defaultIfEmpty: deviceName);
     final browserPort = await db.ensureHttpPort();
     final httpsPort = await db.ensureHttpsPort();
     final token = await browserToken();
@@ -323,6 +324,27 @@ class AppService {
 
   Future<void> setDownloadsDirectory(String path) =>
       db.setSetting('downloads_path', path);
+
+  Future<void> setNick(String nick) async {
+    await db.updateNick(nick);
+    await _refreshDiscoveryAdvertising();
+  }
+
+  Future<void> _refreshDiscoveryAdvertising() async {
+    if (!discovery.supportsAdvertising || !server.isRunning) {
+      return;
+    }
+    final peerId = await db.ensurePeerId();
+    final nick = await db.getNick();
+    final httpsPort = server.boundHttpsPort ?? await db.ensureHttpsPort();
+    final browserPort = server.boundBrowserPort ?? await db.ensureHttpPort();
+    await discovery.start(
+      peerId: peerId,
+      nick: nick,
+      port: httpsPort,
+      browserHttpPort: browserPort,
+    );
+  }
 
   Future<void> trustPeer(String peerId) => db.trustPeer(peerId);
 

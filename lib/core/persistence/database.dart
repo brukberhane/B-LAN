@@ -219,13 +219,26 @@ class AppDatabase extends _$AppDatabase {
     return peerId;
   }
 
-  Future<String> ensureNick() async {
+  Future<String> ensureNick({String? defaultIfEmpty}) async {
     var nick = await getSetting('nick');
     if (nick.isEmpty) {
-      nick = Platform.localHostname;
+      final candidate = defaultIfEmpty?.trim();
+      nick = (candidate != null && candidate.isNotEmpty)
+          ? candidate
+          : Platform.localHostname;
       await setSetting('nick', nick);
     }
     return nick;
+  }
+
+  Future<String> getNick() => getSetting('nick');
+
+  Future<void> updateNick(String nick) async {
+    final trimmed = nick.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError.value(nick, 'nick', 'Nickname cannot be empty');
+    }
+    await setSetting('nick', trimmed);
   }
 
   Future<int> ensureHttpPort() async {

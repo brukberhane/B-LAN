@@ -89,6 +89,16 @@ class AndroidPlatformServices implements PlatformServices {
   }
 
   @override
+  Future<String?> defaultDeviceName() async {
+    final name = await _channel.invokeMethod<String>('getDeviceName');
+    final trimmed = name?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed;
+  }
+
+  @override
   Future<List<SafFileEntry>> listSafFiles(String treeUri) async {
     final paths = await Saf.getFilesPathFor(treeUri, fileType: 'any');
     if (paths == null || paths.isEmpty) {

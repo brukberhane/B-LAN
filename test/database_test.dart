@@ -29,6 +29,15 @@ void main() {
     expect(await db.getSetting('bench_key'), 'second');
   });
 
+  test('ensureNick uses provided default when unset', () async {
+    expect(await db.ensureNick(defaultIfEmpty: 'Pixel 8'), 'Pixel 8');
+    expect(await db.getSetting('nick'), 'Pixel 8');
+  });
+
+  test('updateNick rejects empty value', () async {
+    expect(() => db.updateNick('   '), throwsArgumentError);
+  });
+
   test('chunk hash index exists', () async {
     final rows = await db.customSelect(
       "SELECT name FROM sqlite_master "

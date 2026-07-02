@@ -57,6 +57,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             data: (value) => ListTile(
               title: const Text('Nickname'),
               subtitle: Text(value),
+              trailing: IconButton(
+                icon: const Icon(Icons.edit_outlined),
+                tooltip: 'Change nickname',
+                onPressed: () => _editNickname(context, value),
+              ),
             ),
             loading: () => const ListTile(title: Text('Nickname')),
             error: (_, _) => const SizedBox.shrink(),
@@ -341,6 +346,57 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  Future<void> _editNickname(BuildContext context, String current) async {
+    final controller = TextEditingController(text: current);
+    final saved = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Change nickname'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Nickname',
+            hintText: 'Shown to peers on the LAN',
+          ),
+          textInputAction: TextInputAction.done,
+          onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!context.mounted || saved == null || saved.isEmpty || saved == current) {
+      return;
+    }
+    try {
+      await ref.read(appServiceProvider).setNick(saved);
+      ref.invalidate(nickProvider);
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Nickname updated to $saved')),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update nickname: $error')),
+      );
+    }
   }
 
   Future<void> _connectWebPeer() async {

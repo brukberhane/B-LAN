@@ -41,4 +41,7 @@ class StubPlatformServices implements PlatformServices {
 
   @override
   Future<List<SafFileEntry>> listSafFiles(String treeUri) async => const [];
+
+  @override
+  Future<String?> defaultDeviceName() async => null;
 }

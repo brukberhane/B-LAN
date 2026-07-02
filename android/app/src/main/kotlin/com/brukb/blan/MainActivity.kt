@@ -2,6 +2,8 @@ package com.brukb.blan
 
 import android.content.Context
 import android.net.wifi.WifiManager
+import android.os.Build
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -64,8 +66,26 @@ class MainActivity : FlutterActivity() {
                         result.success(stats)
                     }
 
+                    "getDeviceName" -> {
+                        result.success(resolveDeviceName(applicationContext))
+                    }
+
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    private fun resolveDeviceName(context: Context): String {
+        val globalName =
+            Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME)
+        if (!globalName.isNullOrBlank()) {
+            return globalName.trim()
+        }
+        val bluetoothName =
+            Settings.Secure.getString(context.contentResolver, "bluetooth_name")
+        if (!bluetoothName.isNullOrBlank()) {
+            return bluetoothName.trim()
+        }
+        return Build.MODEL.trim()
     }
 }

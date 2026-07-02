@@ -29,6 +29,9 @@ abstract class PlatformServices {
   Future<String?> pickSafTreeUri();
 
   Future<List<SafFileEntry>> listSafFiles(String treeUri);
+
+  /// OS device name for default nickname when none is stored yet.
+  Future<String?> defaultDeviceName();
 }
 
 class SafFileEntry {
