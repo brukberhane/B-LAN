@@ -148,6 +148,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
           if (!kIsWeb) ...[
             const Divider(height: 32),
+            const _TransferLimitsSection(),
+          ],
+          if (!kIsWeb) ...[
+            const Divider(height: 32),
             Text(
               'Web client instructions',
               style: Theme.of(context).textTheme.titleMedium,
@@ -294,6 +298,120 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       MaterialPageRoute(
         builder: (_) => BrowsePage(peer: peer, token: token),
       ),
+    );
+  }
+}
+
+class _TransferLimitsSection extends ConsumerStatefulWidget {
+  const _TransferLimitsSection();
+
+  @override
+  ConsumerState<_TransferLimitsSection> createState() =>
+      _TransferLimitsSectionState();
+}
+
+class _TransferLimitsSectionState extends ConsumerState<_TransferLimitsSection> {
+  var _loaded = false;
+  double _maxUploadChunks = 4;
+  double _maxDownloadChunks = 3;
+  double _uploadBandwidthMbps = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final db = ref.read(databaseProvider);
+    final uploadChunks = await db.maxUploadChunks();
+    final downloadChunks = await db.maxDownloadChunks();
+    final bps = await db.uploadBandwidthBps();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _maxUploadChunks = uploadChunks.toDouble();
+      _maxDownloadChunks = downloadChunks.toDouble();
+      _uploadBandwidthMbps = bps / (1024 * 1024);
+      _loaded = true;
+    });
+  }
+
+  Future<void> _save() async {
+    final db = ref.read(databaseProvider);
+    await db.setMaxUploadChunks(_maxUploadChunks.round());
+    await db.setMaxDownloadChunks(_maxDownloadChunks.round());
+    final bps = (_uploadBandwidthMbps * 1024 * 1024).round();
+    await db.setUploadBandwidthBps(bps);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Transfer limits saved')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Transfer limits',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Upload concurrency caps simultaneous outgoing chunk/file responses. '
+          'Bandwidth cap 0 = unlimited.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        ListTile(
+          title: Text('Max upload slots: ${_maxUploadChunks.round()}'),
+          subtitle: Slider(
+            value: _maxUploadChunks,
+            min: 1,
+            max: 16,
+            divisions: 15,
+            label: '${_maxUploadChunks.round()}',
+            onChanged: (value) => setState(() => _maxUploadChunks = value),
+            onChangeEnd: (_) => _save(),
+          ),
+        ),
+        ListTile(
+          title: Text('Max download chunks: ${_maxDownloadChunks.round()}'),
+          subtitle: Slider(
+            value: _maxDownloadChunks,
+            min: 1,
+            max: 16,
+            divisions: 15,
+            label: '${_maxDownloadChunks.round()}',
+            onChanged: (value) => setState(() => _maxDownloadChunks = value),
+            onChangeEnd: (_) => _save(),
+          ),
+        ),
+        ListTile(
+          title: Text(
+            _uploadBandwidthMbps <= 0
+                ? 'Upload bandwidth cap: unlimited'
+                : 'Upload bandwidth cap: ${_uploadBandwidthMbps.toStringAsFixed(1)} MB/s',
+          ),
+          subtitle: Slider(
+            value: _uploadBandwidthMbps,
+            min: 0,
+            max: 100,
+            divisions: 20,
+            label: _uploadBandwidthMbps <= 0
+                ? '0'
+                : _uploadBandwidthMbps.toStringAsFixed(1),
+            onChanged: (value) => setState(() => _uploadBandwidthMbps = value),
+            onChangeEnd: (_) => _save(),
+          ),
+        ),
+      ],
     );
   }
 }

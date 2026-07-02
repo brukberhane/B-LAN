@@ -33,6 +33,11 @@ final downloadGroupsProvider = StreamProvider((ref) {
   return db.watchDownloadGroups();
 });
 
+final uploadsProvider = StreamProvider((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.watchUploads();
+});
+
 final browserTokenProvider = FutureProvider<String>((ref) async {
   final db = ref.watch(databaseProvider);
   return db.ensureBrowserToken();

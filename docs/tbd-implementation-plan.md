@@ -21,7 +21,7 @@ Last reviewed: 2026-07-01
 | 11.5 In-flight chunk progress | **complete** | Schema v8 `inFlightBytes`, streaming chunk fetch, throttled progress tracker, Downloads UI shows mid-chunk progress |
 | 12 Global search and remote index | **complete** | Schema v9 search tokens + `remote_files`, `GET /search`, share manifest page, `SearchService`, Search UI, signature merge |
 | 12.5 Chunk-level swarm scheduling | **complete** | Schema v11 `remote_chunk_sources`, `POST /chunks/availability`, `SwarmScheduler`, rarest-first striping, waiting-for-source UI |
-| 13 Upload visibility and network health | pending | Upload rows, rates, bandwidth/concurrency limits, range hardening |
+| 13 Upload visibility and network health | **complete** | Schema v12 transfer telemetry, `UploadManager`, Uploads page, settings limits, range 416 hardening |
 | 14 Platform proof and native UX | pending | Execute matrix, platform help, Android/Windows/Linux/Web validation |
 | 15 Security hardening | pending | Secure storage, session binding, suspicious peer state, token expiry |
 | 16 Remote control / headless mode | optional | Decide scope; CLI/admin API/daemon if wanted |
@@ -1278,6 +1278,8 @@ This phase must include a full walk through implemented backend capability and m
 - User can see who is downloading from them and at what speed.
 - Network failures are diagnosable without reading logs.
 - Upload/download load can be limited from Settings.
+
+**Status: complete (2026-07-02).** Schema v12 extends `transfers` for upload telemetry; `UploadManager` meters bytes, enforces concurrency/bandwidth caps; `TransferServer` records `/files` and `/chunks` uploads with hardened range parsing; Uploads page + Settings transfer limits; download concurrency from settings.
 
 ## Phase 14: Platform Proof And Native UX
 

@@ -111,6 +111,7 @@ class AppService {
       );
     }
     await downloadQueue.start();
+    await db.purgeStaleTransfers();
     unawaited(_warmSearchIndex());
     unawaited(client.warmSwarmCache());
     _log.info('Core services started on port $boundPort');

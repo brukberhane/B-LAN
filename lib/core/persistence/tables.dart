@@ -196,11 +196,19 @@ class Transfers extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get direction => text()();
   TextColumn get peerId => text().nullable()();
+  TextColumn get remoteAddress => text().nullable()();
   TextColumn get entryId => text().nullable()();
+  TextColumn get chunkHash => text().nullable()();
+  IntColumn get bytesTotal => integer().withDefault(const Constant(0))();
   IntColumn get bytesTransferred =>
+      integer().withDefault(const Constant(0))();
+  IntColumn get rateBytesPerSecond =>
       integer().withDefault(const Constant(0))();
   TextColumn get state =>
       text().withDefault(const Constant('active'))();
+  TextColumn get errorMessage => text().nullable()();
   DateTimeColumn get startedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt =>
       dateTime().withDefault(currentDateAndTime)();
 }

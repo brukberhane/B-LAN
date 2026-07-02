@@ -93,9 +93,13 @@ void main() {
   });
 
   testWidgets('SettingsPage shows browser token actions', (tester) async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          databaseProvider.overrideWithValue(db),
           nickProvider.overrideWith((ref) async => 'test-host'),
           httpPortProvider.overrideWith((ref) async => 59487),
           browserTokenProvider.overrideWith((ref) async => 'browser-token'),

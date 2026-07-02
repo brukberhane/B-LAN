@@ -7087,6 +7087,17 @@ class $TransfersTable extends Transfers
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _remoteAddressMeta = const VerificationMeta(
+    'remoteAddress',
+  );
+  @override
+  late final GeneratedColumn<String> remoteAddress = GeneratedColumn<String>(
+    'remote_address',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _entryIdMeta = const VerificationMeta(
     'entryId',
   );
@@ -7098,12 +7109,46 @@ class $TransfersTable extends Transfers
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _chunkHashMeta = const VerificationMeta(
+    'chunkHash',
+  );
+  @override
+  late final GeneratedColumn<String> chunkHash = GeneratedColumn<String>(
+    'chunk_hash',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _bytesTotalMeta = const VerificationMeta(
+    'bytesTotal',
+  );
+  @override
+  late final GeneratedColumn<int> bytesTotal = GeneratedColumn<int>(
+    'bytes_total',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _bytesTransferredMeta = const VerificationMeta(
     'bytesTransferred',
   );
   @override
   late final GeneratedColumn<int> bytesTransferred = GeneratedColumn<int>(
     'bytes_transferred',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _rateBytesPerSecondMeta =
+      const VerificationMeta('rateBytesPerSecond');
+  @override
+  late final GeneratedColumn<int> rateBytesPerSecond = GeneratedColumn<int>(
+    'rate_bytes_per_second',
     aliasedName,
     false,
     type: DriftSqlType.int,
@@ -7120,6 +7165,17 @@ class $TransfersTable extends Transfers
     requiredDuringInsert: false,
     defaultValue: const Constant('active'),
   );
+  static const VerificationMeta _errorMessageMeta = const VerificationMeta(
+    'errorMessage',
+  );
+  @override
+  late final GeneratedColumn<String> errorMessage = GeneratedColumn<String>(
+    'error_message',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _startedAtMeta = const VerificationMeta(
     'startedAt',
   );
@@ -7132,15 +7188,33 @@ class $TransfersTable extends Transfers
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
     direction,
     peerId,
+    remoteAddress,
     entryId,
+    chunkHash,
+    bytesTotal,
     bytesTransferred,
+    rateBytesPerSecond,
     state,
+    errorMessage,
     startedAt,
+    updatedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -7171,10 +7245,31 @@ class $TransfersTable extends Transfers
         peerId.isAcceptableOrUnknown(data['peer_id']!, _peerIdMeta),
       );
     }
+    if (data.containsKey('remote_address')) {
+      context.handle(
+        _remoteAddressMeta,
+        remoteAddress.isAcceptableOrUnknown(
+          data['remote_address']!,
+          _remoteAddressMeta,
+        ),
+      );
+    }
     if (data.containsKey('entry_id')) {
       context.handle(
         _entryIdMeta,
         entryId.isAcceptableOrUnknown(data['entry_id']!, _entryIdMeta),
+      );
+    }
+    if (data.containsKey('chunk_hash')) {
+      context.handle(
+        _chunkHashMeta,
+        chunkHash.isAcceptableOrUnknown(data['chunk_hash']!, _chunkHashMeta),
+      );
+    }
+    if (data.containsKey('bytes_total')) {
+      context.handle(
+        _bytesTotalMeta,
+        bytesTotal.isAcceptableOrUnknown(data['bytes_total']!, _bytesTotalMeta),
       );
     }
     if (data.containsKey('bytes_transferred')) {
@@ -7186,16 +7281,40 @@ class $TransfersTable extends Transfers
         ),
       );
     }
+    if (data.containsKey('rate_bytes_per_second')) {
+      context.handle(
+        _rateBytesPerSecondMeta,
+        rateBytesPerSecond.isAcceptableOrUnknown(
+          data['rate_bytes_per_second']!,
+          _rateBytesPerSecondMeta,
+        ),
+      );
+    }
     if (data.containsKey('state')) {
       context.handle(
         _stateMeta,
         state.isAcceptableOrUnknown(data['state']!, _stateMeta),
       );
     }
+    if (data.containsKey('error_message')) {
+      context.handle(
+        _errorMessageMeta,
+        errorMessage.isAcceptableOrUnknown(
+          data['error_message']!,
+          _errorMessageMeta,
+        ),
+      );
+    }
     if (data.containsKey('started_at')) {
       context.handle(
         _startedAtMeta,
         startedAt.isAcceptableOrUnknown(data['started_at']!, _startedAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
       );
     }
     return context;
@@ -7219,21 +7338,45 @@ class $TransfersTable extends Transfers
         DriftSqlType.string,
         data['${effectivePrefix}peer_id'],
       ),
+      remoteAddress: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remote_address'],
+      ),
       entryId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}entry_id'],
       ),
+      chunkHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}chunk_hash'],
+      ),
+      bytesTotal: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}bytes_total'],
+      )!,
       bytesTransferred: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}bytes_transferred'],
+      )!,
+      rateBytesPerSecond: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}rate_bytes_per_second'],
       )!,
       state: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}state'],
       )!,
+      errorMessage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error_message'],
+      ),
       startedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}started_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
       )!,
     );
   }
@@ -7248,18 +7391,30 @@ class Transfer extends DataClass implements Insertable<Transfer> {
   final int id;
   final String direction;
   final String? peerId;
+  final String? remoteAddress;
   final String? entryId;
+  final String? chunkHash;
+  final int bytesTotal;
   final int bytesTransferred;
+  final int rateBytesPerSecond;
   final String state;
+  final String? errorMessage;
   final DateTime startedAt;
+  final DateTime updatedAt;
   const Transfer({
     required this.id,
     required this.direction,
     this.peerId,
+    this.remoteAddress,
     this.entryId,
+    this.chunkHash,
+    required this.bytesTotal,
     required this.bytesTransferred,
+    required this.rateBytesPerSecond,
     required this.state,
+    this.errorMessage,
     required this.startedAt,
+    required this.updatedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7269,12 +7424,24 @@ class Transfer extends DataClass implements Insertable<Transfer> {
     if (!nullToAbsent || peerId != null) {
       map['peer_id'] = Variable<String>(peerId);
     }
+    if (!nullToAbsent || remoteAddress != null) {
+      map['remote_address'] = Variable<String>(remoteAddress);
+    }
     if (!nullToAbsent || entryId != null) {
       map['entry_id'] = Variable<String>(entryId);
     }
+    if (!nullToAbsent || chunkHash != null) {
+      map['chunk_hash'] = Variable<String>(chunkHash);
+    }
+    map['bytes_total'] = Variable<int>(bytesTotal);
     map['bytes_transferred'] = Variable<int>(bytesTransferred);
+    map['rate_bytes_per_second'] = Variable<int>(rateBytesPerSecond);
     map['state'] = Variable<String>(state);
+    if (!nullToAbsent || errorMessage != null) {
+      map['error_message'] = Variable<String>(errorMessage);
+    }
     map['started_at'] = Variable<DateTime>(startedAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
 
@@ -7285,12 +7452,24 @@ class Transfer extends DataClass implements Insertable<Transfer> {
       peerId: peerId == null && nullToAbsent
           ? const Value.absent()
           : Value(peerId),
+      remoteAddress: remoteAddress == null && nullToAbsent
+          ? const Value.absent()
+          : Value(remoteAddress),
       entryId: entryId == null && nullToAbsent
           ? const Value.absent()
           : Value(entryId),
+      chunkHash: chunkHash == null && nullToAbsent
+          ? const Value.absent()
+          : Value(chunkHash),
+      bytesTotal: Value(bytesTotal),
       bytesTransferred: Value(bytesTransferred),
+      rateBytesPerSecond: Value(rateBytesPerSecond),
       state: Value(state),
+      errorMessage: errorMessage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(errorMessage),
       startedAt: Value(startedAt),
+      updatedAt: Value(updatedAt),
     );
   }
 
@@ -7303,10 +7482,16 @@ class Transfer extends DataClass implements Insertable<Transfer> {
       id: serializer.fromJson<int>(json['id']),
       direction: serializer.fromJson<String>(json['direction']),
       peerId: serializer.fromJson<String?>(json['peerId']),
+      remoteAddress: serializer.fromJson<String?>(json['remoteAddress']),
       entryId: serializer.fromJson<String?>(json['entryId']),
+      chunkHash: serializer.fromJson<String?>(json['chunkHash']),
+      bytesTotal: serializer.fromJson<int>(json['bytesTotal']),
       bytesTransferred: serializer.fromJson<int>(json['bytesTransferred']),
+      rateBytesPerSecond: serializer.fromJson<int>(json['rateBytesPerSecond']),
       state: serializer.fromJson<String>(json['state']),
+      errorMessage: serializer.fromJson<String?>(json['errorMessage']),
       startedAt: serializer.fromJson<DateTime>(json['startedAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
   @override
@@ -7316,10 +7501,16 @@ class Transfer extends DataClass implements Insertable<Transfer> {
       'id': serializer.toJson<int>(id),
       'direction': serializer.toJson<String>(direction),
       'peerId': serializer.toJson<String?>(peerId),
+      'remoteAddress': serializer.toJson<String?>(remoteAddress),
       'entryId': serializer.toJson<String?>(entryId),
+      'chunkHash': serializer.toJson<String?>(chunkHash),
+      'bytesTotal': serializer.toJson<int>(bytesTotal),
       'bytesTransferred': serializer.toJson<int>(bytesTransferred),
+      'rateBytesPerSecond': serializer.toJson<int>(rateBytesPerSecond),
       'state': serializer.toJson<String>(state),
+      'errorMessage': serializer.toJson<String?>(errorMessage),
       'startedAt': serializer.toJson<DateTime>(startedAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
 
@@ -7327,30 +7518,58 @@ class Transfer extends DataClass implements Insertable<Transfer> {
     int? id,
     String? direction,
     Value<String?> peerId = const Value.absent(),
+    Value<String?> remoteAddress = const Value.absent(),
     Value<String?> entryId = const Value.absent(),
+    Value<String?> chunkHash = const Value.absent(),
+    int? bytesTotal,
     int? bytesTransferred,
+    int? rateBytesPerSecond,
     String? state,
+    Value<String?> errorMessage = const Value.absent(),
     DateTime? startedAt,
+    DateTime? updatedAt,
   }) => Transfer(
     id: id ?? this.id,
     direction: direction ?? this.direction,
     peerId: peerId.present ? peerId.value : this.peerId,
+    remoteAddress: remoteAddress.present
+        ? remoteAddress.value
+        : this.remoteAddress,
     entryId: entryId.present ? entryId.value : this.entryId,
+    chunkHash: chunkHash.present ? chunkHash.value : this.chunkHash,
+    bytesTotal: bytesTotal ?? this.bytesTotal,
     bytesTransferred: bytesTransferred ?? this.bytesTransferred,
+    rateBytesPerSecond: rateBytesPerSecond ?? this.rateBytesPerSecond,
     state: state ?? this.state,
+    errorMessage: errorMessage.present ? errorMessage.value : this.errorMessage,
     startedAt: startedAt ?? this.startedAt,
+    updatedAt: updatedAt ?? this.updatedAt,
   );
   Transfer copyWithCompanion(TransfersCompanion data) {
     return Transfer(
       id: data.id.present ? data.id.value : this.id,
       direction: data.direction.present ? data.direction.value : this.direction,
       peerId: data.peerId.present ? data.peerId.value : this.peerId,
+      remoteAddress: data.remoteAddress.present
+          ? data.remoteAddress.value
+          : this.remoteAddress,
       entryId: data.entryId.present ? data.entryId.value : this.entryId,
+      chunkHash: data.chunkHash.present ? data.chunkHash.value : this.chunkHash,
+      bytesTotal: data.bytesTotal.present
+          ? data.bytesTotal.value
+          : this.bytesTotal,
       bytesTransferred: data.bytesTransferred.present
           ? data.bytesTransferred.value
           : this.bytesTransferred,
+      rateBytesPerSecond: data.rateBytesPerSecond.present
+          ? data.rateBytesPerSecond.value
+          : this.rateBytesPerSecond,
       state: data.state.present ? data.state.value : this.state,
+      errorMessage: data.errorMessage.present
+          ? data.errorMessage.value
+          : this.errorMessage,
       startedAt: data.startedAt.present ? data.startedAt.value : this.startedAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
 
@@ -7360,10 +7579,16 @@ class Transfer extends DataClass implements Insertable<Transfer> {
           ..write('id: $id, ')
           ..write('direction: $direction, ')
           ..write('peerId: $peerId, ')
+          ..write('remoteAddress: $remoteAddress, ')
           ..write('entryId: $entryId, ')
+          ..write('chunkHash: $chunkHash, ')
+          ..write('bytesTotal: $bytesTotal, ')
           ..write('bytesTransferred: $bytesTransferred, ')
+          ..write('rateBytesPerSecond: $rateBytesPerSecond, ')
           ..write('state: $state, ')
-          ..write('startedAt: $startedAt')
+          ..write('errorMessage: $errorMessage, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
@@ -7373,10 +7598,16 @@ class Transfer extends DataClass implements Insertable<Transfer> {
     id,
     direction,
     peerId,
+    remoteAddress,
     entryId,
+    chunkHash,
+    bytesTotal,
     bytesTransferred,
+    rateBytesPerSecond,
     state,
+    errorMessage,
     startedAt,
+    updatedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -7385,55 +7616,92 @@ class Transfer extends DataClass implements Insertable<Transfer> {
           other.id == this.id &&
           other.direction == this.direction &&
           other.peerId == this.peerId &&
+          other.remoteAddress == this.remoteAddress &&
           other.entryId == this.entryId &&
+          other.chunkHash == this.chunkHash &&
+          other.bytesTotal == this.bytesTotal &&
           other.bytesTransferred == this.bytesTransferred &&
+          other.rateBytesPerSecond == this.rateBytesPerSecond &&
           other.state == this.state &&
-          other.startedAt == this.startedAt);
+          other.errorMessage == this.errorMessage &&
+          other.startedAt == this.startedAt &&
+          other.updatedAt == this.updatedAt);
 }
 
 class TransfersCompanion extends UpdateCompanion<Transfer> {
   final Value<int> id;
   final Value<String> direction;
   final Value<String?> peerId;
+  final Value<String?> remoteAddress;
   final Value<String?> entryId;
+  final Value<String?> chunkHash;
+  final Value<int> bytesTotal;
   final Value<int> bytesTransferred;
+  final Value<int> rateBytesPerSecond;
   final Value<String> state;
+  final Value<String?> errorMessage;
   final Value<DateTime> startedAt;
+  final Value<DateTime> updatedAt;
   const TransfersCompanion({
     this.id = const Value.absent(),
     this.direction = const Value.absent(),
     this.peerId = const Value.absent(),
+    this.remoteAddress = const Value.absent(),
     this.entryId = const Value.absent(),
+    this.chunkHash = const Value.absent(),
+    this.bytesTotal = const Value.absent(),
     this.bytesTransferred = const Value.absent(),
+    this.rateBytesPerSecond = const Value.absent(),
     this.state = const Value.absent(),
+    this.errorMessage = const Value.absent(),
     this.startedAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   });
   TransfersCompanion.insert({
     this.id = const Value.absent(),
     required String direction,
     this.peerId = const Value.absent(),
+    this.remoteAddress = const Value.absent(),
     this.entryId = const Value.absent(),
+    this.chunkHash = const Value.absent(),
+    this.bytesTotal = const Value.absent(),
     this.bytesTransferred = const Value.absent(),
+    this.rateBytesPerSecond = const Value.absent(),
     this.state = const Value.absent(),
+    this.errorMessage = const Value.absent(),
     this.startedAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   }) : direction = Value(direction);
   static Insertable<Transfer> custom({
     Expression<int>? id,
     Expression<String>? direction,
     Expression<String>? peerId,
+    Expression<String>? remoteAddress,
     Expression<String>? entryId,
+    Expression<String>? chunkHash,
+    Expression<int>? bytesTotal,
     Expression<int>? bytesTransferred,
+    Expression<int>? rateBytesPerSecond,
     Expression<String>? state,
+    Expression<String>? errorMessage,
     Expression<DateTime>? startedAt,
+    Expression<DateTime>? updatedAt,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (direction != null) 'direction': direction,
       if (peerId != null) 'peer_id': peerId,
+      if (remoteAddress != null) 'remote_address': remoteAddress,
       if (entryId != null) 'entry_id': entryId,
+      if (chunkHash != null) 'chunk_hash': chunkHash,
+      if (bytesTotal != null) 'bytes_total': bytesTotal,
       if (bytesTransferred != null) 'bytes_transferred': bytesTransferred,
+      if (rateBytesPerSecond != null)
+        'rate_bytes_per_second': rateBytesPerSecond,
       if (state != null) 'state': state,
+      if (errorMessage != null) 'error_message': errorMessage,
       if (startedAt != null) 'started_at': startedAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
     });
   }
 
@@ -7441,19 +7709,31 @@ class TransfersCompanion extends UpdateCompanion<Transfer> {
     Value<int>? id,
     Value<String>? direction,
     Value<String?>? peerId,
+    Value<String?>? remoteAddress,
     Value<String?>? entryId,
+    Value<String?>? chunkHash,
+    Value<int>? bytesTotal,
     Value<int>? bytesTransferred,
+    Value<int>? rateBytesPerSecond,
     Value<String>? state,
+    Value<String?>? errorMessage,
     Value<DateTime>? startedAt,
+    Value<DateTime>? updatedAt,
   }) {
     return TransfersCompanion(
       id: id ?? this.id,
       direction: direction ?? this.direction,
       peerId: peerId ?? this.peerId,
+      remoteAddress: remoteAddress ?? this.remoteAddress,
       entryId: entryId ?? this.entryId,
+      chunkHash: chunkHash ?? this.chunkHash,
+      bytesTotal: bytesTotal ?? this.bytesTotal,
       bytesTransferred: bytesTransferred ?? this.bytesTransferred,
+      rateBytesPerSecond: rateBytesPerSecond ?? this.rateBytesPerSecond,
       state: state ?? this.state,
+      errorMessage: errorMessage ?? this.errorMessage,
       startedAt: startedAt ?? this.startedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -7469,17 +7749,35 @@ class TransfersCompanion extends UpdateCompanion<Transfer> {
     if (peerId.present) {
       map['peer_id'] = Variable<String>(peerId.value);
     }
+    if (remoteAddress.present) {
+      map['remote_address'] = Variable<String>(remoteAddress.value);
+    }
     if (entryId.present) {
       map['entry_id'] = Variable<String>(entryId.value);
+    }
+    if (chunkHash.present) {
+      map['chunk_hash'] = Variable<String>(chunkHash.value);
+    }
+    if (bytesTotal.present) {
+      map['bytes_total'] = Variable<int>(bytesTotal.value);
     }
     if (bytesTransferred.present) {
       map['bytes_transferred'] = Variable<int>(bytesTransferred.value);
     }
+    if (rateBytesPerSecond.present) {
+      map['rate_bytes_per_second'] = Variable<int>(rateBytesPerSecond.value);
+    }
     if (state.present) {
       map['state'] = Variable<String>(state.value);
     }
+    if (errorMessage.present) {
+      map['error_message'] = Variable<String>(errorMessage.value);
+    }
     if (startedAt.present) {
       map['started_at'] = Variable<DateTime>(startedAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
     return map;
   }
@@ -7490,10 +7788,16 @@ class TransfersCompanion extends UpdateCompanion<Transfer> {
           ..write('id: $id, ')
           ..write('direction: $direction, ')
           ..write('peerId: $peerId, ')
+          ..write('remoteAddress: $remoteAddress, ')
           ..write('entryId: $entryId, ')
+          ..write('chunkHash: $chunkHash, ')
+          ..write('bytesTotal: $bytesTotal, ')
           ..write('bytesTransferred: $bytesTransferred, ')
+          ..write('rateBytesPerSecond: $rateBytesPerSecond, ')
           ..write('state: $state, ')
-          ..write('startedAt: $startedAt')
+          ..write('errorMessage: $errorMessage, ')
+          ..write('startedAt: $startedAt, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
@@ -13162,20 +13466,32 @@ typedef $$TransfersTableCreateCompanionBuilder =
       Value<int> id,
       required String direction,
       Value<String?> peerId,
+      Value<String?> remoteAddress,
       Value<String?> entryId,
+      Value<String?> chunkHash,
+      Value<int> bytesTotal,
       Value<int> bytesTransferred,
+      Value<int> rateBytesPerSecond,
       Value<String> state,
+      Value<String?> errorMessage,
       Value<DateTime> startedAt,
+      Value<DateTime> updatedAt,
     });
 typedef $$TransfersTableUpdateCompanionBuilder =
     TransfersCompanion Function({
       Value<int> id,
       Value<String> direction,
       Value<String?> peerId,
+      Value<String?> remoteAddress,
       Value<String?> entryId,
+      Value<String?> chunkHash,
+      Value<int> bytesTotal,
       Value<int> bytesTransferred,
+      Value<int> rateBytesPerSecond,
       Value<String> state,
+      Value<String?> errorMessage,
       Value<DateTime> startedAt,
+      Value<DateTime> updatedAt,
     });
 
 class $$TransfersTableFilterComposer
@@ -13202,8 +13518,23 @@ class $$TransfersTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get remoteAddress => $composableBuilder(
+    column: $table.remoteAddress,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get entryId => $composableBuilder(
     column: $table.entryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get chunkHash => $composableBuilder(
+    column: $table.chunkHash,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get bytesTotal => $composableBuilder(
+    column: $table.bytesTotal,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -13212,13 +13543,28 @@ class $$TransfersTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get rateBytesPerSecond => $composableBuilder(
+    column: $table.rateBytesPerSecond,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get state => $composableBuilder(
     column: $table.state,
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<DateTime> get startedAt => $composableBuilder(
     column: $table.startedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -13247,8 +13593,23 @@ class $$TransfersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get remoteAddress => $composableBuilder(
+    column: $table.remoteAddress,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get entryId => $composableBuilder(
     column: $table.entryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get chunkHash => $composableBuilder(
+    column: $table.chunkHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get bytesTotal => $composableBuilder(
+    column: $table.bytesTotal,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -13257,13 +13618,28 @@ class $$TransfersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get rateBytesPerSecond => $composableBuilder(
+    column: $table.rateBytesPerSecond,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get state => $composableBuilder(
     column: $table.state,
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get startedAt => $composableBuilder(
     column: $table.startedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -13286,19 +13662,45 @@ class $$TransfersTableAnnotationComposer
   GeneratedColumn<String> get peerId =>
       $composableBuilder(column: $table.peerId, builder: (column) => column);
 
+  GeneratedColumn<String> get remoteAddress => $composableBuilder(
+    column: $table.remoteAddress,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get entryId =>
       $composableBuilder(column: $table.entryId, builder: (column) => column);
+
+  GeneratedColumn<String> get chunkHash =>
+      $composableBuilder(column: $table.chunkHash, builder: (column) => column);
+
+  GeneratedColumn<int> get bytesTotal => $composableBuilder(
+    column: $table.bytesTotal,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<int> get bytesTransferred => $composableBuilder(
     column: $table.bytesTransferred,
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get rateBytesPerSecond => $composableBuilder(
+    column: $table.rateBytesPerSecond,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get state =>
       $composableBuilder(column: $table.state, builder: (column) => column);
 
+  GeneratedColumn<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get startedAt =>
       $composableBuilder(column: $table.startedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 }
 
 class $$TransfersTableTableManager
@@ -13332,36 +13734,60 @@ class $$TransfersTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String> direction = const Value.absent(),
                 Value<String?> peerId = const Value.absent(),
+                Value<String?> remoteAddress = const Value.absent(),
                 Value<String?> entryId = const Value.absent(),
+                Value<String?> chunkHash = const Value.absent(),
+                Value<int> bytesTotal = const Value.absent(),
                 Value<int> bytesTransferred = const Value.absent(),
+                Value<int> rateBytesPerSecond = const Value.absent(),
                 Value<String> state = const Value.absent(),
+                Value<String?> errorMessage = const Value.absent(),
                 Value<DateTime> startedAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
               }) => TransfersCompanion(
                 id: id,
                 direction: direction,
                 peerId: peerId,
+                remoteAddress: remoteAddress,
                 entryId: entryId,
+                chunkHash: chunkHash,
+                bytesTotal: bytesTotal,
                 bytesTransferred: bytesTransferred,
+                rateBytesPerSecond: rateBytesPerSecond,
                 state: state,
+                errorMessage: errorMessage,
                 startedAt: startedAt,
+                updatedAt: updatedAt,
               ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required String direction,
                 Value<String?> peerId = const Value.absent(),
+                Value<String?> remoteAddress = const Value.absent(),
                 Value<String?> entryId = const Value.absent(),
+                Value<String?> chunkHash = const Value.absent(),
+                Value<int> bytesTotal = const Value.absent(),
                 Value<int> bytesTransferred = const Value.absent(),
+                Value<int> rateBytesPerSecond = const Value.absent(),
                 Value<String> state = const Value.absent(),
+                Value<String?> errorMessage = const Value.absent(),
                 Value<DateTime> startedAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
               }) => TransfersCompanion.insert(
                 id: id,
                 direction: direction,
                 peerId: peerId,
+                remoteAddress: remoteAddress,
                 entryId: entryId,
+                chunkHash: chunkHash,
+                bytesTotal: bytesTotal,
                 bytesTransferred: bytesTransferred,
+                rateBytesPerSecond: rateBytesPerSecond,
                 state: state,
+                errorMessage: errorMessage,
                 startedAt: startedAt,
+                updatedAt: updatedAt,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

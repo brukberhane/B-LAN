@@ -23,6 +23,7 @@ void main() {
           sharesProvider.overrideWith((ref) => Stream.value([])),
           peersProvider.overrideWith((ref) => Stream.value([])),
           downloadsProvider.overrideWith((ref) => Stream.value([])),
+          uploadsProvider.overrideWith((ref) => Stream.value([])),
           downloadsDirectoryProvider.overrideWith(
             (ref) async => '/tmp/blan-downloads',
           ),
@@ -38,6 +39,7 @@ void main() {
     expect(find.text('Peers'), findsOneWidget);
     expect(find.text('Search'), findsOneWidget);
     expect(find.text('Downloads'), findsOneWidget);
+    expect(find.text('Uploads'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
   });
 }

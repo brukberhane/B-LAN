@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../protocol/constants.dart';
 import '../protocol/download_states.dart';
 import '../protocol/models.dart';
+import '../protocol/transfer_states.dart';
 import '../security/peer_identity.dart';
 import '../indexing/chunker.dart';
 import '../search/content_signature.dart';
@@ -36,7 +37,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -112,6 +113,18 @@ class AppDatabase extends _$AppDatabase {
           'ON remote_chunk_sources (hash, peer_id, entry_id, chunk_index)',
         );
       }
+      if (from < 12) {
+        await migrator.addColumn(transfers, transfers.remoteAddress);
+        await migrator.addColumn(transfers, transfers.chunkHash);
+        await migrator.addColumn(transfers, transfers.bytesTotal);
+        await migrator.addColumn(transfers, transfers.rateBytesPerSecond);
+        await migrator.addColumn(transfers, transfers.errorMessage);
+        await migrator.addColumn(transfers, transfers.updatedAt);
+        await customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_transfers_state '
+          'ON transfers (state)',
+        );
+      }
     },
   );
 
@@ -149,6 +162,9 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE UNIQUE INDEX IF NOT EXISTS idx_remote_chunk_sources_unique '
       'ON remote_chunk_sources (hash, peer_id, entry_id, chunk_index)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_transfers_state ON transfers (state)',
     );
   }
 
@@ -239,6 +255,114 @@ class AppDatabase extends _$AppDatabase {
   Stream<List<DownloadGroup>> watchDownloadGroups() => (select(
     downloadGroups,
   )..orderBy([(t) => OrderingTerm.desc(t.createdAt)])).watch();
+
+  Stream<List<Transfer>> watchUploads() => (select(transfers)
+        ..where((t) => t.direction.equals(TransferDirection.upload))
+        ..orderBy([(t) => OrderingTerm.desc(t.startedAt)])
+        ..limit(50))
+      .watch();
+
+  Future<int> createUploadTransfer({
+    String? peerId,
+    String? remoteAddress,
+    String? entryId,
+    String? chunkHash,
+    required int bytesTotal,
+  }) async {
+    final id = await into(transfers).insert(
+      TransfersCompanion.insert(
+        direction: TransferDirection.upload,
+        peerId: Value(peerId),
+        remoteAddress: Value(remoteAddress),
+        entryId: Value(entryId),
+        chunkHash: Value(chunkHash),
+        bytesTotal: Value(bytesTotal),
+        state: const Value(TransferState.active),
+      ),
+    );
+    return id;
+  }
+
+  Future<void> updateTransferProgress(int id, int bytesTransferred) async {
+    final row = await (select(transfers)..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
+    if (row == null) {
+      return;
+    }
+    final elapsed = DateTime.now().difference(row.startedAt);
+    final rate = elapsed.inMilliseconds <= 0
+        ? bytesTransferred
+        : (bytesTransferred * 1000) ~/ elapsed.inMilliseconds;
+    await (update(transfers)..where((t) => t.id.equals(id))).write(
+      TransfersCompanion(
+        bytesTransferred: Value(bytesTransferred),
+        rateBytesPerSecond: Value(rate),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> completeTransfer(int id, int bytesTransferred) async {
+    await (update(transfers)..where((t) => t.id.equals(id))).write(
+      TransfersCompanion(
+        bytesTransferred: Value(bytesTransferred),
+        bytesTotal: Value(bytesTransferred),
+        state: const Value(TransferState.complete),
+        updatedAt: Value(DateTime.now()),
+        errorMessage: const Value(null),
+      ),
+    );
+  }
+
+  Future<void> failTransfer(int id, String message) async {
+    await (update(transfers)..where((t) => t.id.equals(id))).write(
+      TransfersCompanion(
+        state: const Value(TransferState.error),
+        errorMessage: Value(message),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> purgeStaleTransfers({
+    Duration maxAge = const Duration(hours: 24),
+  }) async {
+    final cutoff = DateTime.now().subtract(maxAge);
+    await (delete(transfers)
+          ..where(
+            (t) =>
+                t.state.equals(TransferState.complete) &
+                t.updatedAt.isSmallerThanValue(cutoff),
+          ))
+        .go();
+  }
+
+  Future<int> maxUploadChunks() async {
+    final raw = await getSetting('max_upload_chunks', defaultValue: '4');
+    return int.tryParse(raw) ?? 4;
+  }
+
+  Future<int> uploadBandwidthBps() async {
+    final raw = await getSetting('upload_bandwidth_bps', defaultValue: '0');
+    return int.tryParse(raw) ?? 0;
+  }
+
+  Future<int> maxDownloadChunks() async {
+    final raw = await getSetting(
+      'max_download_chunks',
+      defaultValue: '$maxConcurrentDownloads',
+    );
+    return int.tryParse(raw) ?? maxConcurrentDownloads;
+  }
+
+  Future<void> setMaxUploadChunks(int value) =>
+      setSetting('max_upload_chunks', '$value');
+
+  Future<void> setUploadBandwidthBps(int value) =>
+      setSetting('upload_bandwidth_bps', '$value');
+
+  Future<void> setMaxDownloadChunks(int value) =>
+      setSetting('max_download_chunks', '$value');
 
   Future<String> createDownloadGroup({
     required String label,

@@ -8,18 +8,28 @@ import 'package:shelf_router/shelf_router.dart';
 
 import '../indexing/chunker.dart';
 import '../persistence/database.dart';
+import '../protocol/byte_range.dart';
 import '../protocol/constants.dart';
 import '../protocol/models.dart';
 import '../security/device_identity.dart';
+import 'upload_manager.dart';
+
+class _SessionInfo {
+  const _SessionInfo({required this.expiry, required this.peerId});
+
+  final DateTime expiry;
+  final String peerId;
+}
 
 class TransferServer {
-  TransferServer(this._db);
+  TransferServer(this._db) : _uploads = UploadManager(_db);
 
   final AppDatabase _db;
+  final UploadManager _uploads;
   HttpServer? _server;
   String? _browserToken;
   List<String> _allowedOrigins = const [];
-  final Map<String, DateTime> _sessions = {};
+  final Map<String, _SessionInfo> _sessions = {};
 
   bool get isRunning => _server != null;
 
@@ -69,15 +79,22 @@ class TransferServer {
     if (token == _browserToken) {
       return true;
     }
-    final expiry = _sessions[token];
-    if (expiry == null) {
+    final session = _sessions[token];
+    if (session == null) {
       return false;
     }
-    if (DateTime.now().isAfter(expiry)) {
+    if (DateTime.now().isAfter(session.expiry)) {
       _sessions.remove(token);
       return false;
     }
     return true;
+  }
+
+  String? peerIdForToken(String token) {
+    if (token == _browserToken) {
+      return null;
+    }
+    return _sessions[token]?.peerId;
   }
 
   Middleware get _corsMiddleware => (Handler inner) {
@@ -128,7 +145,10 @@ class TransferServer {
       return Response.badRequest(body: 'peerId required');
     }
     final token = '${peerId}_${DateTime.now().millisecondsSinceEpoch}';
-    _sessions[token] = DateTime.now().add(const Duration(hours: 24));
+    _sessions[token] = _SessionInfo(
+      expiry: DateTime.now().add(const Duration(hours: 24)),
+      peerId: peerId,
+    );
     return Response.ok(
       jsonEncode(
         SessionResponse(token: token, expiresInSeconds: 86400).toJson(),
@@ -365,35 +385,56 @@ class TransferServer {
       return Response.notFound('Missing file');
     }
 
-    final range = request.headers['range'];
-    if (range == null) {
-      return Response.ok(
-        file.openRead(),
-        headers: {
-          'content-type': 'application/octet-stream',
-          'content-length': '${entry.size}',
-        },
+    if (!await _uploads.tryAcquireSlot()) {
+      return Response(
+        503,
+        body: 'Upload concurrency limit reached',
+        headers: {'content-type': 'text/plain'},
       );
     }
 
-    final match = RegExp(r'bytes=(\d+)-(\d*)').firstMatch(range);
-    if (match == null) {
-      return Response(416);
+    final auth = request.headers['authorization'];
+    final token = auth?.replaceFirst(RegExp(r'^Bearer\s+'), '');
+    final peerId = token == null
+        ? null
+        : _uploads.peerIdFromToken(auth, _browserToken) ??
+            peerIdForToken(token);
+    final remote = _uploads.remoteAddress(request);
+    final bandwidth = await _db.uploadBandwidthBps();
+
+    final parsed = parseByteRange(request.headers['range'], entry.size);
+    if (parsed.invalid) {
+      _uploads.releaseSlot();
+      return Response(
+        416,
+        headers: {'content-range': 'bytes */${entry.size}'},
+      );
     }
-    final start = int.parse(match.group(1)!);
-    final end = match.group(2)!.isEmpty
-        ? entry.size - 1
-        : int.parse(match.group(2)!);
-    final length = end - start + 1;
-    return Response(
-      206,
-      body: file.openRead(start, end + 1),
-      headers: {
-        'content-type': 'application/octet-stream',
-        'content-length': '$length',
-        'content-range': 'bytes $start-$end/${entry.size}',
-        'accept-ranges': 'bytes',
-      },
+    final range = parsed.range!;
+    final transferId = await _uploads.startUpload(
+      peerId: peerId,
+      remoteAddress: remote,
+      entryId: entry.id,
+      bytesTotal: range.length,
+    );
+
+    final headers = <String, String>{
+      'content-type': 'application/octet-stream',
+      'content-length': '${range.length}',
+      'accept-ranges': 'bytes',
+    };
+    if (!range.isFullFile) {
+      headers['content-range'] =
+          'bytes ${range.start}-${range.end}/${entry.size}';
+    }
+
+    return _uploads.streamResponse(
+      body: file.openRead(range.start, range.end + 1),
+      transferId: transferId,
+      bytesTotal: range.length,
+      bandwidthBps: bandwidth,
+      headers: headers,
+      statusCode: range.isFullFile ? 200 : 206,
     );
   }
 
@@ -402,12 +443,13 @@ class TransferServer {
     if (hash == null || hash.isEmpty) {
       return Response.badRequest(body: 'hash required');
     }
-    return _serveChunk(hash);
+    return _serveChunk(hash, request);
   }
 
-  Future<Response> _chunk(Request request, String hash) => _serveChunk(hash);
+  Future<Response> _chunk(Request request, String hash) =>
+      _serveChunk(hash, request);
 
-  Future<Response> _serveChunk(String hash) async {
+  Future<Response> _serveChunk(String hash, Request request) async {
     final chunk = await (_db.select(_db.chunks)
           ..where((t) => t.hash.equals(hash)))
         .getSingleOrNull();
@@ -428,8 +470,36 @@ class TransferServer {
     if (!await file.exists()) {
       return Response.notFound('Missing file');
     }
-    return Response.ok(
-      file.openRead(chunk.offset, chunk.offset + chunk.length),
+
+    if (!await _uploads.tryAcquireSlot()) {
+      return Response(
+        503,
+        body: 'Upload concurrency limit reached',
+        headers: {'content-type': 'text/plain'},
+      );
+    }
+
+    final auth = request.headers['authorization'];
+    final token = auth?.replaceFirst(RegExp(r'^Bearer\s+'), '');
+    final peerId = token == null
+        ? null
+        : _uploads.peerIdFromToken(auth, _browserToken) ??
+            peerIdForToken(token);
+    final remote = _uploads.remoteAddress(request);
+    final bandwidth = await _db.uploadBandwidthBps();
+    final transferId = await _uploads.startUpload(
+      peerId: peerId,
+      remoteAddress: remote,
+      entryId: entry.id,
+      chunkHash: hash,
+      bytesTotal: chunk.length,
+    );
+
+    return _uploads.streamResponse(
+      body: file.openRead(chunk.offset, chunk.offset + chunk.length),
+      transferId: transferId,
+      bytesTotal: chunk.length,
+      bandwidthBps: bandwidth,
       headers: {
         'content-type': 'application/octet-stream',
         'content-length': '${chunk.length}',

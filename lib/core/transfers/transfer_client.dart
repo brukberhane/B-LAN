@@ -557,9 +557,10 @@ class TransferClient {
           );
 
         final queue = _ChunkWorkQueue(pending);
-        final workerCount = pending.length < _maxConcurrentChunkDownloads
+        final maxWorkers = await _db.maxDownloadChunks();
+        final workerCount = pending.length < maxWorkers
             ? pending.length
-            : _maxConcurrentChunkDownloads;
+            : maxWorkers;
         Object? firstError;
 
         Future<void> worker() async {

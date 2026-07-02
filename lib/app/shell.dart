@@ -6,6 +6,7 @@ import '../features/peers/peers_page.dart';
 import '../features/search/search_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/shares/shares_page.dart';
+import '../features/uploads/uploads_page.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -23,6 +24,7 @@ class _AppShellState extends State<AppShell> {
       if (!kIsWeb) const SharesPage(),
       const PeersPage(),
       const SearchPage(),
+      if (!kIsWeb) const UploadsPage(),
       const DownloadsPage(),
       const SettingsPage(),
     ];
@@ -40,6 +42,11 @@ class _AppShellState extends State<AppShell> {
         icon: Icon(Icons.search_outlined),
         label: 'Search',
       ),
+      if (!kIsWeb)
+        const NavigationDestination(
+          icon: Icon(Icons.upload_outlined),
+          label: 'Uploads',
+        ),
       const NavigationDestination(
         icon: Icon(Icons.download_outlined),
         label: 'Downloads',

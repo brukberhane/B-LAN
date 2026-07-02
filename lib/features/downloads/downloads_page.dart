@@ -111,13 +111,16 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
                     ),
                   );
                 }
-                final groupedIds =
-                    filtered.map((row) => row.groupId).whereType<String>().toSet();
+                final groupedIds = filtered
+                    .map((row) => row.groupId)
+                    .whereType<String>()
+                    .toSet();
                 final visibleGroups = groupRows
                     .where((group) => groupedIds.contains(group.id))
                     .toList();
-                final ungrouped =
-                    filtered.where((row) => row.groupId == null).toList();
+                final ungrouped = filtered
+                    .where((row) => row.groupId == null)
+                    .toList();
 
                 return ListView(
                   children: [
@@ -141,34 +144,29 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
     return switch (_filter) {
       _DownloadFilter.all => rows,
       _DownloadFilter.active => rows.where((row) {
-          return row.state == DownloadState.queued ||
-              row.state == DownloadState.downloading ||
-              row.state == DownloadState.paused;
-        }).toList(),
-      _DownloadFilter.completed => rows
-          .where((row) => row.state == DownloadState.complete)
-          .toList(),
+        return row.state == DownloadState.queued ||
+            row.state == DownloadState.downloading ||
+            row.state == DownloadState.paused;
+      }).toList(),
+      _DownloadFilter.completed =>
+        rows.where((row) => row.state == DownloadState.complete).toList(),
       _DownloadFilter.error => rows.where((row) {
-          return row.state == DownloadState.error ||
-              row.state == DownloadState.cancelled;
-        }).toList(),
+        return row.state == DownloadState.error ||
+            row.state == DownloadState.cancelled;
+      }).toList(),
     };
   }
 }
 
 class _GroupTile extends ConsumerWidget {
-  const _GroupTile({
-    required this.group,
-    required this.downloads,
-  });
+  const _GroupTile({required this.group, required this.downloads});
 
   final DownloadGroup group;
   final List<Download> downloads;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final children =
-        downloads.where((row) => row.groupId == group.id).toList();
+    final children = downloads.where((row) => row.groupId == group.id).toList();
     final displayedBytes = children.fold<int>(
       0,
       (sum, row) => sum + downloadDisplayedBytes(row),
@@ -195,10 +193,7 @@ class _GroupTile extends ConsumerWidget {
 }
 
 class _DownloadTile extends ConsumerWidget {
-  const _DownloadTile({
-    required this.download,
-    this.nested = false,
-  });
+  const _DownloadTile({required this.download, this.nested = false});
 
   final Download download;
   final bool nested;
@@ -212,25 +207,32 @@ class _DownloadTile extends ConsumerWidget {
         ? null
         : displayedBytes / download.totalBytes;
     final percent = progress == null ? null : (progress * 100).round();
-    final canPause = download.state == DownloadState.downloading ||
+    final canPause =
+        download.state == DownloadState.downloading ||
         download.state == DownloadState.queued;
-    final canResume = download.state == DownloadState.paused ||
+    final canResume =
+        download.state == DownloadState.paused ||
         download.state == DownloadState.error;
-    final canCancel = download.state == DownloadState.queued ||
+    final canCancel =
+        download.state == DownloadState.queued ||
         download.state == DownloadState.downloading ||
         download.state == DownloadState.paused;
-    final canRetry = download.state == DownloadState.error ||
+    final canRetry =
+        download.state == DownloadState.error ||
         download.state == DownloadState.cancelled;
     final canRemove = true;
 
     return FutureBuilder<
-        ({
-          int verifiedChunks,
-          int totalChunks,
-          int waitingChunks,
-          int sourceCount,
-        })>(
+      ({
+        int verifiedChunks,
+        int totalChunks,
+        int waitingChunks,
+        int sourceCount,
+        List<DownloadChunk> chunks,
+      })
+    >(
       future: () async {
+        final chunks = await db.downloadChunksForDownload(download.id);
         final stats = await db.downloadChunkStats(download.id);
         final waitingChunks = await db.countWaitingDownloadChunks(download.id);
         final sourceCount = await db.distinctDownloadSourceCount(download.id);
@@ -239,6 +241,7 @@ class _DownloadTile extends ConsumerWidget {
           totalChunks: stats.totalChunks,
           waitingChunks: waitingChunks,
           sourceCount: sourceCount,
+          chunks: chunks,
         );
       }(),
       builder: (context, snapshot) {
@@ -265,7 +268,8 @@ class _DownloadTile extends ConsumerWidget {
           if (chunkLine != null) chunkLine,
           if (sourceLine != null) sourceLine,
           if (waitingLine != null) waitingLine,
-          if (download.errorMessage?.isNotEmpty ?? false) download.errorMessage!,
+          if (download.errorMessage?.isNotEmpty ?? false)
+            download.errorMessage!,
           'Target: ${download.targetPath}',
         ];
 
@@ -276,6 +280,10 @@ class _DownloadTile extends ConsumerWidget {
           title: Text(download.relativePath),
           subtitle: Text(lines.join('\n')),
           isThreeLine: true,
+          onTap: snapshot.hasData && snapshot.data!.chunks.isNotEmpty
+              ? () =>
+                    _showChunkDetails(context, download, snapshot.data!.chunks)
+              : null,
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -299,35 +307,38 @@ class _DownloadTile extends ConsumerWidget {
                     case 'up':
                       await queue.bumpPriority(download.id, 1);
                     case 'remove':
-                      final deleteFiles = download.state !=
-                              DownloadState.complete &&
+                      final deleteFiles =
+                          download.state != DownloadState.complete &&
                           await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Remove download'),
-                              content: Text(
-                                download.state == DownloadState.complete
-                                    ? 'Remove this download record?'
-                                    : 'Remove record and delete partial files?',
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () =>
-                                      Navigator.pop(context, false),
-                                  child: const Text('Cancel'),
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Remove download'),
+                                  content: Text(
+                                    download.state == DownloadState.complete
+                                        ? 'Remove this download record?'
+                                        : 'Remove record and delete partial files?',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, false),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, true),
+                                      child: const Text('Remove'),
+                                    ),
+                                  ],
                                 ),
-                                FilledButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: const Text('Remove'),
-                                ),
-                              ],
-                            ),
-                          ) ==
-                          true;
-                      if (deleteFiles || download.state == DownloadState.complete) {
+                              ) ==
+                              true;
+                      if (deleteFiles ||
+                          download.state == DownloadState.complete) {
                         await queue.remove(
                           download.id,
-                          deletePartial: deleteFiles &&
+                          deletePartial:
+                              deleteFiles &&
                               download.state != DownloadState.complete,
                         );
                       }
@@ -357,4 +368,212 @@ class _DownloadTile extends ConsumerWidget {
       },
     );
   }
+
+  void _showChunkDetails(
+    BuildContext context,
+    Download download,
+    List<DownloadChunk> chunks,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) =>
+          _DownloadChunkSheet(download: download, chunks: chunks),
+    );
+  }
 }
+
+class _DownloadChunkSheet extends StatelessWidget {
+  const _DownloadChunkSheet({required this.download, required this.chunks});
+
+  final Download download;
+  final List<DownloadChunk> chunks;
+
+  @override
+  Widget build(BuildContext context) {
+    final verified = chunks
+        .where((chunk) => chunk.state == DownloadChunkState.verified)
+        .length;
+    final waiting = chunks
+        .where((chunk) => chunk.state == DownloadChunkState.waitingForSource)
+        .length;
+    final failed = chunks
+        .where((chunk) => chunk.state == DownloadChunkState.error)
+        .length;
+    return SafeArea(
+      child: DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.75,
+        maxChildSize: 0.95,
+        builder: (context, controller) {
+          return ListView(
+            controller: controller,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      download.relativePath,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Chunks $verified/${chunks.length}'
+                      '${waiting == 0 ? '' : ' · waiting $waiting'}'
+                      '${failed == 0 ? '' : ' · failed $failed'}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _ChunkLegend(),
+                    const SizedBox(height: 12),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        const cellSize = 12.0;
+                        const spacing = 3.0;
+                        final columns =
+                            (constraints.maxWidth / (cellSize + spacing))
+                                .floor()
+                                .clamp(1, chunks.length);
+                        final rows = (chunks.length / columns).ceil();
+                        return SizedBox(
+                          height: rows * (cellSize + spacing),
+                          child: GridView.builder(
+                            physics: const NeverScrollableScrollPhysics(),
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: columns,
+                                  mainAxisSpacing: spacing,
+                                  crossAxisSpacing: spacing,
+                                ),
+                            itemCount: chunks.length,
+                            itemBuilder: (context, index) {
+                              final chunk = chunks[index];
+                              return Tooltip(
+                                message: [
+                                  'Chunk #${chunk.chunkIndex}',
+                                  _chunkStateLabel(chunk.state),
+                                  formatBytes(chunk.length),
+                                  'offset ${chunk.offset}',
+                                  if (chunk.sourcePeerId != null)
+                                    'source ${chunk.sourcePeerId}',
+                                  _shortHash(chunk.hash),
+                                  if (chunk.errorMessage?.isNotEmpty ?? false)
+                                    chunk.errorMessage!,
+                                ].join('\n'),
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: _chunkColor(context, chunk.state),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Long-press or hover a cell for chunk details.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              ExpansionTile(
+                title: const Text('Advanced chunk list'),
+                children: [
+                  for (final chunk in chunks)
+                    ListTile(
+                      dense: true,
+                      title: Text('Chunk #${chunk.chunkIndex}'),
+                      subtitle: Text(
+                        [
+                          _chunkStateLabel(chunk.state),
+                          formatBytes(chunk.length),
+                          'offset ${chunk.offset}',
+                          if (chunk.sourcePeerId != null)
+                            'source ${chunk.sourcePeerId}',
+                          if (chunk.errorMessage?.isNotEmpty ?? false)
+                            chunk.errorMessage!,
+                        ].join(' · '),
+                      ),
+                      trailing: Text(_shortHash(chunk.hash)),
+                    ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Color _chunkColor(BuildContext context, String state) {
+    final scheme = Theme.of(context).colorScheme;
+    return switch (state) {
+      DownloadChunkState.verified => Colors.green,
+      DownloadChunkState.writing => scheme.primary,
+      DownloadChunkState.waitingForSource => Colors.amber,
+      DownloadChunkState.error => scheme.error,
+      _ => scheme.surfaceContainerHighest,
+    };
+  }
+
+  String _chunkStateLabel(String state) => switch (state) {
+    DownloadChunkState.pending => 'Pending',
+    DownloadChunkState.writing => 'Writing',
+    DownloadChunkState.verified => 'Verified',
+    DownloadChunkState.waitingForSource => 'Waiting for source',
+    DownloadChunkState.error => 'Error',
+    _ => state,
+  };
+}
+
+class _ChunkLegend extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final items = [
+      ('Verified', Colors.green),
+      ('Writing', scheme.primary),
+      ('Waiting', Colors.amber),
+      ('Error', scheme.error),
+      ('Pending', scheme.surfaceContainerHighest),
+    ];
+    return Wrap(
+      spacing: 12,
+      runSpacing: 8,
+      children: [
+        for (final item in items)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: item.$2,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+                child: const SizedBox(width: 12, height: 12),
+              ),
+              const SizedBox(width: 4),
+              Text(item.$1, style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+String _shortHash(String hash) =>
+    hash.length > 12 ? '${hash.substring(0, 12)}…' : hash;
