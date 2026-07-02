@@ -31,7 +31,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -73,6 +73,9 @@ class AppDatabase extends _$AppDatabase {
           'CREATE UNIQUE INDEX IF NOT EXISTS idx_download_chunks_download_index '
           'ON download_chunks (download_id, chunk_index)',
         );
+      }
+      if (from < 8) {
+        await migrator.addColumn(downloads, downloads.inFlightBytes);
       }
     },
   );
@@ -215,7 +218,7 @@ class AppDatabase extends _$AppDatabase {
         .length;
     final downloadedBytes = rows.fold<int>(
       0,
-      (sum, row) => sum + row.downloadedBytes,
+      (sum, row) => sum + row.downloadedBytes + row.inFlightBytes,
     );
     final totalBytes = rows.fold<int>(0, (sum, row) => sum + row.totalBytes);
     final allDone = rows.every(
@@ -246,6 +249,25 @@ class AppDatabase extends _$AppDatabase {
       const DownloadsCompanion(
         state: Value(DownloadState.queued),
         paused: Value(false),
+        inFlightBytes: Value(0),
+      ),
+    );
+  }
+
+  Future<void> clearInFlightBytes(String downloadId) async {
+    await (update(downloads)..where((t) => t.id.equals(downloadId))).write(
+      DownloadsCompanion(
+        inFlightBytes: const Value(0),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> setInFlightBytes(String downloadId, int bytes) async {
+    await (update(downloads)..where((t) => t.id.equals(downloadId))).write(
+      DownloadsCompanion(
+        inFlightBytes: Value(bytes < 0 ? 0 : bytes),
+        updatedAt: Value(DateTime.now()),
       ),
     );
   }
@@ -319,6 +341,7 @@ class AppDatabase extends _$AppDatabase {
     await (update(downloads)..where((t) => t.id.equals(downloadId))).write(
       DownloadsCompanion(
         state: const Value(DownloadState.downloading),
+        inFlightBytes: const Value(0),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -330,6 +353,7 @@ class AppDatabase extends _$AppDatabase {
       DownloadsCompanion(
         state: const Value(DownloadState.paused),
         paused: const Value(true),
+        inFlightBytes: const Value(0),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -342,6 +366,7 @@ class AppDatabase extends _$AppDatabase {
         state: const Value(DownloadState.queued),
         paused: const Value(false),
         errorMessage: const Value(null),
+        inFlightBytes: const Value(0),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -354,6 +379,7 @@ class AppDatabase extends _$AppDatabase {
         state: const Value(DownloadState.queued),
         paused: const Value(false),
         errorMessage: const Value(null),
+        inFlightBytes: const Value(0),
         updatedAt: Value(DateTime.now()),
         completedAt: const Value(null),
       ),
@@ -833,6 +859,7 @@ class AppDatabase extends _$AppDatabase {
       DownloadsCompanion(
         state: const Value(DownloadState.complete),
         downloadedBytes: Value(totalBytes),
+        inFlightBytes: const Value(0),
         errorMessage: const Value(null),
         updatedAt: Value(now),
         completedAt: Value(now),
@@ -848,6 +875,7 @@ class AppDatabase extends _$AppDatabase {
     await (update(downloads)..where((t) => t.id.equals(downloadId))).write(
       DownloadsCompanion(
         state: const Value(DownloadState.error),
+        inFlightBytes: const Value(0),
         errorMessage: Value(message),
         updatedAt: Value(DateTime.now()),
       ),
@@ -862,6 +890,7 @@ class AppDatabase extends _$AppDatabase {
     await (update(downloads)..where((t) => t.id.equals(downloadId))).write(
       DownloadsCompanion(
         state: const Value(DownloadState.cancelled),
+        inFlightBytes: const Value(0),
         errorMessage: const Value(null),
         updatedAt: Value(DateTime.now()),
       ),

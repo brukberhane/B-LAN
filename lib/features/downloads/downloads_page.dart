@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../core/persistence/database.dart';
 import '../../core/protocol/download_states.dart';
+import '../../core/transfers/download_progress.dart';
 import '../../core/ui/format.dart';
 
 enum _DownloadFilter { all, active, completed, error }
@@ -168,9 +169,13 @@ class _GroupTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final children =
         downloads.where((row) => row.groupId == group.id).toList();
+    final displayedBytes = children.fold<int>(
+      0,
+      (sum, row) => sum + downloadDisplayedBytes(row),
+    );
     final progress = group.totalBytes == 0
         ? null
-        : group.downloadedBytes / group.totalBytes;
+        : displayedBytes / group.totalBytes;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -179,7 +184,7 @@ class _GroupTile extends ConsumerWidget {
         subtitle: Text(
           '${DownloadState.label(group.state)} · '
           '${group.completedFiles}/${group.totalFiles} files · '
-          '${formatBytes(group.downloadedBytes)} / ${formatBytes(group.totalBytes)}',
+          '${formatBytes(displayedBytes)} / ${formatBytes(group.totalBytes)}',
         ),
         children: children
             .map((download) => _DownloadTile(download: download, nested: true))
@@ -202,9 +207,10 @@ class _DownloadTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final db = ref.watch(databaseProvider);
     final queue = ref.watch(appServiceProvider).downloadQueue;
+    final displayedBytes = downloadDisplayedBytes(download);
     final progress = download.totalBytes == 0
         ? null
-        : download.downloadedBytes / download.totalBytes;
+        : displayedBytes / download.totalBytes;
     final percent = progress == null ? null : (progress * 100).round();
     final canPause = download.state == DownloadState.downloading ||
         download.state == DownloadState.queued;
@@ -240,8 +246,11 @@ class _DownloadTile extends ConsumerWidget {
           if (download.paused && download.state != DownloadState.paused)
             'Paused flag set',
           if (download.totalBytes > 0)
-            '${formatBytes(download.downloadedBytes)} / ${formatBytes(download.totalBytes)}'
+            '${formatBytes(displayedBytes)} / ${formatBytes(download.totalBytes)}'
                 '${percent == null ? '' : ' ($percent%)'}',
+          if (download.inFlightBytes > 0)
+            'Verified ${formatBytes(download.downloadedBytes)} · '
+                'receiving ${formatBytes(download.inFlightBytes)}',
           if (chunkLine != null) chunkLine,
           if (sourceLine != null) sourceLine,
           if (download.errorMessage?.isNotEmpty ?? false) download.errorMessage!,

@@ -12,6 +12,7 @@ import '../protocol/models.dart';
 import '../protocol/path_safety.dart';
 import '../security/peer_session_store.dart';
 import 'chunk_source_scheduler.dart';
+import 'download_progress.dart';
 import 'remote_manifest_cache.dart';
 
 class TransferClient {
@@ -32,6 +33,7 @@ class TransferClient {
   static const _metadataTimeout = Duration(seconds: 10);
   static const _chunkRequestTimeout = Duration(minutes: 2);
   static const _chunkFetchMaxAttempts = 3;
+  static const _inFlightPersistInterval = Duration(milliseconds: 150);
 
   final Set<String> _cancelledDownloads = {};
   String? _activeDownloadId;
@@ -324,51 +326,63 @@ class TransferClient {
     Future<void> Function(int downloaded, int total)? onProgress,
   }) async {
     final writeLock = _AsyncSerialLock();
+    final progress = _InFlightProgressTracker(
+      db: _db,
+      downloadId: downloadId,
+      totalBytes: manifest.totalBytes,
+      onProgress: onProgress,
+      persistInterval: _inFlightPersistInterval,
+    );
 
-    while (!_isCancelled(downloadId)) {
-      final pending = await _db.pendingDownloadChunks(downloadId);
-      if (pending.isEmpty) {
-        return;
-      }
+    try {
+      while (!_isCancelled(downloadId)) {
+        final pending = await _db.pendingDownloadChunks(downloadId);
+        if (pending.isEmpty) {
+          return;
+        }
 
-      final queue = _ChunkWorkQueue(pending);
-      final workerCount = pending.length < _maxConcurrentChunkDownloads
-          ? pending.length
-          : _maxConcurrentChunkDownloads;
-      Object? firstError;
+        final queue = _ChunkWorkQueue(pending);
+        final workerCount = pending.length < _maxConcurrentChunkDownloads
+            ? pending.length
+            : _maxConcurrentChunkDownloads;
+        Object? firstError;
 
-      Future<void> worker() async {
-        while (!_isCancelled(downloadId)) {
-          final row = await queue.take();
-          if (row == null) {
-            return;
-          }
-          try {
-            await _downloadChunkRow(
-              row: row,
-              partialFile: partialFile,
-              manifest: manifest,
-              fileId: fileId,
-              scheduler: scheduler,
-              primaryToken: primaryToken,
-              chunkRouteOnly: chunkRouteOnly,
-              writeLock: writeLock,
-              downloadId: downloadId,
-              onProgress: onProgress,
-            );
-          } catch (error) {
-            firstError ??= error;
+        Future<void> worker() async {
+          while (!_isCancelled(downloadId)) {
+            final row = await queue.take();
+            if (row == null) {
+              return;
+            }
+            try {
+              await _downloadChunkRow(
+                row: row,
+                partialFile: partialFile,
+                manifest: manifest,
+                fileId: fileId,
+                scheduler: scheduler,
+                primaryToken: primaryToken,
+                chunkRouteOnly: chunkRouteOnly,
+                writeLock: writeLock,
+                downloadId: downloadId,
+                progress: progress,
+              );
+            } catch (error) {
+              progress.clearChunk(row.chunkIndex);
+              firstError ??= error;
+            }
           }
         }
-      }
 
-      await Future.wait(List.generate(workerCount, (_) => worker()));
-      if (_isCancelled(downloadId)) {
-        throw const DownloadCancelled();
+        await Future.wait(List.generate(workerCount, (_) => worker()));
+        if (_isCancelled(downloadId)) {
+          throw const DownloadCancelled();
+        }
+        if (firstError != null) {
+          throw firstError!;
+        }
       }
-      if (firstError != null) {
-        throw firstError!;
-      }
+    } finally {
+      await progress.dispose();
     }
   }
 
@@ -382,7 +396,7 @@ class TransferClient {
     bool chunkRouteOnly = false,
     required _AsyncSerialLock writeLock,
     required String downloadId,
-    Future<void> Function(int downloaded, int total)? onProgress,
+    required _InFlightProgressTracker progress,
   }) async {
     final chunk = manifest.chunks.firstWhere((c) => c.index == row.chunkIndex);
     await _db.markDownloadChunkWriting(row.id);
@@ -403,6 +417,8 @@ class TransferClient {
           chunk: chunk,
           token: token,
           chunkRouteOnly: chunkRouteOnly,
+          downloadId: downloadId,
+          progress: progress,
         );
         if (bytes.length != chunk.length) {
           final message =
@@ -427,10 +443,11 @@ class TransferClient {
 
         scheduler.recordSuccess(peer.id, DateTime.now().difference(started));
         await _db.markDownloadChunkVerified(row.id, sourcePeerId: peer.id);
-        final progress = await _downloadProgress(downloadId);
-        await onProgress?.call(progress, manifest.totalBytes);
+        progress.clearChunk(chunk.index);
+        await progress.persist(force: true);
         return;
       } catch (error) {
+        progress.clearChunk(chunk.index);
         lastError = error;
         if (error is! DownloadCancelled) {
           scheduler.recordFailure(peer.id);
@@ -527,6 +544,8 @@ class TransferClient {
     required String baseUrl,
     required String fileId,
     required ChunkDto chunk,
+    required String downloadId,
+    required _InFlightProgressTracker progress,
     String? token,
     bool chunkRouteOnly = false,
   }) async {
@@ -539,9 +558,15 @@ class TransferClient {
           chunk: chunk,
           token: token,
           chunkRouteOnly: chunkRouteOnly,
+          downloadId: downloadId,
+          progress: progress,
         );
       } catch (error) {
+        progress.clearChunk(chunk.index);
         lastError = error;
+        if (error is DownloadCancelled) {
+          rethrow;
+        }
         if (attempt == _chunkFetchMaxAttempts) {
           break;
         }
@@ -555,6 +580,8 @@ class TransferClient {
     required String baseUrl,
     required String fileId,
     required ChunkDto chunk,
+    required String downloadId,
+    required _InFlightProgressTracker progress,
     String? token,
     bool chunkRouteOnly = false,
   }) async {
@@ -562,13 +589,21 @@ class TransferClient {
       '$baseUrl/chunks',
     ).replace(queryParameters: {'hash': chunk.hash});
     final chunkResponse = await _httpClient
-        .get(chunkUri, headers: _authHeaders(token))
+        .send(
+          http.Request('GET', chunkUri)..headers.addAll(_authHeaders(token)),
+        )
         .timeout(
           _chunkRequestTimeout,
           onTimeout: () => throw TimeoutException('GET $chunkUri timed out'),
         );
     if (chunkResponse.statusCode == 200) {
-      return chunkResponse.bodyBytes;
+      return _readChunkStream(
+        response: chunkResponse,
+        downloadId: downloadId,
+        chunkIndex: chunk.index,
+        expectedLength: chunk.length,
+        progress: progress,
+      );
     }
     if (chunkRouteOnly) {
       throw HttpException('Chunk download failed: ${chunkResponse.statusCode}');
@@ -577,12 +612,12 @@ class TransferClient {
     final end = chunk.offset + chunk.length - 1;
     final fileUri = Uri.parse('$baseUrl/files/$fileId');
     final rangeResponse = await _httpClient
-        .get(
-          fileUri,
-          headers: {
-            ..._authHeaders(token),
-            'Range': 'bytes=${chunk.offset}-$end',
-          },
+        .send(
+          http.Request('GET', fileUri)
+            ..headers.addAll({
+              ..._authHeaders(token),
+              'Range': 'bytes=${chunk.offset}-$end',
+            }),
         )
         .timeout(
           _chunkRequestTimeout,
@@ -593,14 +628,36 @@ class TransferClient {
     if (rangeResponse.statusCode != 206 && rangeResponse.statusCode != 200) {
       throw HttpException('Chunk download failed: ${rangeResponse.statusCode}');
     }
-    return rangeResponse.bodyBytes;
+    return _readChunkStream(
+      response: rangeResponse,
+      downloadId: downloadId,
+      chunkIndex: chunk.index,
+      expectedLength: chunk.length,
+      progress: progress,
+    );
   }
 
-  Future<int> _downloadProgress(String downloadId) async {
-    final download = await (_db.select(
-      _db.downloads,
-    )..where((t) => t.id.equals(downloadId))).getSingle();
-    return download.downloadedBytes;
+  Future<List<int>> _readChunkStream({
+    required http.StreamedResponse response,
+    required String downloadId,
+    required int chunkIndex,
+    required int expectedLength,
+    required _InFlightProgressTracker progress,
+  }) async {
+    final bytes = <int>[];
+    await for (final chunk in response.stream) {
+      if (_isCancelled(downloadId)) {
+        throw const DownloadCancelled();
+      }
+      bytes.addAll(chunk);
+      if (bytes.length > expectedLength) {
+        throw HttpException(
+          'Chunk $chunkIndex length exceeded: ${bytes.length} > $expectedLength',
+        );
+      }
+      progress.reportChunkBytes(chunkIndex, bytes.length);
+    }
+    return bytes;
   }
 
   Future<http.Response> _get(String url, {String? token}) async {
@@ -636,6 +693,90 @@ class TransferClient {
       normalized = '$normalized/';
     }
     return normalized;
+  }
+}
+
+class _InFlightProgressTracker {
+  _InFlightProgressTracker({
+    required AppDatabase db,
+    required String downloadId,
+    required int totalBytes,
+    required this.persistInterval,
+    this.onProgress,
+  }) : _db = db,
+       _downloadId = downloadId,
+       _totalBytes = totalBytes;
+
+  final AppDatabase _db;
+  final String _downloadId;
+  final int _totalBytes;
+  final Duration persistInterval;
+  final Future<void> Function(int downloaded, int total)? onProgress;
+
+  final Map<int, int> _chunkBytes = {};
+  DateTime? _lastPersist;
+  Future<void> _persistChain = Future.value();
+  bool _disposed = false;
+
+  void reportChunkBytes(int chunkIndex, int bytes) {
+    if (_disposed) {
+      return;
+    }
+    _chunkBytes[chunkIndex] = bytes;
+    unawaited(persist());
+  }
+
+  void clearChunk(int chunkIndex) {
+    if (_disposed) {
+      return;
+    }
+    _chunkBytes.remove(chunkIndex);
+    unawaited(persist(force: true));
+  }
+
+  int get totalInFlight =>
+      _chunkBytes.values.fold<int>(0, (sum, value) => sum + value);
+
+  Future<void> persist({bool force = false}) {
+    if (_disposed) {
+      return Future.value();
+    }
+    _persistChain = _persistChain.then((_) async {
+      if (_disposed) {
+        return;
+      }
+      final now = DateTime.now();
+      if (!force &&
+          _lastPersist != null &&
+          now.difference(_lastPersist!) < persistInterval) {
+        return;
+      }
+      _lastPersist = now;
+      await _db.setInFlightBytes(_downloadId, totalInFlight);
+      final row = await _db.downloadById(_downloadId);
+      if (row == null || _disposed) {
+        return;
+      }
+      await onProgress?.call(downloadDisplayedBytes(row), _totalBytes);
+      if (row.groupId != null) {
+        await _db.updateDownloadGroupProgress(row.groupId!);
+      }
+    });
+    return _persistChain;
+  }
+
+  Future<void> dispose() async {
+    if (_disposed) {
+      return;
+    }
+    _disposed = true;
+    _chunkBytes.clear();
+    await _persistChain;
+    try {
+      await _db.clearInFlightBytes(_downloadId);
+    } on Object {
+      // download row may already be gone during teardown
+    }
   }
 }
 

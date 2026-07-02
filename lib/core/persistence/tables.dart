@@ -118,6 +118,8 @@ class Downloads extends Table {
   IntColumn get totalBytes => integer().withDefault(const Constant(0))();
   IntColumn get downloadedBytes =>
       integer().withDefault(const Constant(0))();
+  IntColumn get inFlightBytes =>
+      integer().withDefault(const Constant(0))();
   TextColumn get errorMessage => text().nullable()();
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime)();

@@ -3810,6 +3810,18 @@ class $DownloadsTable extends Downloads
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _inFlightBytesMeta = const VerificationMeta(
+    'inFlightBytes',
+  );
+  @override
+  late final GeneratedColumn<int> inFlightBytes = GeneratedColumn<int>(
+    'in_flight_bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _errorMessageMeta = const VerificationMeta(
     'errorMessage',
   );
@@ -3870,6 +3882,7 @@ class $DownloadsTable extends Downloads
     paused,
     totalBytes,
     downloadedBytes,
+    inFlightBytes,
     errorMessage,
     createdAt,
     updatedAt,
@@ -3974,6 +3987,15 @@ class $DownloadsTable extends Downloads
         ),
       );
     }
+    if (data.containsKey('in_flight_bytes')) {
+      context.handle(
+        _inFlightBytesMeta,
+        inFlightBytes.isAcceptableOrUnknown(
+          data['in_flight_bytes']!,
+          _inFlightBytesMeta,
+        ),
+      );
+    }
     if (data.containsKey('error_message')) {
       context.handle(
         _errorMessageMeta,
@@ -4061,6 +4083,10 @@ class $DownloadsTable extends Downloads
         DriftSqlType.int,
         data['${effectivePrefix}downloaded_bytes'],
       )!,
+      inFlightBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}in_flight_bytes'],
+      )!,
       errorMessage: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}error_message'],
@@ -4099,6 +4125,7 @@ class Download extends DataClass implements Insertable<Download> {
   final bool paused;
   final int totalBytes;
   final int downloadedBytes;
+  final int inFlightBytes;
   final String? errorMessage;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -4116,6 +4143,7 @@ class Download extends DataClass implements Insertable<Download> {
     required this.paused,
     required this.totalBytes,
     required this.downloadedBytes,
+    required this.inFlightBytes,
     this.errorMessage,
     required this.createdAt,
     required this.updatedAt,
@@ -4138,6 +4166,7 @@ class Download extends DataClass implements Insertable<Download> {
     map['paused'] = Variable<bool>(paused);
     map['total_bytes'] = Variable<int>(totalBytes);
     map['downloaded_bytes'] = Variable<int>(downloadedBytes);
+    map['in_flight_bytes'] = Variable<int>(inFlightBytes);
     if (!nullToAbsent || errorMessage != null) {
       map['error_message'] = Variable<String>(errorMessage);
     }
@@ -4165,6 +4194,7 @@ class Download extends DataClass implements Insertable<Download> {
       paused: Value(paused),
       totalBytes: Value(totalBytes),
       downloadedBytes: Value(downloadedBytes),
+      inFlightBytes: Value(inFlightBytes),
       errorMessage: errorMessage == null && nullToAbsent
           ? const Value.absent()
           : Value(errorMessage),
@@ -4194,6 +4224,7 @@ class Download extends DataClass implements Insertable<Download> {
       paused: serializer.fromJson<bool>(json['paused']),
       totalBytes: serializer.fromJson<int>(json['totalBytes']),
       downloadedBytes: serializer.fromJson<int>(json['downloadedBytes']),
+      inFlightBytes: serializer.fromJson<int>(json['inFlightBytes']),
       errorMessage: serializer.fromJson<String?>(json['errorMessage']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -4216,6 +4247,7 @@ class Download extends DataClass implements Insertable<Download> {
       'paused': serializer.toJson<bool>(paused),
       'totalBytes': serializer.toJson<int>(totalBytes),
       'downloadedBytes': serializer.toJson<int>(downloadedBytes),
+      'inFlightBytes': serializer.toJson<int>(inFlightBytes),
       'errorMessage': serializer.toJson<String?>(errorMessage),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -4236,6 +4268,7 @@ class Download extends DataClass implements Insertable<Download> {
     bool? paused,
     int? totalBytes,
     int? downloadedBytes,
+    int? inFlightBytes,
     Value<String?> errorMessage = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -4253,6 +4286,7 @@ class Download extends DataClass implements Insertable<Download> {
     paused: paused ?? this.paused,
     totalBytes: totalBytes ?? this.totalBytes,
     downloadedBytes: downloadedBytes ?? this.downloadedBytes,
+    inFlightBytes: inFlightBytes ?? this.inFlightBytes,
     errorMessage: errorMessage.present ? errorMessage.value : this.errorMessage,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -4280,6 +4314,9 @@ class Download extends DataClass implements Insertable<Download> {
       downloadedBytes: data.downloadedBytes.present
           ? data.downloadedBytes.value
           : this.downloadedBytes,
+      inFlightBytes: data.inFlightBytes.present
+          ? data.inFlightBytes.value
+          : this.inFlightBytes,
       errorMessage: data.errorMessage.present
           ? data.errorMessage.value
           : this.errorMessage,
@@ -4306,6 +4343,7 @@ class Download extends DataClass implements Insertable<Download> {
           ..write('paused: $paused, ')
           ..write('totalBytes: $totalBytes, ')
           ..write('downloadedBytes: $downloadedBytes, ')
+          ..write('inFlightBytes: $inFlightBytes, ')
           ..write('errorMessage: $errorMessage, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -4328,6 +4366,7 @@ class Download extends DataClass implements Insertable<Download> {
     paused,
     totalBytes,
     downloadedBytes,
+    inFlightBytes,
     errorMessage,
     createdAt,
     updatedAt,
@@ -4349,6 +4388,7 @@ class Download extends DataClass implements Insertable<Download> {
           other.paused == this.paused &&
           other.totalBytes == this.totalBytes &&
           other.downloadedBytes == this.downloadedBytes &&
+          other.inFlightBytes == this.inFlightBytes &&
           other.errorMessage == this.errorMessage &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
@@ -4368,6 +4408,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
   final Value<bool> paused;
   final Value<int> totalBytes;
   final Value<int> downloadedBytes;
+  final Value<int> inFlightBytes;
   final Value<String?> errorMessage;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -4386,6 +4427,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     this.paused = const Value.absent(),
     this.totalBytes = const Value.absent(),
     this.downloadedBytes = const Value.absent(),
+    this.inFlightBytes = const Value.absent(),
     this.errorMessage = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -4405,6 +4447,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     this.paused = const Value.absent(),
     this.totalBytes = const Value.absent(),
     this.downloadedBytes = const Value.absent(),
+    this.inFlightBytes = const Value.absent(),
     this.errorMessage = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -4429,6 +4472,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     Expression<bool>? paused,
     Expression<int>? totalBytes,
     Expression<int>? downloadedBytes,
+    Expression<int>? inFlightBytes,
     Expression<String>? errorMessage,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -4448,6 +4492,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
       if (paused != null) 'paused': paused,
       if (totalBytes != null) 'total_bytes': totalBytes,
       if (downloadedBytes != null) 'downloaded_bytes': downloadedBytes,
+      if (inFlightBytes != null) 'in_flight_bytes': inFlightBytes,
       if (errorMessage != null) 'error_message': errorMessage,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -4469,6 +4514,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     Value<bool>? paused,
     Value<int>? totalBytes,
     Value<int>? downloadedBytes,
+    Value<int>? inFlightBytes,
     Value<String?>? errorMessage,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -4488,6 +4534,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
       paused: paused ?? this.paused,
       totalBytes: totalBytes ?? this.totalBytes,
       downloadedBytes: downloadedBytes ?? this.downloadedBytes,
+      inFlightBytes: inFlightBytes ?? this.inFlightBytes,
       errorMessage: errorMessage ?? this.errorMessage,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -4535,6 +4582,9 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     if (downloadedBytes.present) {
       map['downloaded_bytes'] = Variable<int>(downloadedBytes.value);
     }
+    if (inFlightBytes.present) {
+      map['in_flight_bytes'] = Variable<int>(inFlightBytes.value);
+    }
     if (errorMessage.present) {
       map['error_message'] = Variable<String>(errorMessage.value);
     }
@@ -4568,6 +4618,7 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
           ..write('paused: $paused, ')
           ..write('totalBytes: $totalBytes, ')
           ..write('downloadedBytes: $downloadedBytes, ')
+          ..write('inFlightBytes: $inFlightBytes, ')
           ..write('errorMessage: $errorMessage, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -8327,6 +8378,7 @@ typedef $$DownloadsTableCreateCompanionBuilder =
       Value<bool> paused,
       Value<int> totalBytes,
       Value<int> downloadedBytes,
+      Value<int> inFlightBytes,
       Value<String?> errorMessage,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -8347,6 +8399,7 @@ typedef $$DownloadsTableUpdateCompanionBuilder =
       Value<bool> paused,
       Value<int> totalBytes,
       Value<int> downloadedBytes,
+      Value<int> inFlightBytes,
       Value<String?> errorMessage,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -8467,6 +8520,11 @@ class $$DownloadsTableFilterComposer
 
   ColumnFilters<int> get downloadedBytes => $composableBuilder(
     column: $table.downloadedBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get inFlightBytes => $composableBuilder(
+    column: $table.inFlightBytes,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8621,6 +8679,11 @@ class $$DownloadsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get inFlightBytes => $composableBuilder(
+    column: $table.inFlightBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get errorMessage => $composableBuilder(
     column: $table.errorMessage,
     builder: (column) => ColumnOrderings(column),
@@ -8732,6 +8795,11 @@ class $$DownloadsTableAnnotationComposer
 
   GeneratedColumn<int> get downloadedBytes => $composableBuilder(
     column: $table.downloadedBytes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get inFlightBytes => $composableBuilder(
+    column: $table.inFlightBytes,
     builder: (column) => column,
   );
 
@@ -8867,6 +8935,7 @@ class $$DownloadsTableTableManager
                 Value<bool> paused = const Value.absent(),
                 Value<int> totalBytes = const Value.absent(),
                 Value<int> downloadedBytes = const Value.absent(),
+                Value<int> inFlightBytes = const Value.absent(),
                 Value<String?> errorMessage = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -8885,6 +8954,7 @@ class $$DownloadsTableTableManager
                 paused: paused,
                 totalBytes: totalBytes,
                 downloadedBytes: downloadedBytes,
+                inFlightBytes: inFlightBytes,
                 errorMessage: errorMessage,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -8905,6 +8975,7 @@ class $$DownloadsTableTableManager
                 Value<bool> paused = const Value.absent(),
                 Value<int> totalBytes = const Value.absent(),
                 Value<int> downloadedBytes = const Value.absent(),
+                Value<int> inFlightBytes = const Value.absent(),
                 Value<String?> errorMessage = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -8923,6 +8994,7 @@ class $$DownloadsTableTableManager
                 paused: paused,
                 totalBytes: totalBytes,
                 downloadedBytes: downloadedBytes,
+                inFlightBytes: inFlightBytes,
                 errorMessage: errorMessage,
                 createdAt: createdAt,
                 updatedAt: updatedAt,

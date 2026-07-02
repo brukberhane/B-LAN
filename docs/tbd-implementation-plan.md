@@ -17,7 +17,8 @@ Last reviewed: 2026-07-01
 | 8 Multi-source downloads | **complete** | Manifest cache, chunk scheduler, per-chunk source failover, source count in UI |
 | 9 Persistence engine benchmark | **complete** | `tool/db_benchmark.dart`, SQLite baseline JSON, decision doc — keep SQLite |
 | 10 Tests / stress / release | **complete** | Expanded automated suite, stress fixtures, matrix scaffold + README |
-| 11 Persistent download queue and controls | pending | Background queue, pause/resume/cancel/retry, folder groups |
+| 11 Persistent download queue and controls | **complete** | `DownloadQueue` worker, schema v7 groups/queue fields, pause/resume/cancel/retry UI, non-blocking enqueue |
+| 11.5 In-flight chunk progress | **complete** | Schema v8 `inFlightBytes`, streaming chunk fetch, throttled progress tracker, Downloads UI shows mid-chunk progress |
 | 12 Global search and remote index discovery | pending | Search endpoint/UI, indexed filename/path search, cross-path multi-source |
 | 12.5 Chunk-level swarm scheduling | pending | Torrent-like per-chunk availability, rarest-first, dynamic peer striping |
 | 13 Upload visibility and network health | pending | Upload rows, rates, bandwidth/concurrency limits, range hardening |

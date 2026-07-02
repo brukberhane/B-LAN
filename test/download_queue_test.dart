@@ -211,7 +211,7 @@ void main() {
       token: browserToken,
     );
     final id = result.downloadId!;
-    await Future<void>.delayed(const Duration(milliseconds: 80));
+    await Future<void>.delayed(const Duration(milliseconds: 150));
     await slowQueue.cancel(id);
     await Future<void>.delayed(const Duration(milliseconds: 100));
 
@@ -219,6 +219,7 @@ void main() {
     expect(row?.state, DownloadState.cancelled);
     slowClient.close();
     await slowQueue.stop();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
   });
 
   test('retry requeues failed download', () async {
