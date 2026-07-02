@@ -223,13 +223,21 @@ class _DownloadTile extends ConsumerWidget {
         download.state == DownloadState.cancelled;
     final canRemove = true;
 
-    return FutureBuilder<({int verifiedChunks, int totalChunks, int sourceCount})>(
+    return FutureBuilder<
+        ({
+          int verifiedChunks,
+          int totalChunks,
+          int waitingChunks,
+          int sourceCount,
+        })>(
       future: () async {
         final stats = await db.downloadChunkStats(download.id);
+        final waitingChunks = await db.countWaitingDownloadChunks(download.id);
         final sourceCount = await db.distinctDownloadSourceCount(download.id);
         return (
           verifiedChunks: stats.verifiedChunks,
           totalChunks: stats.totalChunks,
+          waitingChunks: waitingChunks,
           sourceCount: sourceCount,
         );
       }(),
@@ -239,6 +247,9 @@ class _DownloadTile extends ConsumerWidget {
             : null;
         final sourceLine = snapshot.hasData && snapshot.data!.sourceCount > 0
             ? 'Sources ${snapshot.data!.sourceCount}'
+            : null;
+        final waitingLine = snapshot.hasData && snapshot.data!.waitingChunks > 0
+            ? 'Waiting for sources: ${snapshot.data!.waitingChunks} chunks'
             : null;
 
         final lines = <String>[
@@ -253,6 +264,7 @@ class _DownloadTile extends ConsumerWidget {
                 'receiving ${formatBytes(download.inFlightBytes)}',
           if (chunkLine != null) chunkLine,
           if (sourceLine != null) sourceLine,
+          if (waitingLine != null) waitingLine,
           if (download.errorMessage?.isNotEmpty ?? false) download.errorMessage!,
           'Target: ${download.targetPath}',
         ];

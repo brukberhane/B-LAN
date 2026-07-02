@@ -25,6 +25,7 @@ part 'database.g.dart';
     RemoteEntriesCache,
     RemoteFiles,
     EntrySearchTokens,
+    RemoteChunkSources,
     DownloadGroups,
     Downloads,
     DownloadChunks,
@@ -35,7 +36,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -96,6 +97,21 @@ class AppDatabase extends _$AppDatabase {
       if (from < 10) {
         await delete(entrySearchTokens).go();
       }
+      if (from < 11) {
+        await migrator.createTable(remoteChunkSources);
+        await customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_remote_chunk_sources_hash '
+          'ON remote_chunk_sources (hash)',
+        );
+        await customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_remote_chunk_sources_peer_hash '
+          'ON remote_chunk_sources (peer_id, hash)',
+        );
+        await customStatement(
+          'CREATE UNIQUE INDEX IF NOT EXISTS idx_remote_chunk_sources_unique '
+          'ON remote_chunk_sources (hash, peer_id, entry_id, chunk_index)',
+        );
+      }
     },
   );
 
@@ -121,6 +137,18 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE INDEX IF NOT EXISTS idx_remote_files_signature '
       'ON remote_files (content_signature)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_remote_chunk_sources_hash '
+      'ON remote_chunk_sources (hash)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_remote_chunk_sources_peer_hash '
+      'ON remote_chunk_sources (peer_id, hash)',
+    );
+    await customStatement(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_remote_chunk_sources_unique '
+      'ON remote_chunk_sources (hash, peer_id, entry_id, chunk_index)',
     );
   }
 
@@ -401,6 +429,7 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> retryDownloadRow(String downloadId) async {
     await _resetInFlightDownloadChunks(downloadId);
+    await requeueWaitingDownloadChunks(downloadId);
     await (update(downloads)..where((t) => t.id.equals(downloadId))).write(
       DownloadsCompanion(
         state: const Value(DownloadState.queued),
@@ -896,6 +925,161 @@ class AppDatabase extends _$AppDatabase {
         .go();
   }
 
+  Future<void> upsertChunkSourcesFromManifest({
+    required String peerId,
+    required String shareId,
+    required String entryId,
+    required FileManifestDto manifest,
+  }) async {
+    final remoteFileId = '$peerId:$shareId:$entryId';
+    final now = DateTime.now();
+    for (final chunk in manifest.chunks) {
+      final existing = await (select(remoteChunkSources)
+            ..where(
+              (t) =>
+                  t.hash.equals(chunk.hash) &
+                  t.peerId.equals(peerId) &
+                  t.entryId.equals(entryId) &
+                  t.chunkIndex.equals(chunk.index),
+            ))
+          .getSingleOrNull();
+      if (existing == null) {
+        await into(remoteChunkSources).insert(
+          RemoteChunkSourcesCompanion.insert(
+            hash: chunk.hash,
+            peerId: peerId,
+            remoteFileId: remoteFileId,
+            shareId: shareId,
+            entryId: entryId,
+            chunkIndex: chunk.index,
+            offset: chunk.offset,
+            length: chunk.length,
+            lastSeen: Value(now),
+          ),
+        );
+        continue;
+      }
+      await (update(remoteChunkSources)..where((t) => t.id.equals(existing.id)))
+          .write(
+        RemoteChunkSourcesCompanion(
+          remoteFileId: Value(remoteFileId),
+          offset: Value(chunk.offset),
+          length: Value(chunk.length),
+          lastSeen: Value(now),
+        ),
+      );
+    }
+  }
+
+  Future<List<RemoteChunkSource>> chunkSourcesForHashes(List<String> hashes) {
+    if (hashes.isEmpty) {
+      return Future.value(const []);
+    }
+    return (select(remoteChunkSources)
+          ..where((t) => t.hash.isIn(hashes))
+          ..orderBy([(t) => OrderingTerm.asc(t.failureCount)]))
+        .get();
+  }
+
+  Future<void> recordChunkSourceSuccess({
+    required int sourceId,
+    required int latencyMs,
+    required int bytesPerSecond,
+  }) async {
+    final row = await (select(remoteChunkSources)
+          ..where((t) => t.id.equals(sourceId)))
+        .getSingleOrNull();
+    if (row == null) {
+      return;
+    }
+    final priorLatency = row.avgLatencyMs;
+    final nextLatency = priorLatency == null
+        ? latencyMs
+        : ((priorLatency * 3) + latencyMs) ~/ 4;
+    final priorSpeed = row.avgBytesPerSecond;
+    final nextSpeed = priorSpeed == null
+        ? bytesPerSecond
+        : ((priorSpeed * 3) + bytesPerSecond) ~/ 4;
+    await (update(remoteChunkSources)..where((t) => t.id.equals(sourceId))).write(
+      RemoteChunkSourcesCompanion(
+        lastSeen: Value(DateTime.now()),
+        lastSuccessAt: Value(DateTime.now()),
+        avgLatencyMs: Value(nextLatency),
+        avgBytesPerSecond: Value(nextSpeed),
+        failureCount: const Value(0),
+      ),
+    );
+  }
+
+  Future<void> recordChunkSourceFailure(
+    int sourceId, {
+    bool hashMismatch = false,
+  }) async {
+    final row = await (select(remoteChunkSources)
+          ..where((t) => t.id.equals(sourceId)))
+        .getSingleOrNull();
+    if (row == null) {
+      return;
+    }
+    final penalty = hashMismatch ? 3 : 1;
+    await (update(remoteChunkSources)..where((t) => t.id.equals(sourceId))).write(
+      RemoteChunkSourcesCompanion(
+        lastSeen: Value(DateTime.now()),
+        failureCount: Value(row.failureCount + penalty),
+      ),
+    );
+  }
+
+  Future<void> purgeStaleChunkSources({
+    Duration maxAge = const Duration(hours: 24),
+  }) async {
+    final cutoff = DateTime.now().subtract(maxAge);
+    await (delete(remoteChunkSources)
+          ..where((t) => t.lastSeen.isSmallerThanValue(cutoff)))
+        .go();
+  }
+
+  Future<List<ChunkAvailabilityDto>> chunkAvailabilityForHashes(
+    List<String> hashes, {
+    int maxResults = 512,
+  }) async {
+    if (hashes.isEmpty || maxResults <= 0) {
+      return const [];
+    }
+    final limited = hashes.length > maxResults
+        ? hashes.sublist(0, maxResults)
+        : hashes;
+    final rows = await customSelect(
+      'SELECT c.hash AS hash, c.entry_id AS entry_id, e.share_id AS share_id, '
+      'c.chunk_index AS chunk_index, c.offset AS offset, c.length AS length '
+      'FROM chunks c '
+      'INNER JOIN entries e ON e.id = c.entry_id '
+      'INNER JOIN shares s ON s.id = e.share_id '
+      'WHERE s.enabled = 1 AND e.hash_status = ? AND c.status = ? '
+      'AND c.hash IN (${List.filled(limited.length, '?').join(',')}) '
+      'LIMIT ?',
+      variables: [
+        const Variable<String>('ready'),
+        const Variable<String>('ready'),
+        ...limited.map(Variable<String>.new),
+        Variable<int>(maxResults),
+      ],
+      readsFrom: {chunks, entries, shares},
+    ).get();
+    return rows
+        .map(
+          (row) => ChunkAvailabilityDto(
+            hash: row.read<String>('hash'),
+            entryId: row.read<String>('entry_id'),
+            shareId: row.read<String>('share_id'),
+            chunkIndex: row.read<int>('chunk_index'),
+            offset: row.read<int>('offset'),
+            length: row.read<int>('length'),
+          ),
+        )
+        .toList();
+  }
+
   Future<Peer?> peerById(String id) =>
       (select(peers)..where((t) => t.id.equals(id))).getSingleOrNull();
 
@@ -1121,6 +1305,36 @@ class AppDatabase extends _$AppDatabase {
         downloadChunks,
       )..where((t) => t.id.equals(chunkRowId))).getSingle()).downloadId,
     );
+  }
+
+  Future<void> markDownloadChunkWaitingForSource(int chunkRowId) async {
+    await (update(downloadChunks)..where((t) => t.id.equals(chunkRowId))).write(
+      const DownloadChunksCompanion(
+        state: Value(DownloadChunkState.waitingForSource),
+        errorMessage: Value(null),
+      ),
+    );
+  }
+
+  Future<int> countWaitingDownloadChunks(String downloadId) async {
+    final rows = await downloadChunksForDownload(downloadId);
+    return rows
+        .where((row) => row.state == DownloadChunkState.waitingForSource)
+        .length;
+  }
+
+  Future<void> requeueWaitingDownloadChunks(String downloadId) async {
+    await (update(downloadChunks)..where(
+          (t) =>
+              t.downloadId.equals(downloadId) &
+              t.state.equals(DownloadChunkState.waitingForSource),
+        ))
+        .write(
+          const DownloadChunksCompanion(
+            state: Value(DownloadChunkState.pending),
+            errorMessage: Value(null),
+          ),
+        );
   }
 
   Future<void> markDownloadChunkError(int chunkRowId, String message) async {

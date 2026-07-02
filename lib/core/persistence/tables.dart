@@ -174,6 +174,24 @@ class EntrySearchTokens extends Table {
   Set<Column<Object>> get primaryKey => {entryId, token};
 }
 
+class RemoteChunkSources extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get hash => text()();
+  TextColumn get peerId => text().references(Peers, #id)();
+  TextColumn get remoteFileId => text().references(RemoteFiles, #id)();
+  TextColumn get shareId => text()();
+  TextColumn get entryId => text()();
+  IntColumn get chunkIndex => integer()();
+  IntColumn get offset => integer()();
+  IntColumn get length => integer()();
+  DateTimeColumn get lastSeen =>
+      dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get lastSuccessAt => dateTime().nullable()();
+  IntColumn get failureCount => integer().withDefault(const Constant(0))();
+  IntColumn get avgLatencyMs => integer().nullable()();
+  IntColumn get avgBytesPerSecond => integer().nullable()();
+}
+
 class Transfers extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get direction => text()();

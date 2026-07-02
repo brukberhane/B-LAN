@@ -22,5 +22,6 @@ abstract final class DownloadChunkState {
   static const pending = 'pending';
   static const writing = 'writing';
   static const verified = 'verified';
+  static const waitingForSource = 'waiting_for_source';
   static const error = 'error';
 }

@@ -16,6 +16,8 @@ import '../security/peer_session_store.dart';
 import 'chunk_source_scheduler.dart';
 import 'download_progress.dart';
 import 'remote_manifest_cache.dart';
+import 'swarm_availability_store.dart';
+import 'swarm_scheduler.dart';
 
 class TransferClient {
   TransferClient(
@@ -25,13 +27,15 @@ class TransferClient {
   }) : _httpClient = httpClient ?? http.Client(),
        _maxConcurrentChunkDownloads =
            maxConcurrentChunkDownloads ?? maxConcurrentDownloads,
-       _manifestCache = RemoteManifestCache(_db);
+       _manifestCache = RemoteManifestCache(_db),
+       _swarmStore = SwarmAvailabilityStore(_db);
 
   final AppDatabase _db;
   final http.Client _httpClient;
   final int _maxConcurrentChunkDownloads;
   final PeerSessionStore _sessions = PeerSessionStore();
   final RemoteManifestCache _manifestCache;
+  final SwarmAvailabilityStore _swarmStore;
   static const _metadataTimeout = Duration(seconds: 10);
   static const _chunkRequestTimeout = Duration(minutes: 2);
   static const _chunkFetchMaxAttempts = 3;
@@ -189,6 +193,49 @@ class TransferClient {
       contentSignature: signature,
       manifestJson: jsonEncode(manifest.toJson()),
     );
+    final peer = await _db.peerById(peerId);
+    if (peer != null) {
+      await _swarmStore.ingestManifest(
+        peer: peer,
+        shareId: shareId,
+        manifest: manifest,
+      );
+    }
+  }
+
+  Future<ChunkAvailabilityResponseDto> probeChunkAvailability(
+    String baseUrl, {
+    required List<String> hashes,
+    String? token,
+    int maxResults = 512,
+  }) async {
+    final response = await _httpClient
+        .post(
+          Uri.parse('$baseUrl/chunks/availability'),
+          headers: {
+            'content-type': 'application/json',
+            ..._authHeaders(token),
+          },
+          body: jsonEncode(
+            ChunkAvailabilityRequestDto(
+              hashes: hashes,
+              maxResults: maxResults,
+            ).toJson(),
+          ),
+        )
+        .timeout(
+          _metadataTimeout,
+          onTimeout: () =>
+              throw TimeoutException('POST $baseUrl/chunks/availability timed out'),
+        );
+    if (response.statusCode >= 400) {
+      throw HttpException(
+        'Chunk availability failed: ${response.statusCode}',
+      );
+    }
+    return ChunkAvailabilityResponseDto.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
   }
 
   /// Breadth-first recursive listing; returns file entries only.
@@ -289,21 +336,33 @@ class TransferClient {
     }
 
     final relativePath = normalizeRemoteEntryPath(entry.path);
-    await _manifestCache.put(
+    await cacheRemoteManifest(
       peerId: peer.id,
       shareId: shareId,
       relativePath: relativePath,
       manifest: manifest,
     );
-    final sourcePeers = await _manifestCache.matchingPeers(
+    await _swarmStore.ingestSignaturePeers(manifest);
+    await _probeMissingSwarmSources(
+      manifest,
+      primaryPeer: peer,
+      token: token,
+    );
+    final swarmCandidates = await _swarmStore.candidatesForManifest(manifest);
+    final swarmScheduler = SwarmScheduler(swarmCandidates);
+    final legacyPeers = await _manifestCache.matchingPeers(
       shareId: shareId,
       relativePath: relativePath,
       manifest: manifest,
       primaryPeerId: peer.id,
     );
-    final peers = sourcePeers.isEmpty ? [peer] : sourcePeers;
-    final scheduler = ChunkSourceScheduler(peers);
-    final chunkRouteOnly = peers.length > 1;
+    final peers = legacyPeers.isEmpty ? [peer] : legacyPeers;
+    final legacyScheduler = ChunkSourceScheduler(peers);
+    final swarmPeerIds = swarmCandidates.values
+        .expand((rows) => rows)
+        .map((candidate) => candidate.peer.id)
+        .toSet();
+    final chunkRouteOnly = swarmPeerIds.length > 1 || peers.length > 1;
     final targetPath = localTargetPath(targetDirectory, relativePath);
     final partialPath = '$targetPath.partial';
     final finalFile = File(targetPath);
@@ -362,11 +421,30 @@ class TransferClient {
         partialFile: partialFile,
         manifest: manifest,
         fileId: entry.id,
-        scheduler: scheduler,
+        swarmScheduler: swarmScheduler,
+        legacyScheduler: legacyScheduler,
         primaryToken: token,
         chunkRouteOnly: chunkRouteOnly,
         onProgress: onProgress,
       );
+
+      final chunkRows = await _db.downloadChunksForDownload(downloadId);
+      final allVerified = chunkRows.every(
+        (row) => row.state == DownloadChunkState.verified,
+      );
+      final waitingCount = chunkRows
+          .where((row) => row.state == DownloadChunkState.waitingForSource)
+          .length;
+      final errorCount = chunkRows
+          .where((row) => row.state == DownloadChunkState.error)
+          .length;
+
+      if (!allVerified) {
+        if (waitingCount > 0 && errorCount == 0) {
+          return;
+        }
+        throw HttpException('Download incomplete');
+      }
 
       if (await partialFile.exists()) {
         if (await finalFile.exists()) {
@@ -390,12 +468,65 @@ class TransferClient {
     }
   }
 
+  Future<void> _probeMissingSwarmSources(
+    FileManifestDto manifest, {
+    required Peer primaryPeer,
+    String? token,
+  }) async {
+    final candidates = await _swarmStore.candidatesForManifest(manifest);
+    final missingHashes = <String>{};
+    for (final chunk in manifest.chunks) {
+      if ((candidates[chunk.index] ?? []).isEmpty) {
+        missingHashes.add(chunk.hash);
+      }
+    }
+    if (missingHashes.isEmpty) {
+      return;
+    }
+
+    final signature = contentSignatureFromManifest(manifest);
+    final files = await _db.remoteFilesBySignature(signature);
+    final probedPeers = <String>{};
+    var probes = 0;
+    const maxProbes = 4;
+
+    for (final file in files) {
+      if (probes >= maxProbes) {
+        break;
+      }
+      if (file.peerId == primaryPeer.id || probedPeers.contains(file.peerId)) {
+        continue;
+      }
+      final peer = await _db.peerById(file.peerId);
+      if (peer == null) {
+        continue;
+      }
+      probedPeers.add(peer.id);
+      probes++;
+      try {
+        final peerToken = await _tokenForPeer(peer, primaryToken: token);
+        final response = await probeChunkAvailability(
+          _peerBaseUrl(peer),
+          hashes: missingHashes.toList(),
+          token: peerToken,
+        );
+        await _swarmStore.ingestAvailabilityRows(
+          peer: peer,
+          rows: response.available,
+        );
+      } catch (_) {
+        // best-effort probe
+      }
+    }
+  }
+
   Future<void> _downloadPendingChunks({
     required String downloadId,
     required File partialFile,
     required FileManifestDto manifest,
     required String fileId,
-    required ChunkSourceScheduler scheduler,
+    required SwarmScheduler swarmScheduler,
+    required ChunkSourceScheduler legacyScheduler,
     String? primaryToken,
     bool chunkRouteOnly = false,
     Future<void> Function(int downloaded, int total)? onProgress,
@@ -411,10 +542,19 @@ class TransferClient {
 
     try {
       while (!_isCancelled(downloadId)) {
-        final pending = await _db.pendingDownloadChunks(downloadId);
+        var pending = await _db.pendingDownloadChunks(downloadId);
         if (pending.isEmpty) {
           return;
         }
+        final order = swarmScheduler.sortPendingChunkIndices(
+          pending.map((row) => row.chunkIndex),
+        );
+        pending = [...pending]
+          ..sort(
+            (a, b) => order.indexOf(a.chunkIndex).compareTo(
+                  order.indexOf(b.chunkIndex),
+                ),
+          );
 
         final queue = _ChunkWorkQueue(pending);
         final workerCount = pending.length < _maxConcurrentChunkDownloads
@@ -434,7 +574,8 @@ class TransferClient {
                 partialFile: partialFile,
                 manifest: manifest,
                 fileId: fileId,
-                scheduler: scheduler,
+                swarmScheduler: swarmScheduler,
+                legacyScheduler: legacyScheduler,
                 primaryToken: primaryToken,
                 chunkRouteOnly: chunkRouteOnly,
                 writeLock: writeLock,
@@ -466,7 +607,8 @@ class TransferClient {
     required File partialFile,
     required FileManifestDto manifest,
     required String fileId,
-    required ChunkSourceScheduler scheduler,
+    required SwarmScheduler swarmScheduler,
+    required ChunkSourceScheduler legacyScheduler,
     String? primaryToken,
     bool chunkRouteOnly = false,
     required _AsyncSerialLock writeLock,
@@ -476,8 +618,95 @@ class TransferClient {
     final chunk = manifest.chunks.firstWhere((c) => c.index == row.chunkIndex);
     await _db.markDownloadChunkWriting(row.id);
 
+    final triedSources = <String>{};
     Object? lastError;
-    for (final peer in scheduler.rankedPeers()) {
+    while (!_isCancelled(downloadId)) {
+      final candidate = swarmScheduler.pickCandidate(
+        chunk.index,
+        excludeSourceKeys: triedSources,
+      );
+      if (candidate == null) {
+        break;
+      }
+      triedSources.add(candidate.sourceKey);
+      swarmScheduler.beginFetch(candidate.peer.id);
+      final token = await _tokenForPeer(candidate.peer, primaryToken: primaryToken);
+      final baseUrl = _peerBaseUrl(candidate.peer);
+      final started = DateTime.now();
+      try {
+        final bytes = await _fetchChunkBytesWithRetry(
+          baseUrl: baseUrl,
+          fileId: candidate.entryId,
+          chunk: chunk,
+          token: token,
+          chunkRouteOnly: true,
+          downloadId: downloadId,
+          progress: progress,
+        );
+        if (bytes.length != chunk.length) {
+          throw HttpException(
+            'Chunk ${chunk.index} length mismatch: ${bytes.length} != ${chunk.length}',
+          );
+        }
+        if (hashChunkBytes(bytes) != chunk.hash) {
+          swarmScheduler.recordFailure(candidate.peer.id, hashMismatch: true);
+          await _db.recordChunkSourceFailure(
+            candidate.sourceId,
+            hashMismatch: true,
+          );
+          throw const HttpException('Chunk hash mismatch');
+        }
+
+        await writeLock.run(() async {
+          final handle = await partialFile.open(mode: FileMode.append);
+          try {
+            await handle.setPosition(chunk.offset);
+            await handle.writeFrom(bytes);
+            await handle.flush();
+          } finally {
+            await handle.close();
+          }
+        });
+
+        final elapsed = DateTime.now().difference(started);
+        swarmScheduler.recordSuccess(candidate.peer.id, elapsed);
+        final bytesPerSecond = elapsed.inMilliseconds == 0
+            ? bytes.length
+            : (bytes.length * 1000) ~/ elapsed.inMilliseconds;
+        await _db.recordChunkSourceSuccess(
+          sourceId: candidate.sourceId,
+          latencyMs: elapsed.inMilliseconds,
+          bytesPerSecond: bytesPerSecond,
+        );
+        await _db.markDownloadChunkVerified(
+          row.id,
+          sourcePeerId: candidate.peer.id,
+        );
+        progress.clearChunk(chunk.index);
+        await progress.persist(force: true);
+        return;
+      } catch (error) {
+        progress.clearChunk(chunk.index);
+        lastError = error;
+        if (error is DownloadCancelled) {
+          rethrow;
+        }
+        swarmScheduler.recordFailure(
+          candidate.peer.id,
+          hashMismatch: error is HttpException &&
+              error.message == 'Chunk hash mismatch',
+        );
+        await _db.recordChunkSourceFailure(
+          candidate.sourceId,
+          hashMismatch: error is HttpException &&
+              error.message == 'Chunk hash mismatch',
+        );
+      } finally {
+        swarmScheduler.endFetch(candidate.peer.id);
+      }
+    }
+
+    for (final peer in legacyScheduler.rankedPeers()) {
       if (_isCancelled(downloadId)) {
         throw const DownloadCancelled();
       }
@@ -501,7 +730,7 @@ class TransferClient {
           throw HttpException(message);
         }
         if (hashChunkBytes(bytes) != chunk.hash) {
-          scheduler.recordFailure(peer.id, hashMismatch: true);
+          legacyScheduler.recordFailure(peer.id, hashMismatch: true);
           throw const HttpException('Chunk hash mismatch');
         }
 
@@ -516,7 +745,7 @@ class TransferClient {
           }
         });
 
-        scheduler.recordSuccess(peer.id, DateTime.now().difference(started));
+        legacyScheduler.recordSuccess(peer.id, DateTime.now().difference(started));
         await _db.markDownloadChunkVerified(row.id, sourcePeerId: peer.id);
         progress.clearChunk(chunk.index);
         await progress.persist(force: true);
@@ -525,11 +754,16 @@ class TransferClient {
         progress.clearChunk(chunk.index);
         lastError = error;
         if (error is! DownloadCancelled) {
-          scheduler.recordFailure(peer.id);
+          legacyScheduler.recordFailure(peer.id);
         } else {
           rethrow;
         }
       }
+    }
+
+    if (triedSources.isEmpty && lastError == null) {
+      await _db.markDownloadChunkWaitingForSource(row.id);
+      return;
     }
 
     final message = 'Chunk ${chunk.index} failed from all sources: $lastError';
@@ -749,6 +983,8 @@ class TransferClient {
   }
 
   void close() => _httpClient.close();
+
+  Future<void> warmSwarmCache() => _swarmStore.backfillFromRemoteEntriesCache();
 
   String _peerBaseUrl(Peer peer) => 'http://${peer.host}:${peer.port}';
 

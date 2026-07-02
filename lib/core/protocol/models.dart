@@ -332,6 +332,83 @@ class ShareManifestPageDto {
       );
 }
 
+class ChunkAvailabilityRequestDto {
+  const ChunkAvailabilityRequestDto({
+    required this.hashes,
+    this.maxResults = 512,
+  });
+
+  final List<String> hashes;
+  final int maxResults;
+
+  Map<String, dynamic> toJson() => {
+        'hashes': hashes,
+        'maxResults': maxResults,
+      };
+
+  factory ChunkAvailabilityRequestDto.fromJson(Map<String, dynamic> json) =>
+      ChunkAvailabilityRequestDto(
+        hashes: (json['hashes'] as List<dynamic>? ?? const [])
+            .map((e) => e as String)
+            .toList(),
+        maxResults: json['maxResults'] as int? ?? 512,
+      );
+}
+
+class ChunkAvailabilityDto {
+  const ChunkAvailabilityDto({
+    required this.hash,
+    required this.entryId,
+    required this.shareId,
+    required this.offset,
+    required this.length,
+    required this.chunkIndex,
+  });
+
+  final String hash;
+  final String entryId;
+  final String shareId;
+  final int offset;
+  final int length;
+  final int chunkIndex;
+
+  Map<String, dynamic> toJson() => {
+        'hash': hash,
+        'entryId': entryId,
+        'shareId': shareId,
+        'offset': offset,
+        'length': length,
+        'chunkIndex': chunkIndex,
+      };
+
+  factory ChunkAvailabilityDto.fromJson(Map<String, dynamic> json) =>
+      ChunkAvailabilityDto(
+        hash: json['hash'] as String,
+        entryId: json['entryId'] as String,
+        shareId: json['shareId'] as String,
+        offset: json['offset'] as int? ?? 0,
+        length: json['length'] as int? ?? 0,
+        chunkIndex: json['chunkIndex'] as int? ?? 0,
+      );
+}
+
+class ChunkAvailabilityResponseDto {
+  const ChunkAvailabilityResponseDto({required this.available});
+
+  final List<ChunkAvailabilityDto> available;
+
+  Map<String, dynamic> toJson() => {
+        'available': available.map((e) => e.toJson()).toList(),
+      };
+
+  factory ChunkAvailabilityResponseDto.fromJson(Map<String, dynamic> json) =>
+      ChunkAvailabilityResponseDto(
+        available: (json['available'] as List<dynamic>? ?? const [])
+            .map((e) => ChunkAvailabilityDto.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
 class DiscoveredPeer {
   const DiscoveredPeer({
     required this.peerId,

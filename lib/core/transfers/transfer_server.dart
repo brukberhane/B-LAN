@@ -46,7 +46,8 @@ class TransferServer {
       ..get('/manifest/files/<fileId>', _manifestFile)
       ..get('/files/<fileId>', _file)
       ..get('/chunks', _chunkByQuery)
-      ..get('/chunks/<hash>', _chunk);
+      ..get('/chunks/<hash>', _chunk)
+      ..post('/chunks/availability', _chunkAvailability);
 
     final handler = Pipeline()
         .addMiddleware(_corsMiddleware)
@@ -147,7 +148,14 @@ class TransferServer {
       fingerprint: identity.fingerprint,
       publicKey: identity.publicKeyBase64,
       identityVersion: identity.identityVersion,
-      capabilities: const ['shares', 'browse', 'download', 'range', 'search'],
+      capabilities: const [
+        'shares',
+        'browse',
+        'download',
+        'range',
+        'search',
+        'chunk_availability',
+      ],
     );
     return Response.ok(
       jsonEncode(body.toJson()),
@@ -262,6 +270,39 @@ class TransferServer {
     );
     return Response.ok(
       jsonEncode(response.toJson()),
+      headers: {'content-type': 'application/json'},
+    );
+  }
+
+  Future<Response> _chunkAvailability(Request request) async {
+    final raw = await request.readAsString();
+    Map<String, dynamic> payload;
+    try {
+      payload = jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return Response.badRequest(body: 'Invalid JSON');
+    }
+    final body = ChunkAvailabilityRequestDto.fromJson(payload);
+    if (body.hashes.isEmpty) {
+      return Response.ok(
+        jsonEncode(
+          const ChunkAvailabilityResponseDto(available: []).toJson(),
+        ),
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    if (body.hashes.length > 512) {
+      return Response.badRequest(body: 'Too many hashes (max 512)');
+    }
+    final maxResults = body.maxResults.clamp(1, 512);
+    final available = await _db.chunkAvailabilityForHashes(
+      body.hashes,
+      maxResults: maxResults,
+    );
+    return Response.ok(
+      jsonEncode(
+        ChunkAvailabilityResponseDto(available: available).toJson(),
+      ),
       headers: {'content-type': 'application/json'},
     );
   }

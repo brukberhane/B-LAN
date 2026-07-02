@@ -4098,6 +4098,826 @@ class EntrySearchTokensCompanion extends UpdateCompanion<EntrySearchToken> {
   }
 }
 
+class $RemoteChunkSourcesTable extends RemoteChunkSources
+    with TableInfo<$RemoteChunkSourcesTable, RemoteChunkSource> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RemoteChunkSourcesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _hashMeta = const VerificationMeta('hash');
+  @override
+  late final GeneratedColumn<String> hash = GeneratedColumn<String>(
+    'hash',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _peerIdMeta = const VerificationMeta('peerId');
+  @override
+  late final GeneratedColumn<String> peerId = GeneratedColumn<String>(
+    'peer_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES peers (id)',
+    ),
+  );
+  static const VerificationMeta _remoteFileIdMeta = const VerificationMeta(
+    'remoteFileId',
+  );
+  @override
+  late final GeneratedColumn<String> remoteFileId = GeneratedColumn<String>(
+    'remote_file_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES remote_files (id)',
+    ),
+  );
+  static const VerificationMeta _shareIdMeta = const VerificationMeta(
+    'shareId',
+  );
+  @override
+  late final GeneratedColumn<String> shareId = GeneratedColumn<String>(
+    'share_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _entryIdMeta = const VerificationMeta(
+    'entryId',
+  );
+  @override
+  late final GeneratedColumn<String> entryId = GeneratedColumn<String>(
+    'entry_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _chunkIndexMeta = const VerificationMeta(
+    'chunkIndex',
+  );
+  @override
+  late final GeneratedColumn<int> chunkIndex = GeneratedColumn<int>(
+    'chunk_index',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _offsetMeta = const VerificationMeta('offset');
+  @override
+  late final GeneratedColumn<int> offset = GeneratedColumn<int>(
+    'offset',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lengthMeta = const VerificationMeta('length');
+  @override
+  late final GeneratedColumn<int> length = GeneratedColumn<int>(
+    'length',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lastSeenMeta = const VerificationMeta(
+    'lastSeen',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastSeen = GeneratedColumn<DateTime>(
+    'last_seen',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _lastSuccessAtMeta = const VerificationMeta(
+    'lastSuccessAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastSuccessAt =
+      GeneratedColumn<DateTime>(
+        'last_success_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _failureCountMeta = const VerificationMeta(
+    'failureCount',
+  );
+  @override
+  late final GeneratedColumn<int> failureCount = GeneratedColumn<int>(
+    'failure_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _avgLatencyMsMeta = const VerificationMeta(
+    'avgLatencyMs',
+  );
+  @override
+  late final GeneratedColumn<int> avgLatencyMs = GeneratedColumn<int>(
+    'avg_latency_ms',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _avgBytesPerSecondMeta = const VerificationMeta(
+    'avgBytesPerSecond',
+  );
+  @override
+  late final GeneratedColumn<int> avgBytesPerSecond = GeneratedColumn<int>(
+    'avg_bytes_per_second',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    hash,
+    peerId,
+    remoteFileId,
+    shareId,
+    entryId,
+    chunkIndex,
+    offset,
+    length,
+    lastSeen,
+    lastSuccessAt,
+    failureCount,
+    avgLatencyMs,
+    avgBytesPerSecond,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'remote_chunk_sources';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RemoteChunkSource> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('hash')) {
+      context.handle(
+        _hashMeta,
+        hash.isAcceptableOrUnknown(data['hash']!, _hashMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_hashMeta);
+    }
+    if (data.containsKey('peer_id')) {
+      context.handle(
+        _peerIdMeta,
+        peerId.isAcceptableOrUnknown(data['peer_id']!, _peerIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_peerIdMeta);
+    }
+    if (data.containsKey('remote_file_id')) {
+      context.handle(
+        _remoteFileIdMeta,
+        remoteFileId.isAcceptableOrUnknown(
+          data['remote_file_id']!,
+          _remoteFileIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_remoteFileIdMeta);
+    }
+    if (data.containsKey('share_id')) {
+      context.handle(
+        _shareIdMeta,
+        shareId.isAcceptableOrUnknown(data['share_id']!, _shareIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_shareIdMeta);
+    }
+    if (data.containsKey('entry_id')) {
+      context.handle(
+        _entryIdMeta,
+        entryId.isAcceptableOrUnknown(data['entry_id']!, _entryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entryIdMeta);
+    }
+    if (data.containsKey('chunk_index')) {
+      context.handle(
+        _chunkIndexMeta,
+        chunkIndex.isAcceptableOrUnknown(data['chunk_index']!, _chunkIndexMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_chunkIndexMeta);
+    }
+    if (data.containsKey('offset')) {
+      context.handle(
+        _offsetMeta,
+        offset.isAcceptableOrUnknown(data['offset']!, _offsetMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_offsetMeta);
+    }
+    if (data.containsKey('length')) {
+      context.handle(
+        _lengthMeta,
+        length.isAcceptableOrUnknown(data['length']!, _lengthMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_lengthMeta);
+    }
+    if (data.containsKey('last_seen')) {
+      context.handle(
+        _lastSeenMeta,
+        lastSeen.isAcceptableOrUnknown(data['last_seen']!, _lastSeenMeta),
+      );
+    }
+    if (data.containsKey('last_success_at')) {
+      context.handle(
+        _lastSuccessAtMeta,
+        lastSuccessAt.isAcceptableOrUnknown(
+          data['last_success_at']!,
+          _lastSuccessAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('failure_count')) {
+      context.handle(
+        _failureCountMeta,
+        failureCount.isAcceptableOrUnknown(
+          data['failure_count']!,
+          _failureCountMeta,
+        ),
+      );
+    }
+    if (data.containsKey('avg_latency_ms')) {
+      context.handle(
+        _avgLatencyMsMeta,
+        avgLatencyMs.isAcceptableOrUnknown(
+          data['avg_latency_ms']!,
+          _avgLatencyMsMeta,
+        ),
+      );
+    }
+    if (data.containsKey('avg_bytes_per_second')) {
+      context.handle(
+        _avgBytesPerSecondMeta,
+        avgBytesPerSecond.isAcceptableOrUnknown(
+          data['avg_bytes_per_second']!,
+          _avgBytesPerSecondMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  RemoteChunkSource map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RemoteChunkSource(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      hash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}hash'],
+      )!,
+      peerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}peer_id'],
+      )!,
+      remoteFileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}remote_file_id'],
+      )!,
+      shareId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}share_id'],
+      )!,
+      entryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entry_id'],
+      )!,
+      chunkIndex: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}chunk_index'],
+      )!,
+      offset: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}offset'],
+      )!,
+      length: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}length'],
+      )!,
+      lastSeen: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_seen'],
+      )!,
+      lastSuccessAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_success_at'],
+      ),
+      failureCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}failure_count'],
+      )!,
+      avgLatencyMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}avg_latency_ms'],
+      ),
+      avgBytesPerSecond: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}avg_bytes_per_second'],
+      ),
+    );
+  }
+
+  @override
+  $RemoteChunkSourcesTable createAlias(String alias) {
+    return $RemoteChunkSourcesTable(attachedDatabase, alias);
+  }
+}
+
+class RemoteChunkSource extends DataClass
+    implements Insertable<RemoteChunkSource> {
+  final int id;
+  final String hash;
+  final String peerId;
+  final String remoteFileId;
+  final String shareId;
+  final String entryId;
+  final int chunkIndex;
+  final int offset;
+  final int length;
+  final DateTime lastSeen;
+  final DateTime? lastSuccessAt;
+  final int failureCount;
+  final int? avgLatencyMs;
+  final int? avgBytesPerSecond;
+  const RemoteChunkSource({
+    required this.id,
+    required this.hash,
+    required this.peerId,
+    required this.remoteFileId,
+    required this.shareId,
+    required this.entryId,
+    required this.chunkIndex,
+    required this.offset,
+    required this.length,
+    required this.lastSeen,
+    this.lastSuccessAt,
+    required this.failureCount,
+    this.avgLatencyMs,
+    this.avgBytesPerSecond,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['hash'] = Variable<String>(hash);
+    map['peer_id'] = Variable<String>(peerId);
+    map['remote_file_id'] = Variable<String>(remoteFileId);
+    map['share_id'] = Variable<String>(shareId);
+    map['entry_id'] = Variable<String>(entryId);
+    map['chunk_index'] = Variable<int>(chunkIndex);
+    map['offset'] = Variable<int>(offset);
+    map['length'] = Variable<int>(length);
+    map['last_seen'] = Variable<DateTime>(lastSeen);
+    if (!nullToAbsent || lastSuccessAt != null) {
+      map['last_success_at'] = Variable<DateTime>(lastSuccessAt);
+    }
+    map['failure_count'] = Variable<int>(failureCount);
+    if (!nullToAbsent || avgLatencyMs != null) {
+      map['avg_latency_ms'] = Variable<int>(avgLatencyMs);
+    }
+    if (!nullToAbsent || avgBytesPerSecond != null) {
+      map['avg_bytes_per_second'] = Variable<int>(avgBytesPerSecond);
+    }
+    return map;
+  }
+
+  RemoteChunkSourcesCompanion toCompanion(bool nullToAbsent) {
+    return RemoteChunkSourcesCompanion(
+      id: Value(id),
+      hash: Value(hash),
+      peerId: Value(peerId),
+      remoteFileId: Value(remoteFileId),
+      shareId: Value(shareId),
+      entryId: Value(entryId),
+      chunkIndex: Value(chunkIndex),
+      offset: Value(offset),
+      length: Value(length),
+      lastSeen: Value(lastSeen),
+      lastSuccessAt: lastSuccessAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastSuccessAt),
+      failureCount: Value(failureCount),
+      avgLatencyMs: avgLatencyMs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(avgLatencyMs),
+      avgBytesPerSecond: avgBytesPerSecond == null && nullToAbsent
+          ? const Value.absent()
+          : Value(avgBytesPerSecond),
+    );
+  }
+
+  factory RemoteChunkSource.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RemoteChunkSource(
+      id: serializer.fromJson<int>(json['id']),
+      hash: serializer.fromJson<String>(json['hash']),
+      peerId: serializer.fromJson<String>(json['peerId']),
+      remoteFileId: serializer.fromJson<String>(json['remoteFileId']),
+      shareId: serializer.fromJson<String>(json['shareId']),
+      entryId: serializer.fromJson<String>(json['entryId']),
+      chunkIndex: serializer.fromJson<int>(json['chunkIndex']),
+      offset: serializer.fromJson<int>(json['offset']),
+      length: serializer.fromJson<int>(json['length']),
+      lastSeen: serializer.fromJson<DateTime>(json['lastSeen']),
+      lastSuccessAt: serializer.fromJson<DateTime?>(json['lastSuccessAt']),
+      failureCount: serializer.fromJson<int>(json['failureCount']),
+      avgLatencyMs: serializer.fromJson<int?>(json['avgLatencyMs']),
+      avgBytesPerSecond: serializer.fromJson<int?>(json['avgBytesPerSecond']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'hash': serializer.toJson<String>(hash),
+      'peerId': serializer.toJson<String>(peerId),
+      'remoteFileId': serializer.toJson<String>(remoteFileId),
+      'shareId': serializer.toJson<String>(shareId),
+      'entryId': serializer.toJson<String>(entryId),
+      'chunkIndex': serializer.toJson<int>(chunkIndex),
+      'offset': serializer.toJson<int>(offset),
+      'length': serializer.toJson<int>(length),
+      'lastSeen': serializer.toJson<DateTime>(lastSeen),
+      'lastSuccessAt': serializer.toJson<DateTime?>(lastSuccessAt),
+      'failureCount': serializer.toJson<int>(failureCount),
+      'avgLatencyMs': serializer.toJson<int?>(avgLatencyMs),
+      'avgBytesPerSecond': serializer.toJson<int?>(avgBytesPerSecond),
+    };
+  }
+
+  RemoteChunkSource copyWith({
+    int? id,
+    String? hash,
+    String? peerId,
+    String? remoteFileId,
+    String? shareId,
+    String? entryId,
+    int? chunkIndex,
+    int? offset,
+    int? length,
+    DateTime? lastSeen,
+    Value<DateTime?> lastSuccessAt = const Value.absent(),
+    int? failureCount,
+    Value<int?> avgLatencyMs = const Value.absent(),
+    Value<int?> avgBytesPerSecond = const Value.absent(),
+  }) => RemoteChunkSource(
+    id: id ?? this.id,
+    hash: hash ?? this.hash,
+    peerId: peerId ?? this.peerId,
+    remoteFileId: remoteFileId ?? this.remoteFileId,
+    shareId: shareId ?? this.shareId,
+    entryId: entryId ?? this.entryId,
+    chunkIndex: chunkIndex ?? this.chunkIndex,
+    offset: offset ?? this.offset,
+    length: length ?? this.length,
+    lastSeen: lastSeen ?? this.lastSeen,
+    lastSuccessAt: lastSuccessAt.present
+        ? lastSuccessAt.value
+        : this.lastSuccessAt,
+    failureCount: failureCount ?? this.failureCount,
+    avgLatencyMs: avgLatencyMs.present ? avgLatencyMs.value : this.avgLatencyMs,
+    avgBytesPerSecond: avgBytesPerSecond.present
+        ? avgBytesPerSecond.value
+        : this.avgBytesPerSecond,
+  );
+  RemoteChunkSource copyWithCompanion(RemoteChunkSourcesCompanion data) {
+    return RemoteChunkSource(
+      id: data.id.present ? data.id.value : this.id,
+      hash: data.hash.present ? data.hash.value : this.hash,
+      peerId: data.peerId.present ? data.peerId.value : this.peerId,
+      remoteFileId: data.remoteFileId.present
+          ? data.remoteFileId.value
+          : this.remoteFileId,
+      shareId: data.shareId.present ? data.shareId.value : this.shareId,
+      entryId: data.entryId.present ? data.entryId.value : this.entryId,
+      chunkIndex: data.chunkIndex.present
+          ? data.chunkIndex.value
+          : this.chunkIndex,
+      offset: data.offset.present ? data.offset.value : this.offset,
+      length: data.length.present ? data.length.value : this.length,
+      lastSeen: data.lastSeen.present ? data.lastSeen.value : this.lastSeen,
+      lastSuccessAt: data.lastSuccessAt.present
+          ? data.lastSuccessAt.value
+          : this.lastSuccessAt,
+      failureCount: data.failureCount.present
+          ? data.failureCount.value
+          : this.failureCount,
+      avgLatencyMs: data.avgLatencyMs.present
+          ? data.avgLatencyMs.value
+          : this.avgLatencyMs,
+      avgBytesPerSecond: data.avgBytesPerSecond.present
+          ? data.avgBytesPerSecond.value
+          : this.avgBytesPerSecond,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RemoteChunkSource(')
+          ..write('id: $id, ')
+          ..write('hash: $hash, ')
+          ..write('peerId: $peerId, ')
+          ..write('remoteFileId: $remoteFileId, ')
+          ..write('shareId: $shareId, ')
+          ..write('entryId: $entryId, ')
+          ..write('chunkIndex: $chunkIndex, ')
+          ..write('offset: $offset, ')
+          ..write('length: $length, ')
+          ..write('lastSeen: $lastSeen, ')
+          ..write('lastSuccessAt: $lastSuccessAt, ')
+          ..write('failureCount: $failureCount, ')
+          ..write('avgLatencyMs: $avgLatencyMs, ')
+          ..write('avgBytesPerSecond: $avgBytesPerSecond')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    hash,
+    peerId,
+    remoteFileId,
+    shareId,
+    entryId,
+    chunkIndex,
+    offset,
+    length,
+    lastSeen,
+    lastSuccessAt,
+    failureCount,
+    avgLatencyMs,
+    avgBytesPerSecond,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RemoteChunkSource &&
+          other.id == this.id &&
+          other.hash == this.hash &&
+          other.peerId == this.peerId &&
+          other.remoteFileId == this.remoteFileId &&
+          other.shareId == this.shareId &&
+          other.entryId == this.entryId &&
+          other.chunkIndex == this.chunkIndex &&
+          other.offset == this.offset &&
+          other.length == this.length &&
+          other.lastSeen == this.lastSeen &&
+          other.lastSuccessAt == this.lastSuccessAt &&
+          other.failureCount == this.failureCount &&
+          other.avgLatencyMs == this.avgLatencyMs &&
+          other.avgBytesPerSecond == this.avgBytesPerSecond);
+}
+
+class RemoteChunkSourcesCompanion extends UpdateCompanion<RemoteChunkSource> {
+  final Value<int> id;
+  final Value<String> hash;
+  final Value<String> peerId;
+  final Value<String> remoteFileId;
+  final Value<String> shareId;
+  final Value<String> entryId;
+  final Value<int> chunkIndex;
+  final Value<int> offset;
+  final Value<int> length;
+  final Value<DateTime> lastSeen;
+  final Value<DateTime?> lastSuccessAt;
+  final Value<int> failureCount;
+  final Value<int?> avgLatencyMs;
+  final Value<int?> avgBytesPerSecond;
+  const RemoteChunkSourcesCompanion({
+    this.id = const Value.absent(),
+    this.hash = const Value.absent(),
+    this.peerId = const Value.absent(),
+    this.remoteFileId = const Value.absent(),
+    this.shareId = const Value.absent(),
+    this.entryId = const Value.absent(),
+    this.chunkIndex = const Value.absent(),
+    this.offset = const Value.absent(),
+    this.length = const Value.absent(),
+    this.lastSeen = const Value.absent(),
+    this.lastSuccessAt = const Value.absent(),
+    this.failureCount = const Value.absent(),
+    this.avgLatencyMs = const Value.absent(),
+    this.avgBytesPerSecond = const Value.absent(),
+  });
+  RemoteChunkSourcesCompanion.insert({
+    this.id = const Value.absent(),
+    required String hash,
+    required String peerId,
+    required String remoteFileId,
+    required String shareId,
+    required String entryId,
+    required int chunkIndex,
+    required int offset,
+    required int length,
+    this.lastSeen = const Value.absent(),
+    this.lastSuccessAt = const Value.absent(),
+    this.failureCount = const Value.absent(),
+    this.avgLatencyMs = const Value.absent(),
+    this.avgBytesPerSecond = const Value.absent(),
+  }) : hash = Value(hash),
+       peerId = Value(peerId),
+       remoteFileId = Value(remoteFileId),
+       shareId = Value(shareId),
+       entryId = Value(entryId),
+       chunkIndex = Value(chunkIndex),
+       offset = Value(offset),
+       length = Value(length);
+  static Insertable<RemoteChunkSource> custom({
+    Expression<int>? id,
+    Expression<String>? hash,
+    Expression<String>? peerId,
+    Expression<String>? remoteFileId,
+    Expression<String>? shareId,
+    Expression<String>? entryId,
+    Expression<int>? chunkIndex,
+    Expression<int>? offset,
+    Expression<int>? length,
+    Expression<DateTime>? lastSeen,
+    Expression<DateTime>? lastSuccessAt,
+    Expression<int>? failureCount,
+    Expression<int>? avgLatencyMs,
+    Expression<int>? avgBytesPerSecond,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (hash != null) 'hash': hash,
+      if (peerId != null) 'peer_id': peerId,
+      if (remoteFileId != null) 'remote_file_id': remoteFileId,
+      if (shareId != null) 'share_id': shareId,
+      if (entryId != null) 'entry_id': entryId,
+      if (chunkIndex != null) 'chunk_index': chunkIndex,
+      if (offset != null) 'offset': offset,
+      if (length != null) 'length': length,
+      if (lastSeen != null) 'last_seen': lastSeen,
+      if (lastSuccessAt != null) 'last_success_at': lastSuccessAt,
+      if (failureCount != null) 'failure_count': failureCount,
+      if (avgLatencyMs != null) 'avg_latency_ms': avgLatencyMs,
+      if (avgBytesPerSecond != null) 'avg_bytes_per_second': avgBytesPerSecond,
+    });
+  }
+
+  RemoteChunkSourcesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? hash,
+    Value<String>? peerId,
+    Value<String>? remoteFileId,
+    Value<String>? shareId,
+    Value<String>? entryId,
+    Value<int>? chunkIndex,
+    Value<int>? offset,
+    Value<int>? length,
+    Value<DateTime>? lastSeen,
+    Value<DateTime?>? lastSuccessAt,
+    Value<int>? failureCount,
+    Value<int?>? avgLatencyMs,
+    Value<int?>? avgBytesPerSecond,
+  }) {
+    return RemoteChunkSourcesCompanion(
+      id: id ?? this.id,
+      hash: hash ?? this.hash,
+      peerId: peerId ?? this.peerId,
+      remoteFileId: remoteFileId ?? this.remoteFileId,
+      shareId: shareId ?? this.shareId,
+      entryId: entryId ?? this.entryId,
+      chunkIndex: chunkIndex ?? this.chunkIndex,
+      offset: offset ?? this.offset,
+      length: length ?? this.length,
+      lastSeen: lastSeen ?? this.lastSeen,
+      lastSuccessAt: lastSuccessAt ?? this.lastSuccessAt,
+      failureCount: failureCount ?? this.failureCount,
+      avgLatencyMs: avgLatencyMs ?? this.avgLatencyMs,
+      avgBytesPerSecond: avgBytesPerSecond ?? this.avgBytesPerSecond,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (hash.present) {
+      map['hash'] = Variable<String>(hash.value);
+    }
+    if (peerId.present) {
+      map['peer_id'] = Variable<String>(peerId.value);
+    }
+    if (remoteFileId.present) {
+      map['remote_file_id'] = Variable<String>(remoteFileId.value);
+    }
+    if (shareId.present) {
+      map['share_id'] = Variable<String>(shareId.value);
+    }
+    if (entryId.present) {
+      map['entry_id'] = Variable<String>(entryId.value);
+    }
+    if (chunkIndex.present) {
+      map['chunk_index'] = Variable<int>(chunkIndex.value);
+    }
+    if (offset.present) {
+      map['offset'] = Variable<int>(offset.value);
+    }
+    if (length.present) {
+      map['length'] = Variable<int>(length.value);
+    }
+    if (lastSeen.present) {
+      map['last_seen'] = Variable<DateTime>(lastSeen.value);
+    }
+    if (lastSuccessAt.present) {
+      map['last_success_at'] = Variable<DateTime>(lastSuccessAt.value);
+    }
+    if (failureCount.present) {
+      map['failure_count'] = Variable<int>(failureCount.value);
+    }
+    if (avgLatencyMs.present) {
+      map['avg_latency_ms'] = Variable<int>(avgLatencyMs.value);
+    }
+    if (avgBytesPerSecond.present) {
+      map['avg_bytes_per_second'] = Variable<int>(avgBytesPerSecond.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RemoteChunkSourcesCompanion(')
+          ..write('id: $id, ')
+          ..write('hash: $hash, ')
+          ..write('peerId: $peerId, ')
+          ..write('remoteFileId: $remoteFileId, ')
+          ..write('shareId: $shareId, ')
+          ..write('entryId: $entryId, ')
+          ..write('chunkIndex: $chunkIndex, ')
+          ..write('offset: $offset, ')
+          ..write('length: $length, ')
+          ..write('lastSeen: $lastSeen, ')
+          ..write('lastSuccessAt: $lastSuccessAt, ')
+          ..write('failureCount: $failureCount, ')
+          ..write('avgLatencyMs: $avgLatencyMs, ')
+          ..write('avgBytesPerSecond: $avgBytesPerSecond')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $DownloadGroupsTable extends DownloadGroups
     with TableInfo<$DownloadGroupsTable, DownloadGroup> {
   @override
@@ -6692,6 +7512,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $RemoteFilesTable remoteFiles = $RemoteFilesTable(this);
   late final $EntrySearchTokensTable entrySearchTokens =
       $EntrySearchTokensTable(this);
+  late final $RemoteChunkSourcesTable remoteChunkSources =
+      $RemoteChunkSourcesTable(this);
   late final $DownloadGroupsTable downloadGroups = $DownloadGroupsTable(this);
   late final $DownloadsTable downloads = $DownloadsTable(this);
   late final $DownloadChunksTable downloadChunks = $DownloadChunksTable(this);
@@ -6709,6 +7531,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     remoteEntriesCache,
     remoteFiles,
     entrySearchTokens,
+    remoteChunkSources,
     downloadGroups,
     downloads,
     downloadChunks,
@@ -8356,6 +9179,27 @@ final class $$PeersTableReferences
     );
   }
 
+  static MultiTypedResultKey<$RemoteChunkSourcesTable, List<RemoteChunkSource>>
+  _remoteChunkSourcesRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.remoteChunkSources,
+        aliasName: 'peers__id__remote_chunk_sources__peer_id',
+      );
+
+  $$RemoteChunkSourcesTableProcessedTableManager get remoteChunkSourcesRefs {
+    final manager = $$RemoteChunkSourcesTableTableManager(
+      $_db,
+      $_db.remoteChunkSources,
+    ).filter((f) => f.peerId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _remoteChunkSourcesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$DownloadsTable, List<Download>>
   _downloadsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.downloads,
@@ -8469,6 +9313,31 @@ class $$PeersTableFilterComposer extends Composer<_$AppDatabase, $PeersTable> {
           }) => $$RemoteFilesTableFilterComposer(
             $db: $db,
             $table: $db.remoteFiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> remoteChunkSourcesRefs(
+    Expression<bool> Function($$RemoteChunkSourcesTableFilterComposer f) f,
+  ) {
+    final $$RemoteChunkSourcesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.remoteChunkSources,
+      getReferencedColumn: (t) => t.peerId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RemoteChunkSourcesTableFilterComposer(
+            $db: $db,
+            $table: $db.remoteChunkSources,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -8650,6 +9519,32 @@ class $$PeersTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> remoteChunkSourcesRefs<T extends Object>(
+    Expression<T> Function($$RemoteChunkSourcesTableAnnotationComposer a) f,
+  ) {
+    final $$RemoteChunkSourcesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.remoteChunkSources,
+          getReferencedColumn: (t) => t.peerId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$RemoteChunkSourcesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.remoteChunkSources,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
+
   Expression<T> downloadsRefs<T extends Object>(
     Expression<T> Function($$DownloadsTableAnnotationComposer a) f,
   ) {
@@ -8692,6 +9587,7 @@ class $$PeersTableTableManager
           PrefetchHooks Function({
             bool remoteEntriesCacheRefs,
             bool remoteFilesRefs,
+            bool remoteChunkSourcesRefs,
             bool downloadsRefs,
           })
         > {
@@ -8764,6 +9660,7 @@ class $$PeersTableTableManager
               ({
                 remoteEntriesCacheRefs = false,
                 remoteFilesRefs = false,
+                remoteChunkSourcesRefs = false,
                 downloadsRefs = false,
               }) {
                 return PrefetchHooks(
@@ -8771,6 +9668,7 @@ class $$PeersTableTableManager
                   explicitlyWatchedTables: [
                     if (remoteEntriesCacheRefs) db.remoteEntriesCache,
                     if (remoteFilesRefs) db.remoteFiles,
+                    if (remoteChunkSourcesRefs) db.remoteChunkSources,
                     if (downloadsRefs) db.downloads,
                   ],
                   addJoins: null,
@@ -8818,6 +9716,27 @@ class $$PeersTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (remoteChunkSourcesRefs)
+                        await $_getPrefetchedData<
+                          Peer,
+                          $PeersTable,
+                          RemoteChunkSource
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PeersTableReferences
+                              ._remoteChunkSourcesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PeersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).remoteChunkSourcesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.peerId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                       if (downloadsRefs)
                         await $_getPrefetchedData<Peer, $PeersTable, Download>(
                           currentTable: table,
@@ -8858,6 +9777,7 @@ typedef $$PeersTableProcessedTableManager =
       PrefetchHooks Function({
         bool remoteEntriesCacheRefs,
         bool remoteFilesRefs,
+        bool remoteChunkSourcesRefs,
         bool downloadsRefs,
       })
     >;
@@ -9266,6 +10186,27 @@ final class $$RemoteFilesTableReferences
       manager.$state.copyWith(prefetchedData: [item]),
     );
   }
+
+  static MultiTypedResultKey<$RemoteChunkSourcesTable, List<RemoteChunkSource>>
+  _remoteChunkSourcesRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.remoteChunkSources,
+        aliasName: 'remote_files__id__remote_chunk_sources__remote_file_id',
+      );
+
+  $$RemoteChunkSourcesTableProcessedTableManager get remoteChunkSourcesRefs {
+    final manager = $$RemoteChunkSourcesTableTableManager(
+      $_db,
+      $_db.remoteChunkSources,
+    ).filter((f) => f.remoteFileId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _remoteChunkSourcesRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$RemoteFilesTableFilterComposer
@@ -9358,6 +10299,31 @@ class $$RemoteFilesTableFilterComposer
           ),
     );
     return composer;
+  }
+
+  Expression<bool> remoteChunkSourcesRefs(
+    Expression<bool> Function($$RemoteChunkSourcesTableFilterComposer f) f,
+  ) {
+    final $$RemoteChunkSourcesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.remoteChunkSources,
+      getReferencedColumn: (t) => t.remoteFileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RemoteChunkSourcesTableFilterComposer(
+            $db: $db,
+            $table: $db.remoteChunkSources,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
   }
 }
 
@@ -9529,6 +10495,32 @@ class $$RemoteFilesTableAnnotationComposer
     );
     return composer;
   }
+
+  Expression<T> remoteChunkSourcesRefs<T extends Object>(
+    Expression<T> Function($$RemoteChunkSourcesTableAnnotationComposer a) f,
+  ) {
+    final $$RemoteChunkSourcesTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.remoteChunkSources,
+          getReferencedColumn: (t) => t.remoteFileId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$RemoteChunkSourcesTableAnnotationComposer(
+                $db: $db,
+                $table: $db.remoteChunkSources,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$RemoteFilesTableTableManager
@@ -9544,7 +10536,7 @@ class $$RemoteFilesTableTableManager
           $$RemoteFilesTableUpdateCompanionBuilder,
           (RemoteFile, $$RemoteFilesTableReferences),
           RemoteFile,
-          PrefetchHooks Function({bool peerId})
+          PrefetchHooks Function({bool peerId, bool remoteChunkSourcesRefs})
         > {
   $$RemoteFilesTableTableManager(_$AppDatabase db, $RemoteFilesTable table)
     : super(
@@ -9629,47 +10621,74 @@ class $$RemoteFilesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({peerId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (peerId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.peerId,
-                                referencedTable: $$RemoteFilesTableReferences
-                                    ._peerIdTable(db),
-                                referencedColumn: $$RemoteFilesTableReferences
-                                    ._peerIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({peerId = false, remoteChunkSourcesRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (remoteChunkSourcesRefs) db.remoteChunkSources,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (peerId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.peerId,
+                                    referencedTable:
+                                        $$RemoteFilesTableReferences
+                                            ._peerIdTable(db),
+                                    referencedColumn:
+                                        $$RemoteFilesTableReferences
+                                            ._peerIdTable(db)
+                                            .id,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (remoteChunkSourcesRefs)
+                        await $_getPrefetchedData<
+                          RemoteFile,
+                          $RemoteFilesTable,
+                          RemoteChunkSource
+                        >(
+                          currentTable: table,
+                          referencedTable: $$RemoteFilesTableReferences
+                              ._remoteChunkSourcesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$RemoteFilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).remoteChunkSourcesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.remoteFileId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -9686,7 +10705,7 @@ typedef $$RemoteFilesTableProcessedTableManager =
       $$RemoteFilesTableUpdateCompanionBuilder,
       (RemoteFile, $$RemoteFilesTableReferences),
       RemoteFile,
-      PrefetchHooks Function({bool peerId})
+      PrefetchHooks Function({bool peerId, bool remoteChunkSourcesRefs})
     >;
 typedef $$EntrySearchTokensTableCreateCompanionBuilder =
     EntrySearchTokensCompanion Function({
@@ -9982,6 +11001,603 @@ typedef $$EntrySearchTokensTableProcessedTableManager =
       (EntrySearchToken, $$EntrySearchTokensTableReferences),
       EntrySearchToken,
       PrefetchHooks Function({bool entryId})
+    >;
+typedef $$RemoteChunkSourcesTableCreateCompanionBuilder =
+    RemoteChunkSourcesCompanion Function({
+      Value<int> id,
+      required String hash,
+      required String peerId,
+      required String remoteFileId,
+      required String shareId,
+      required String entryId,
+      required int chunkIndex,
+      required int offset,
+      required int length,
+      Value<DateTime> lastSeen,
+      Value<DateTime?> lastSuccessAt,
+      Value<int> failureCount,
+      Value<int?> avgLatencyMs,
+      Value<int?> avgBytesPerSecond,
+    });
+typedef $$RemoteChunkSourcesTableUpdateCompanionBuilder =
+    RemoteChunkSourcesCompanion Function({
+      Value<int> id,
+      Value<String> hash,
+      Value<String> peerId,
+      Value<String> remoteFileId,
+      Value<String> shareId,
+      Value<String> entryId,
+      Value<int> chunkIndex,
+      Value<int> offset,
+      Value<int> length,
+      Value<DateTime> lastSeen,
+      Value<DateTime?> lastSuccessAt,
+      Value<int> failureCount,
+      Value<int?> avgLatencyMs,
+      Value<int?> avgBytesPerSecond,
+    });
+
+final class $$RemoteChunkSourcesTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $RemoteChunkSourcesTable,
+          RemoteChunkSource
+        > {
+  $$RemoteChunkSourcesTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $PeersTable _peerIdTable(_$AppDatabase db) =>
+      db.peers.createAlias('remote_chunk_sources__peer_id__peers__id');
+
+  $$PeersTableProcessedTableManager get peerId {
+    final $_column = $_itemColumn<String>('peer_id')!;
+
+    final manager = $$PeersTableTableManager(
+      $_db,
+      $_db.peers,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_peerIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $RemoteFilesTable _remoteFileIdTable(_$AppDatabase db) => db
+      .remoteFiles
+      .createAlias('remote_chunk_sources__remote_file_id__remote_files__id');
+
+  $$RemoteFilesTableProcessedTableManager get remoteFileId {
+    final $_column = $_itemColumn<String>('remote_file_id')!;
+
+    final manager = $$RemoteFilesTableTableManager(
+      $_db,
+      $_db.remoteFiles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_remoteFileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$RemoteChunkSourcesTableFilterComposer
+    extends Composer<_$AppDatabase, $RemoteChunkSourcesTable> {
+  $$RemoteChunkSourcesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get hash => $composableBuilder(
+    column: $table.hash,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get shareId => $composableBuilder(
+    column: $table.shareId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get entryId => $composableBuilder(
+    column: $table.entryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get chunkIndex => $composableBuilder(
+    column: $table.chunkIndex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get offset => $composableBuilder(
+    column: $table.offset,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get length => $composableBuilder(
+    column: $table.length,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastSeen => $composableBuilder(
+    column: $table.lastSeen,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastSuccessAt => $composableBuilder(
+    column: $table.lastSuccessAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get failureCount => $composableBuilder(
+    column: $table.failureCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get avgLatencyMs => $composableBuilder(
+    column: $table.avgLatencyMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get avgBytesPerSecond => $composableBuilder(
+    column: $table.avgBytesPerSecond,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PeersTableFilterComposer get peerId {
+    final $$PeersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.peerId,
+      referencedTable: $db.peers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PeersTableFilterComposer(
+            $db: $db,
+            $table: $db.peers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$RemoteFilesTableFilterComposer get remoteFileId {
+    final $$RemoteFilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.remoteFileId,
+      referencedTable: $db.remoteFiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RemoteFilesTableFilterComposer(
+            $db: $db,
+            $table: $db.remoteFiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RemoteChunkSourcesTableOrderingComposer
+    extends Composer<_$AppDatabase, $RemoteChunkSourcesTable> {
+  $$RemoteChunkSourcesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get hash => $composableBuilder(
+    column: $table.hash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get shareId => $composableBuilder(
+    column: $table.shareId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get entryId => $composableBuilder(
+    column: $table.entryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get chunkIndex => $composableBuilder(
+    column: $table.chunkIndex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get offset => $composableBuilder(
+    column: $table.offset,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get length => $composableBuilder(
+    column: $table.length,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastSeen => $composableBuilder(
+    column: $table.lastSeen,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastSuccessAt => $composableBuilder(
+    column: $table.lastSuccessAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get failureCount => $composableBuilder(
+    column: $table.failureCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get avgLatencyMs => $composableBuilder(
+    column: $table.avgLatencyMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get avgBytesPerSecond => $composableBuilder(
+    column: $table.avgBytesPerSecond,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PeersTableOrderingComposer get peerId {
+    final $$PeersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.peerId,
+      referencedTable: $db.peers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PeersTableOrderingComposer(
+            $db: $db,
+            $table: $db.peers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$RemoteFilesTableOrderingComposer get remoteFileId {
+    final $$RemoteFilesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.remoteFileId,
+      referencedTable: $db.remoteFiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RemoteFilesTableOrderingComposer(
+            $db: $db,
+            $table: $db.remoteFiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RemoteChunkSourcesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RemoteChunkSourcesTable> {
+  $$RemoteChunkSourcesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get hash =>
+      $composableBuilder(column: $table.hash, builder: (column) => column);
+
+  GeneratedColumn<String> get shareId =>
+      $composableBuilder(column: $table.shareId, builder: (column) => column);
+
+  GeneratedColumn<String> get entryId =>
+      $composableBuilder(column: $table.entryId, builder: (column) => column);
+
+  GeneratedColumn<int> get chunkIndex => $composableBuilder(
+    column: $table.chunkIndex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get offset =>
+      $composableBuilder(column: $table.offset, builder: (column) => column);
+
+  GeneratedColumn<int> get length =>
+      $composableBuilder(column: $table.length, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastSeen =>
+      $composableBuilder(column: $table.lastSeen, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastSuccessAt => $composableBuilder(
+    column: $table.lastSuccessAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get failureCount => $composableBuilder(
+    column: $table.failureCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get avgLatencyMs => $composableBuilder(
+    column: $table.avgLatencyMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get avgBytesPerSecond => $composableBuilder(
+    column: $table.avgBytesPerSecond,
+    builder: (column) => column,
+  );
+
+  $$PeersTableAnnotationComposer get peerId {
+    final $$PeersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.peerId,
+      referencedTable: $db.peers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PeersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.peers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$RemoteFilesTableAnnotationComposer get remoteFileId {
+    final $$RemoteFilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.remoteFileId,
+      referencedTable: $db.remoteFiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RemoteFilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.remoteFiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RemoteChunkSourcesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RemoteChunkSourcesTable,
+          RemoteChunkSource,
+          $$RemoteChunkSourcesTableFilterComposer,
+          $$RemoteChunkSourcesTableOrderingComposer,
+          $$RemoteChunkSourcesTableAnnotationComposer,
+          $$RemoteChunkSourcesTableCreateCompanionBuilder,
+          $$RemoteChunkSourcesTableUpdateCompanionBuilder,
+          (RemoteChunkSource, $$RemoteChunkSourcesTableReferences),
+          RemoteChunkSource,
+          PrefetchHooks Function({bool peerId, bool remoteFileId})
+        > {
+  $$RemoteChunkSourcesTableTableManager(
+    _$AppDatabase db,
+    $RemoteChunkSourcesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RemoteChunkSourcesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RemoteChunkSourcesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RemoteChunkSourcesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> hash = const Value.absent(),
+                Value<String> peerId = const Value.absent(),
+                Value<String> remoteFileId = const Value.absent(),
+                Value<String> shareId = const Value.absent(),
+                Value<String> entryId = const Value.absent(),
+                Value<int> chunkIndex = const Value.absent(),
+                Value<int> offset = const Value.absent(),
+                Value<int> length = const Value.absent(),
+                Value<DateTime> lastSeen = const Value.absent(),
+                Value<DateTime?> lastSuccessAt = const Value.absent(),
+                Value<int> failureCount = const Value.absent(),
+                Value<int?> avgLatencyMs = const Value.absent(),
+                Value<int?> avgBytesPerSecond = const Value.absent(),
+              }) => RemoteChunkSourcesCompanion(
+                id: id,
+                hash: hash,
+                peerId: peerId,
+                remoteFileId: remoteFileId,
+                shareId: shareId,
+                entryId: entryId,
+                chunkIndex: chunkIndex,
+                offset: offset,
+                length: length,
+                lastSeen: lastSeen,
+                lastSuccessAt: lastSuccessAt,
+                failureCount: failureCount,
+                avgLatencyMs: avgLatencyMs,
+                avgBytesPerSecond: avgBytesPerSecond,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String hash,
+                required String peerId,
+                required String remoteFileId,
+                required String shareId,
+                required String entryId,
+                required int chunkIndex,
+                required int offset,
+                required int length,
+                Value<DateTime> lastSeen = const Value.absent(),
+                Value<DateTime?> lastSuccessAt = const Value.absent(),
+                Value<int> failureCount = const Value.absent(),
+                Value<int?> avgLatencyMs = const Value.absent(),
+                Value<int?> avgBytesPerSecond = const Value.absent(),
+              }) => RemoteChunkSourcesCompanion.insert(
+                id: id,
+                hash: hash,
+                peerId: peerId,
+                remoteFileId: remoteFileId,
+                shareId: shareId,
+                entryId: entryId,
+                chunkIndex: chunkIndex,
+                offset: offset,
+                length: length,
+                lastSeen: lastSeen,
+                lastSuccessAt: lastSuccessAt,
+                failureCount: failureCount,
+                avgLatencyMs: avgLatencyMs,
+                avgBytesPerSecond: avgBytesPerSecond,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$RemoteChunkSourcesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({peerId = false, remoteFileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (peerId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.peerId,
+                                referencedTable:
+                                    $$RemoteChunkSourcesTableReferences
+                                        ._peerIdTable(db),
+                                referencedColumn:
+                                    $$RemoteChunkSourcesTableReferences
+                                        ._peerIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+                    if (remoteFileId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.remoteFileId,
+                                referencedTable:
+                                    $$RemoteChunkSourcesTableReferences
+                                        ._remoteFileIdTable(db),
+                                referencedColumn:
+                                    $$RemoteChunkSourcesTableReferences
+                                        ._remoteFileIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$RemoteChunkSourcesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RemoteChunkSourcesTable,
+      RemoteChunkSource,
+      $$RemoteChunkSourcesTableFilterComposer,
+      $$RemoteChunkSourcesTableOrderingComposer,
+      $$RemoteChunkSourcesTableAnnotationComposer,
+      $$RemoteChunkSourcesTableCreateCompanionBuilder,
+      $$RemoteChunkSourcesTableUpdateCompanionBuilder,
+      (RemoteChunkSource, $$RemoteChunkSourcesTableReferences),
+      RemoteChunkSource,
+      PrefetchHooks Function({bool peerId, bool remoteFileId})
     >;
 typedef $$DownloadGroupsTableCreateCompanionBuilder =
     DownloadGroupsCompanion Function({
@@ -11789,6 +13405,8 @@ class $AppDatabaseManager {
       $$RemoteFilesTableTableManager(_db, _db.remoteFiles);
   $$EntrySearchTokensTableTableManager get entrySearchTokens =>
       $$EntrySearchTokensTableTableManager(_db, _db.entrySearchTokens);
+  $$RemoteChunkSourcesTableTableManager get remoteChunkSources =>
+      $$RemoteChunkSourcesTableTableManager(_db, _db.remoteChunkSources);
   $$DownloadGroupsTableTableManager get downloadGroups =>
       $$DownloadGroupsTableTableManager(_db, _db.downloadGroups);
   $$DownloadsTableTableManager get downloads =>

@@ -20,7 +20,7 @@ Last reviewed: 2026-07-01
 | 11 Persistent download queue and controls | **complete** | `DownloadQueue` worker, schema v7 groups/queue fields, pause/resume/cancel/retry UI, non-blocking enqueue |
 | 11.5 In-flight chunk progress | **complete** | Schema v8 `inFlightBytes`, streaming chunk fetch, throttled progress tracker, Downloads UI shows mid-chunk progress |
 | 12 Global search and remote index | **complete** | Schema v9 search tokens + `remote_files`, `GET /search`, share manifest page, `SearchService`, Search UI, signature merge |
-| 12.5 Chunk-level swarm scheduling | pending | Torrent-like per-chunk availability, rarest-first, dynamic peer striping |
+| 12.5 Chunk-level swarm scheduling | **complete** | Schema v11 `remote_chunk_sources`, `POST /chunks/availability`, `SwarmScheduler`, rarest-first striping, waiting-for-source UI |
 | 13 Upload visibility and network health | pending | Upload rows, rates, bandwidth/concurrency limits, range hardening |
 | 14 Platform proof and native UX | pending | Execute matrix, platform help, Android/Windows/Linux/Web validation |
 | 15 Security hardening | pending | Secure storage, session binding, suspicious peer state, token expiry |
@@ -1217,6 +1217,8 @@ This phase must include a full walk through implemented backend capability and m
 - A file can complete when no single peer has every chunk, as long as the union of peers has all chunks.
 - Long downloads actively stripe chunks across multiple capable peers, not only fail over when a source is missing.
 - Missing-source chunks remain resumable and visible instead of failing the entire download prematurely.
+
+**Status: complete (2026-07-02).** Schema v11 `remote_chunk_sources`; `POST /chunks/availability`; `SwarmAvailabilityStore` + `SwarmScheduler` with rarest-first ordering and per-peer caps; `TransferClient` hash-route swarm fetch with legacy failover; `waiting_for_source` chunk state + Downloads UI hint; startup swarm cache backfill; 106 tests pass.
 
 ## Phase 13: Upload Visibility, Rate Limiting, And Network Health
 
