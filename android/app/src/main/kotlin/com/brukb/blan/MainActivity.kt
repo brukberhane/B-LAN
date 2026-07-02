@@ -1,4 +1,4 @@
-package com.blan.blan
+package com.brukb.blan
 
 import android.content.Context
 import android.net.wifi.WifiManager
@@ -7,7 +7,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val channelName = "com.blan.blan/platform"
+    private val channelName = "com.brukb.blan/platform"
     private var multicastLock: WifiManager.MulticastLock? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

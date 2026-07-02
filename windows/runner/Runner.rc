@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.blan" "\0"
-            VALUE "FileDescription", "blan" "\0"
+            VALUE "CompanyName", "brukb" "\0"
+            VALUE "FileDescription", "B-LAN" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "blan" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.blan. All rights reserved." "\0"
+            VALUE "InternalName", "B-LAN" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 brukb. All rights reserved." "\0"
             VALUE "OriginalFilename", "blan.exe" "\0"
-            VALUE "ProductName", "blan" "\0"
+            VALUE "ProductName", "B-LAN" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

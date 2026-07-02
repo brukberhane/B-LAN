@@ -5,7 +5,7 @@ import 'package:saf/saf.dart';
 import '../platform_services.dart';
 
 class AndroidPlatformServices implements PlatformServices {
-  static const _channel = MethodChannel('com.blan.blan/platform');
+  static const _channel = MethodChannel('com.brukb.blan/platform');
 
   @override
   Future<void> initialize() async {

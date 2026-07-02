@@ -1,11 +1,11 @@
 {
-    "name": "blan",
-    "short_name": "blan",
+    "name": "B-LAN",
+    "short_name": "B-LAN",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0047AB",
+    "theme_color": "#0047AB",
+    "description": "Decentralized LAN file sharing for desktop, Android, and limited web.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

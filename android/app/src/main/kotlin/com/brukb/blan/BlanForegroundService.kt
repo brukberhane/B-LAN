@@ -1,4 +1,4 @@
-package com.blan.blan
+package com.brukb.blan
 
 import android.app.Notification
 import android.app.NotificationChannel
