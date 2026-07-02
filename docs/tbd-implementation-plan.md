@@ -14,7 +14,7 @@ Last reviewed: 2026-07-01
 | 5 Desktop indexing hardening | **complete** | `ShareWatcher` (desktop), `scanShareIncremental`, DB helpers, schema v5 indexes, 30m reconcile fallback |
 | 6 Platform validation and UI polish | **complete** | UI surfacing pass, platform capabilities in Settings, README + test matrix, token rotate |
 | 7 Security UX | **complete** | Ed25519 device identity, trust/identity_changed workflow, session expiry, token rotate/revoke |
-| 8 Multi-source downloads | pending | — |
+| 8 Multi-source downloads | **complete** | Manifest cache, chunk scheduler, per-chunk source failover, source count in UI |
 | 9 libSQL benchmark | pending | — |
 | 10 Tests / stress / release | pending | — |
 

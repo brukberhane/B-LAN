@@ -604,6 +604,15 @@ class AppDatabase extends _$AppDatabase {
     return (verifiedChunks: verified, totalChunks: rows.length);
   }
 
+  Future<int> distinctDownloadSourceCount(String downloadId) async {
+    final rows = await downloadChunksForDownload(downloadId);
+    return rows
+        .where((row) => row.sourcePeerId != null && row.sourcePeerId!.isNotEmpty)
+        .map((row) => row.sourcePeerId!)
+        .toSet()
+        .length;
+  }
+
   Future<void> setShareEnabled(String shareId, bool enabled) async {
     await (update(shares)..where((t) => t.id.equals(shareId))).write(
       SharesCompanion(enabled: Value(enabled)),

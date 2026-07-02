@@ -77,11 +77,22 @@ class _DownloadTile extends ConsumerWidget {
         : download.downloadedBytes / download.totalBytes;
     final percent = progress == null ? null : (progress * 100).round();
 
-    return FutureBuilder<({int verifiedChunks, int totalChunks})>(
-      future: db.downloadChunkStats(download.id),
+    return FutureBuilder<({int verifiedChunks, int totalChunks, int sourceCount})>(
+      future: () async {
+        final stats = await db.downloadChunkStats(download.id);
+        final sourceCount = await db.distinctDownloadSourceCount(download.id);
+        return (
+          verifiedChunks: stats.verifiedChunks,
+          totalChunks: stats.totalChunks,
+          sourceCount: sourceCount,
+        );
+      }(),
       builder: (context, snapshot) {
         final chunkLine = snapshot.hasData && snapshot.data!.totalChunks > 0
             ? 'Chunks ${snapshot.data!.verifiedChunks}/${snapshot.data!.totalChunks}'
+            : null;
+        final sourceLine = snapshot.hasData && snapshot.data!.sourceCount > 0
+            ? 'Sources ${snapshot.data!.sourceCount}'
             : null;
 
         final lines = <String>[
@@ -90,6 +101,7 @@ class _DownloadTile extends ConsumerWidget {
             '${formatBytes(download.downloadedBytes)} / ${formatBytes(download.totalBytes)}'
                 '${percent == null ? '' : ' ($percent%)'}',
           if (chunkLine != null) chunkLine,
+          if (sourceLine != null) sourceLine,
           if (download.errorMessage?.isNotEmpty ?? false) download.errorMessage!,
           if (download.state == DownloadState.error ||
               download.state == DownloadState.cancelled)

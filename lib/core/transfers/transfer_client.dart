@@ -11,6 +11,9 @@ import '../protocol/constants.dart';
 import '../protocol/download_states.dart';
 import '../protocol/models.dart';
 import '../protocol/path_safety.dart';
+import '../security/peer_session_store.dart';
+import 'chunk_source_scheduler.dart';
+import 'remote_manifest_cache.dart';
 
 class TransferClient {
   TransferClient(
@@ -19,11 +22,14 @@ class TransferClient {
     int? maxConcurrentChunkDownloads,
   })  : _httpClient = httpClient ?? http.Client(),
         _maxConcurrentChunkDownloads =
-            maxConcurrentChunkDownloads ?? maxConcurrentDownloads;
+            maxConcurrentChunkDownloads ?? maxConcurrentDownloads,
+        _manifestCache = RemoteManifestCache(_db);
 
   final AppDatabase _db;
   final http.Client _httpClient;
   final int _maxConcurrentChunkDownloads;
+  final PeerSessionStore _sessions = PeerSessionStore();
+  final RemoteManifestCache _manifestCache;
   static const _requestTimeout = Duration(seconds: 10);
   static const _chunkFetchMaxAttempts = 3;
 
@@ -182,19 +188,36 @@ class TransferClient {
     required EntryDto entry,
     required String targetDirectory,
     String? token,
+    FileManifestDto? manifestOverride,
     Future<void> Function(int downloaded, int total)? onProgress,
   }) async {
     final baseUrl = _peerBaseUrl(peer);
-    final manifest = await fetchFileManifest(
-      baseUrl,
-      fileId: entry.id,
-      token: token,
-    );
+    final manifest = manifestOverride ??
+        await fetchFileManifest(
+          baseUrl,
+          fileId: entry.id,
+          token: token,
+        );
     if (!manifest.entry.hashReady) {
       throw HttpException('Remote file hashing not complete');
     }
 
     final relativePath = normalizeRemoteEntryPath(entry.path);
+    await _manifestCache.put(
+      peerId: peer.id,
+      shareId: shareId,
+      relativePath: relativePath,
+      manifest: manifest,
+    );
+    final sourcePeers = await _manifestCache.matchingPeers(
+      shareId: shareId,
+      relativePath: relativePath,
+      manifest: manifest,
+      primaryPeerId: peer.id,
+    );
+    final peers = sourcePeers.isEmpty ? [peer] : sourcePeers;
+    final scheduler = ChunkSourceScheduler(peers);
+    final chunkRouteOnly = peers.length > 1;
     final targetPath = localTargetPath(targetDirectory, relativePath);
     final partialPath = '$targetPath.partial';
     final finalFile = File(targetPath);
@@ -248,10 +271,10 @@ class TransferClient {
         downloadId: downloadId,
         partialFile: partialFile,
         manifest: manifest,
-        baseUrl: baseUrl,
         fileId: entry.id,
-        peerId: peer.id,
-        token: token,
+        scheduler: scheduler,
+        primaryToken: token,
+        chunkRouteOnly: chunkRouteOnly,
         onProgress: onProgress,
       );
 
@@ -280,10 +303,10 @@ class TransferClient {
     required String downloadId,
     required File partialFile,
     required FileManifestDto manifest,
-    required String baseUrl,
     required String fileId,
-    required String peerId,
-    String? token,
+    required ChunkSourceScheduler scheduler,
+    String? primaryToken,
+    bool chunkRouteOnly = false,
     Future<void> Function(int downloaded, int total)? onProgress,
   }) async {
     final writeLock = _AsyncSerialLock();
@@ -294,15 +317,14 @@ class TransferClient {
         return;
       }
 
-      var failed = false;
-      Object? error;
       final queue = _ChunkWorkQueue(pending);
       final workerCount = pending.length < _maxConcurrentChunkDownloads
           ? pending.length
           : _maxConcurrentChunkDownloads;
+      Object? firstError;
 
       Future<void> worker() async {
-        while (!failed && !_downloadCancelled) {
+        while (!_downloadCancelled) {
           final row = await queue.take();
           if (row == null) {
             return;
@@ -312,17 +334,16 @@ class TransferClient {
               row: row,
               partialFile: partialFile,
               manifest: manifest,
-              baseUrl: baseUrl,
               fileId: fileId,
-              peerId: peerId,
-              token: token,
+              scheduler: scheduler,
+              primaryToken: primaryToken,
+              chunkRouteOnly: chunkRouteOnly,
               writeLock: writeLock,
               downloadId: downloadId,
               onProgress: onProgress,
             );
-          } catch (e) {
-            failed = true;
-            error = e;
+          } catch (error) {
+            firstError ??= error;
           }
         }
       }
@@ -331,8 +352,8 @@ class TransferClient {
       if (_downloadCancelled) {
         throw const _DownloadCancelled();
       }
-      if (error != null) {
-        throw error!;
+      if (firstError != null) {
+        throw firstError!;
       }
     }
   }
@@ -341,10 +362,10 @@ class TransferClient {
     required DownloadChunk row,
     required File partialFile,
     required FileManifestDto manifest,
-    required String baseUrl,
     required String fileId,
-    required String peerId,
-    String? token,
+    required ChunkSourceScheduler scheduler,
+    String? primaryToken,
+    bool chunkRouteOnly = false,
     required _AsyncSerialLock writeLock,
     required String downloadId,
     Future<void> Function(int downloaded, int total)? onProgress,
@@ -354,38 +375,70 @@ class TransferClient {
     );
     await _db.markDownloadChunkWriting(row.id);
 
-    final bytes = await _fetchChunkBytesWithRetry(
-      baseUrl: baseUrl,
-      fileId: fileId,
-      chunk: chunk,
-      token: token,
-    );
-    if (bytes.length != chunk.length) {
-      final message =
-          'Chunk ${chunk.index} length mismatch: ${bytes.length} != ${chunk.length}';
-      await _db.markDownloadChunkError(row.id, message);
-      throw HttpException(message);
-    }
-    if (hashChunkBytes(bytes) != chunk.hash) {
-      const message = 'Chunk hash mismatch';
-      await _db.markDownloadChunkError(row.id, message);
-      throw HttpException(message);
-    }
-
-    await writeLock.run(() async {
-      final handle = await partialFile.open(mode: FileMode.append);
-      try {
-        await handle.setPosition(chunk.offset);
-        await handle.writeFrom(bytes);
-        await handle.flush();
-      } finally {
-        await handle.close();
+    Object? lastError;
+    for (final peer in scheduler.rankedPeers()) {
+      if (_downloadCancelled) {
+        throw const _DownloadCancelled();
       }
-    });
 
-    await _db.markDownloadChunkVerified(row.id, sourcePeerId: peerId);
-    final progress = await _downloadProgress(downloadId);
-    await onProgress?.call(progress, manifest.totalBytes);
+      final token = await _tokenForPeer(peer, primaryToken: primaryToken);
+      final baseUrl = _peerBaseUrl(peer);
+      final started = DateTime.now();
+      try {
+        final bytes = await _fetchChunkBytesWithRetry(
+          baseUrl: baseUrl,
+          fileId: fileId,
+          chunk: chunk,
+          token: token,
+          chunkRouteOnly: chunkRouteOnly,
+        );
+        if (bytes.length != chunk.length) {
+          final message =
+              'Chunk ${chunk.index} length mismatch: ${bytes.length} != ${chunk.length}';
+          throw HttpException(message);
+        }
+        if (hashChunkBytes(bytes) != chunk.hash) {
+          scheduler.recordFailure(peer.id, hashMismatch: true);
+          throw const HttpException('Chunk hash mismatch');
+        }
+
+        await writeLock.run(() async {
+          final handle = await partialFile.open(mode: FileMode.append);
+          try {
+            await handle.setPosition(chunk.offset);
+            await handle.writeFrom(bytes);
+            await handle.flush();
+          } finally {
+            await handle.close();
+          }
+        });
+
+        scheduler.recordSuccess(peer.id, DateTime.now().difference(started));
+        await _db.markDownloadChunkVerified(row.id, sourcePeerId: peer.id);
+        final progress = await _downloadProgress(downloadId);
+        await onProgress?.call(progress, manifest.totalBytes);
+        return;
+      } catch (error) {
+        lastError = error;
+        if (error is! _DownloadCancelled) {
+          scheduler.recordFailure(peer.id);
+        } else {
+          rethrow;
+        }
+      }
+    }
+
+    final message = 'Chunk ${chunk.index} failed from all sources: $lastError';
+    await _db.markDownloadChunkError(row.id, message);
+    throw HttpException(message);
+  }
+
+  Future<String?> _tokenForPeer(Peer peer, {String? primaryToken}) async {
+    final stored = await _sessions.readValidToken(_db, peer.host, peer.port);
+    if (stored != null) {
+      return stored;
+    }
+    return primaryToken;
   }
 
   Future<void> _reconcileVerifiedChunks({
@@ -466,6 +519,7 @@ class TransferClient {
     required String fileId,
     required ChunkDto chunk,
     String? token,
+    bool chunkRouteOnly = false,
   }) async {
     Object? lastError;
     for (var attempt = 1; attempt <= _chunkFetchMaxAttempts; attempt++) {
@@ -475,6 +529,7 @@ class TransferClient {
           fileId: fileId,
           chunk: chunk,
           token: token,
+          chunkRouteOnly: chunkRouteOnly,
         );
       } catch (error) {
         lastError = error;
@@ -492,6 +547,7 @@ class TransferClient {
     required String fileId,
     required ChunkDto chunk,
     String? token,
+    bool chunkRouteOnly = false,
   }) async {
     final chunkUri = Uri.parse('$baseUrl/chunks').replace(
       queryParameters: {'hash': chunk.hash},
@@ -504,6 +560,11 @@ class TransferClient {
         .timeout(_requestTimeout);
     if (chunkResponse.statusCode == 200) {
       return chunkResponse.bodyBytes;
+    }
+    if (chunkRouteOnly) {
+      throw HttpException(
+        'Chunk download failed: ${chunkResponse.statusCode}',
+      );
     }
 
     final end = chunk.offset + chunk.length - 1;
