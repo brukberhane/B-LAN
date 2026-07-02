@@ -3058,6 +3058,1046 @@ class RemoteEntriesCacheCompanion
   }
 }
 
+class $RemoteFilesTable extends RemoteFiles
+    with TableInfo<$RemoteFilesTable, RemoteFile> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RemoteFilesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _peerIdMeta = const VerificationMeta('peerId');
+  @override
+  late final GeneratedColumn<String> peerId = GeneratedColumn<String>(
+    'peer_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES peers (id)',
+    ),
+  );
+  static const VerificationMeta _shareIdMeta = const VerificationMeta(
+    'shareId',
+  );
+  @override
+  late final GeneratedColumn<String> shareId = GeneratedColumn<String>(
+    'share_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _entryIdMeta = const VerificationMeta(
+    'entryId',
+  );
+  @override
+  late final GeneratedColumn<String> entryId = GeneratedColumn<String>(
+    'entry_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _relativePathMeta = const VerificationMeta(
+    'relativePath',
+  );
+  @override
+  late final GeneratedColumn<String> relativePath = GeneratedColumn<String>(
+    'relative_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isDirectoryMeta = const VerificationMeta(
+    'isDirectory',
+  );
+  @override
+  late final GeneratedColumn<bool> isDirectory = GeneratedColumn<bool>(
+    'is_directory',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_directory" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _sizeMeta = const VerificationMeta('size');
+  @override
+  late final GeneratedColumn<int> size = GeneratedColumn<int>(
+    'size',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _mtimeMsMeta = const VerificationMeta(
+    'mtimeMs',
+  );
+  @override
+  late final GeneratedColumn<int> mtimeMs = GeneratedColumn<int>(
+    'mtime_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _hashReadyMeta = const VerificationMeta(
+    'hashReady',
+  );
+  @override
+  late final GeneratedColumn<bool> hashReady = GeneratedColumn<bool>(
+    'hash_ready',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("hash_ready" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _contentSignatureMeta = const VerificationMeta(
+    'contentSignature',
+  );
+  @override
+  late final GeneratedColumn<String> contentSignature = GeneratedColumn<String>(
+    'content_signature',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _manifestJsonMeta = const VerificationMeta(
+    'manifestJson',
+  );
+  @override
+  late final GeneratedColumn<String> manifestJson = GeneratedColumn<String>(
+    'manifest_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _cachedAtMeta = const VerificationMeta(
+    'cachedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> cachedAt = GeneratedColumn<DateTime>(
+    'cached_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    peerId,
+    shareId,
+    entryId,
+    relativePath,
+    name,
+    isDirectory,
+    size,
+    mtimeMs,
+    hashReady,
+    contentSignature,
+    manifestJson,
+    cachedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'remote_files';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RemoteFile> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('peer_id')) {
+      context.handle(
+        _peerIdMeta,
+        peerId.isAcceptableOrUnknown(data['peer_id']!, _peerIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_peerIdMeta);
+    }
+    if (data.containsKey('share_id')) {
+      context.handle(
+        _shareIdMeta,
+        shareId.isAcceptableOrUnknown(data['share_id']!, _shareIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_shareIdMeta);
+    }
+    if (data.containsKey('entry_id')) {
+      context.handle(
+        _entryIdMeta,
+        entryId.isAcceptableOrUnknown(data['entry_id']!, _entryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entryIdMeta);
+    }
+    if (data.containsKey('relative_path')) {
+      context.handle(
+        _relativePathMeta,
+        relativePath.isAcceptableOrUnknown(
+          data['relative_path']!,
+          _relativePathMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_relativePathMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('is_directory')) {
+      context.handle(
+        _isDirectoryMeta,
+        isDirectory.isAcceptableOrUnknown(
+          data['is_directory']!,
+          _isDirectoryMeta,
+        ),
+      );
+    }
+    if (data.containsKey('size')) {
+      context.handle(
+        _sizeMeta,
+        size.isAcceptableOrUnknown(data['size']!, _sizeMeta),
+      );
+    }
+    if (data.containsKey('mtime_ms')) {
+      context.handle(
+        _mtimeMsMeta,
+        mtimeMs.isAcceptableOrUnknown(data['mtime_ms']!, _mtimeMsMeta),
+      );
+    }
+    if (data.containsKey('hash_ready')) {
+      context.handle(
+        _hashReadyMeta,
+        hashReady.isAcceptableOrUnknown(data['hash_ready']!, _hashReadyMeta),
+      );
+    }
+    if (data.containsKey('content_signature')) {
+      context.handle(
+        _contentSignatureMeta,
+        contentSignature.isAcceptableOrUnknown(
+          data['content_signature']!,
+          _contentSignatureMeta,
+        ),
+      );
+    }
+    if (data.containsKey('manifest_json')) {
+      context.handle(
+        _manifestJsonMeta,
+        manifestJson.isAcceptableOrUnknown(
+          data['manifest_json']!,
+          _manifestJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cached_at')) {
+      context.handle(
+        _cachedAtMeta,
+        cachedAt.isAcceptableOrUnknown(data['cached_at']!, _cachedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  RemoteFile map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RemoteFile(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      peerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}peer_id'],
+      )!,
+      shareId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}share_id'],
+      )!,
+      entryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entry_id'],
+      )!,
+      relativePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}relative_path'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      isDirectory: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_directory'],
+      )!,
+      size: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}size'],
+      )!,
+      mtimeMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}mtime_ms'],
+      )!,
+      hashReady: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}hash_ready'],
+      )!,
+      contentSignature: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content_signature'],
+      ),
+      manifestJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}manifest_json'],
+      ),
+      cachedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}cached_at'],
+      )!,
+    );
+  }
+
+  @override
+  $RemoteFilesTable createAlias(String alias) {
+    return $RemoteFilesTable(attachedDatabase, alias);
+  }
+}
+
+class RemoteFile extends DataClass implements Insertable<RemoteFile> {
+  final String id;
+  final String peerId;
+  final String shareId;
+  final String entryId;
+  final String relativePath;
+  final String name;
+  final bool isDirectory;
+  final int size;
+  final int mtimeMs;
+  final bool hashReady;
+  final String? contentSignature;
+  final String? manifestJson;
+  final DateTime cachedAt;
+  const RemoteFile({
+    required this.id,
+    required this.peerId,
+    required this.shareId,
+    required this.entryId,
+    required this.relativePath,
+    required this.name,
+    required this.isDirectory,
+    required this.size,
+    required this.mtimeMs,
+    required this.hashReady,
+    this.contentSignature,
+    this.manifestJson,
+    required this.cachedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['peer_id'] = Variable<String>(peerId);
+    map['share_id'] = Variable<String>(shareId);
+    map['entry_id'] = Variable<String>(entryId);
+    map['relative_path'] = Variable<String>(relativePath);
+    map['name'] = Variable<String>(name);
+    map['is_directory'] = Variable<bool>(isDirectory);
+    map['size'] = Variable<int>(size);
+    map['mtime_ms'] = Variable<int>(mtimeMs);
+    map['hash_ready'] = Variable<bool>(hashReady);
+    if (!nullToAbsent || contentSignature != null) {
+      map['content_signature'] = Variable<String>(contentSignature);
+    }
+    if (!nullToAbsent || manifestJson != null) {
+      map['manifest_json'] = Variable<String>(manifestJson);
+    }
+    map['cached_at'] = Variable<DateTime>(cachedAt);
+    return map;
+  }
+
+  RemoteFilesCompanion toCompanion(bool nullToAbsent) {
+    return RemoteFilesCompanion(
+      id: Value(id),
+      peerId: Value(peerId),
+      shareId: Value(shareId),
+      entryId: Value(entryId),
+      relativePath: Value(relativePath),
+      name: Value(name),
+      isDirectory: Value(isDirectory),
+      size: Value(size),
+      mtimeMs: Value(mtimeMs),
+      hashReady: Value(hashReady),
+      contentSignature: contentSignature == null && nullToAbsent
+          ? const Value.absent()
+          : Value(contentSignature),
+      manifestJson: manifestJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(manifestJson),
+      cachedAt: Value(cachedAt),
+    );
+  }
+
+  factory RemoteFile.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RemoteFile(
+      id: serializer.fromJson<String>(json['id']),
+      peerId: serializer.fromJson<String>(json['peerId']),
+      shareId: serializer.fromJson<String>(json['shareId']),
+      entryId: serializer.fromJson<String>(json['entryId']),
+      relativePath: serializer.fromJson<String>(json['relativePath']),
+      name: serializer.fromJson<String>(json['name']),
+      isDirectory: serializer.fromJson<bool>(json['isDirectory']),
+      size: serializer.fromJson<int>(json['size']),
+      mtimeMs: serializer.fromJson<int>(json['mtimeMs']),
+      hashReady: serializer.fromJson<bool>(json['hashReady']),
+      contentSignature: serializer.fromJson<String?>(json['contentSignature']),
+      manifestJson: serializer.fromJson<String?>(json['manifestJson']),
+      cachedAt: serializer.fromJson<DateTime>(json['cachedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'peerId': serializer.toJson<String>(peerId),
+      'shareId': serializer.toJson<String>(shareId),
+      'entryId': serializer.toJson<String>(entryId),
+      'relativePath': serializer.toJson<String>(relativePath),
+      'name': serializer.toJson<String>(name),
+      'isDirectory': serializer.toJson<bool>(isDirectory),
+      'size': serializer.toJson<int>(size),
+      'mtimeMs': serializer.toJson<int>(mtimeMs),
+      'hashReady': serializer.toJson<bool>(hashReady),
+      'contentSignature': serializer.toJson<String?>(contentSignature),
+      'manifestJson': serializer.toJson<String?>(manifestJson),
+      'cachedAt': serializer.toJson<DateTime>(cachedAt),
+    };
+  }
+
+  RemoteFile copyWith({
+    String? id,
+    String? peerId,
+    String? shareId,
+    String? entryId,
+    String? relativePath,
+    String? name,
+    bool? isDirectory,
+    int? size,
+    int? mtimeMs,
+    bool? hashReady,
+    Value<String?> contentSignature = const Value.absent(),
+    Value<String?> manifestJson = const Value.absent(),
+    DateTime? cachedAt,
+  }) => RemoteFile(
+    id: id ?? this.id,
+    peerId: peerId ?? this.peerId,
+    shareId: shareId ?? this.shareId,
+    entryId: entryId ?? this.entryId,
+    relativePath: relativePath ?? this.relativePath,
+    name: name ?? this.name,
+    isDirectory: isDirectory ?? this.isDirectory,
+    size: size ?? this.size,
+    mtimeMs: mtimeMs ?? this.mtimeMs,
+    hashReady: hashReady ?? this.hashReady,
+    contentSignature: contentSignature.present
+        ? contentSignature.value
+        : this.contentSignature,
+    manifestJson: manifestJson.present ? manifestJson.value : this.manifestJson,
+    cachedAt: cachedAt ?? this.cachedAt,
+  );
+  RemoteFile copyWithCompanion(RemoteFilesCompanion data) {
+    return RemoteFile(
+      id: data.id.present ? data.id.value : this.id,
+      peerId: data.peerId.present ? data.peerId.value : this.peerId,
+      shareId: data.shareId.present ? data.shareId.value : this.shareId,
+      entryId: data.entryId.present ? data.entryId.value : this.entryId,
+      relativePath: data.relativePath.present
+          ? data.relativePath.value
+          : this.relativePath,
+      name: data.name.present ? data.name.value : this.name,
+      isDirectory: data.isDirectory.present
+          ? data.isDirectory.value
+          : this.isDirectory,
+      size: data.size.present ? data.size.value : this.size,
+      mtimeMs: data.mtimeMs.present ? data.mtimeMs.value : this.mtimeMs,
+      hashReady: data.hashReady.present ? data.hashReady.value : this.hashReady,
+      contentSignature: data.contentSignature.present
+          ? data.contentSignature.value
+          : this.contentSignature,
+      manifestJson: data.manifestJson.present
+          ? data.manifestJson.value
+          : this.manifestJson,
+      cachedAt: data.cachedAt.present ? data.cachedAt.value : this.cachedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RemoteFile(')
+          ..write('id: $id, ')
+          ..write('peerId: $peerId, ')
+          ..write('shareId: $shareId, ')
+          ..write('entryId: $entryId, ')
+          ..write('relativePath: $relativePath, ')
+          ..write('name: $name, ')
+          ..write('isDirectory: $isDirectory, ')
+          ..write('size: $size, ')
+          ..write('mtimeMs: $mtimeMs, ')
+          ..write('hashReady: $hashReady, ')
+          ..write('contentSignature: $contentSignature, ')
+          ..write('manifestJson: $manifestJson, ')
+          ..write('cachedAt: $cachedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    peerId,
+    shareId,
+    entryId,
+    relativePath,
+    name,
+    isDirectory,
+    size,
+    mtimeMs,
+    hashReady,
+    contentSignature,
+    manifestJson,
+    cachedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RemoteFile &&
+          other.id == this.id &&
+          other.peerId == this.peerId &&
+          other.shareId == this.shareId &&
+          other.entryId == this.entryId &&
+          other.relativePath == this.relativePath &&
+          other.name == this.name &&
+          other.isDirectory == this.isDirectory &&
+          other.size == this.size &&
+          other.mtimeMs == this.mtimeMs &&
+          other.hashReady == this.hashReady &&
+          other.contentSignature == this.contentSignature &&
+          other.manifestJson == this.manifestJson &&
+          other.cachedAt == this.cachedAt);
+}
+
+class RemoteFilesCompanion extends UpdateCompanion<RemoteFile> {
+  final Value<String> id;
+  final Value<String> peerId;
+  final Value<String> shareId;
+  final Value<String> entryId;
+  final Value<String> relativePath;
+  final Value<String> name;
+  final Value<bool> isDirectory;
+  final Value<int> size;
+  final Value<int> mtimeMs;
+  final Value<bool> hashReady;
+  final Value<String?> contentSignature;
+  final Value<String?> manifestJson;
+  final Value<DateTime> cachedAt;
+  final Value<int> rowid;
+  const RemoteFilesCompanion({
+    this.id = const Value.absent(),
+    this.peerId = const Value.absent(),
+    this.shareId = const Value.absent(),
+    this.entryId = const Value.absent(),
+    this.relativePath = const Value.absent(),
+    this.name = const Value.absent(),
+    this.isDirectory = const Value.absent(),
+    this.size = const Value.absent(),
+    this.mtimeMs = const Value.absent(),
+    this.hashReady = const Value.absent(),
+    this.contentSignature = const Value.absent(),
+    this.manifestJson = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  RemoteFilesCompanion.insert({
+    required String id,
+    required String peerId,
+    required String shareId,
+    required String entryId,
+    required String relativePath,
+    required String name,
+    this.isDirectory = const Value.absent(),
+    this.size = const Value.absent(),
+    this.mtimeMs = const Value.absent(),
+    this.hashReady = const Value.absent(),
+    this.contentSignature = const Value.absent(),
+    this.manifestJson = const Value.absent(),
+    this.cachedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       peerId = Value(peerId),
+       shareId = Value(shareId),
+       entryId = Value(entryId),
+       relativePath = Value(relativePath),
+       name = Value(name);
+  static Insertable<RemoteFile> custom({
+    Expression<String>? id,
+    Expression<String>? peerId,
+    Expression<String>? shareId,
+    Expression<String>? entryId,
+    Expression<String>? relativePath,
+    Expression<String>? name,
+    Expression<bool>? isDirectory,
+    Expression<int>? size,
+    Expression<int>? mtimeMs,
+    Expression<bool>? hashReady,
+    Expression<String>? contentSignature,
+    Expression<String>? manifestJson,
+    Expression<DateTime>? cachedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (peerId != null) 'peer_id': peerId,
+      if (shareId != null) 'share_id': shareId,
+      if (entryId != null) 'entry_id': entryId,
+      if (relativePath != null) 'relative_path': relativePath,
+      if (name != null) 'name': name,
+      if (isDirectory != null) 'is_directory': isDirectory,
+      if (size != null) 'size': size,
+      if (mtimeMs != null) 'mtime_ms': mtimeMs,
+      if (hashReady != null) 'hash_ready': hashReady,
+      if (contentSignature != null) 'content_signature': contentSignature,
+      if (manifestJson != null) 'manifest_json': manifestJson,
+      if (cachedAt != null) 'cached_at': cachedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  RemoteFilesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? peerId,
+    Value<String>? shareId,
+    Value<String>? entryId,
+    Value<String>? relativePath,
+    Value<String>? name,
+    Value<bool>? isDirectory,
+    Value<int>? size,
+    Value<int>? mtimeMs,
+    Value<bool>? hashReady,
+    Value<String?>? contentSignature,
+    Value<String?>? manifestJson,
+    Value<DateTime>? cachedAt,
+    Value<int>? rowid,
+  }) {
+    return RemoteFilesCompanion(
+      id: id ?? this.id,
+      peerId: peerId ?? this.peerId,
+      shareId: shareId ?? this.shareId,
+      entryId: entryId ?? this.entryId,
+      relativePath: relativePath ?? this.relativePath,
+      name: name ?? this.name,
+      isDirectory: isDirectory ?? this.isDirectory,
+      size: size ?? this.size,
+      mtimeMs: mtimeMs ?? this.mtimeMs,
+      hashReady: hashReady ?? this.hashReady,
+      contentSignature: contentSignature ?? this.contentSignature,
+      manifestJson: manifestJson ?? this.manifestJson,
+      cachedAt: cachedAt ?? this.cachedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (peerId.present) {
+      map['peer_id'] = Variable<String>(peerId.value);
+    }
+    if (shareId.present) {
+      map['share_id'] = Variable<String>(shareId.value);
+    }
+    if (entryId.present) {
+      map['entry_id'] = Variable<String>(entryId.value);
+    }
+    if (relativePath.present) {
+      map['relative_path'] = Variable<String>(relativePath.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (isDirectory.present) {
+      map['is_directory'] = Variable<bool>(isDirectory.value);
+    }
+    if (size.present) {
+      map['size'] = Variable<int>(size.value);
+    }
+    if (mtimeMs.present) {
+      map['mtime_ms'] = Variable<int>(mtimeMs.value);
+    }
+    if (hashReady.present) {
+      map['hash_ready'] = Variable<bool>(hashReady.value);
+    }
+    if (contentSignature.present) {
+      map['content_signature'] = Variable<String>(contentSignature.value);
+    }
+    if (manifestJson.present) {
+      map['manifest_json'] = Variable<String>(manifestJson.value);
+    }
+    if (cachedAt.present) {
+      map['cached_at'] = Variable<DateTime>(cachedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RemoteFilesCompanion(')
+          ..write('id: $id, ')
+          ..write('peerId: $peerId, ')
+          ..write('shareId: $shareId, ')
+          ..write('entryId: $entryId, ')
+          ..write('relativePath: $relativePath, ')
+          ..write('name: $name, ')
+          ..write('isDirectory: $isDirectory, ')
+          ..write('size: $size, ')
+          ..write('mtimeMs: $mtimeMs, ')
+          ..write('hashReady: $hashReady, ')
+          ..write('contentSignature: $contentSignature, ')
+          ..write('manifestJson: $manifestJson, ')
+          ..write('cachedAt: $cachedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $EntrySearchTokensTable extends EntrySearchTokens
+    with TableInfo<$EntrySearchTokensTable, EntrySearchToken> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $EntrySearchTokensTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _entryIdMeta = const VerificationMeta(
+    'entryId',
+  );
+  @override
+  late final GeneratedColumn<String> entryId = GeneratedColumn<String>(
+    'entry_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES entries (id)',
+    ),
+  );
+  static const VerificationMeta _shareIdMeta = const VerificationMeta(
+    'shareId',
+  );
+  @override
+  late final GeneratedColumn<String> shareId = GeneratedColumn<String>(
+    'share_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _tokenMeta = const VerificationMeta('token');
+  @override
+  late final GeneratedColumn<String> token = GeneratedColumn<String>(
+    'token',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [entryId, shareId, token];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'entry_search_tokens';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<EntrySearchToken> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('entry_id')) {
+      context.handle(
+        _entryIdMeta,
+        entryId.isAcceptableOrUnknown(data['entry_id']!, _entryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entryIdMeta);
+    }
+    if (data.containsKey('share_id')) {
+      context.handle(
+        _shareIdMeta,
+        shareId.isAcceptableOrUnknown(data['share_id']!, _shareIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_shareIdMeta);
+    }
+    if (data.containsKey('token')) {
+      context.handle(
+        _tokenMeta,
+        token.isAcceptableOrUnknown(data['token']!, _tokenMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_tokenMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {entryId, token};
+  @override
+  EntrySearchToken map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return EntrySearchToken(
+      entryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entry_id'],
+      )!,
+      shareId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}share_id'],
+      )!,
+      token: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}token'],
+      )!,
+    );
+  }
+
+  @override
+  $EntrySearchTokensTable createAlias(String alias) {
+    return $EntrySearchTokensTable(attachedDatabase, alias);
+  }
+}
+
+class EntrySearchToken extends DataClass
+    implements Insertable<EntrySearchToken> {
+  final String entryId;
+  final String shareId;
+  final String token;
+  const EntrySearchToken({
+    required this.entryId,
+    required this.shareId,
+    required this.token,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['entry_id'] = Variable<String>(entryId);
+    map['share_id'] = Variable<String>(shareId);
+    map['token'] = Variable<String>(token);
+    return map;
+  }
+
+  EntrySearchTokensCompanion toCompanion(bool nullToAbsent) {
+    return EntrySearchTokensCompanion(
+      entryId: Value(entryId),
+      shareId: Value(shareId),
+      token: Value(token),
+    );
+  }
+
+  factory EntrySearchToken.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return EntrySearchToken(
+      entryId: serializer.fromJson<String>(json['entryId']),
+      shareId: serializer.fromJson<String>(json['shareId']),
+      token: serializer.fromJson<String>(json['token']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'entryId': serializer.toJson<String>(entryId),
+      'shareId': serializer.toJson<String>(shareId),
+      'token': serializer.toJson<String>(token),
+    };
+  }
+
+  EntrySearchToken copyWith({
+    String? entryId,
+    String? shareId,
+    String? token,
+  }) => EntrySearchToken(
+    entryId: entryId ?? this.entryId,
+    shareId: shareId ?? this.shareId,
+    token: token ?? this.token,
+  );
+  EntrySearchToken copyWithCompanion(EntrySearchTokensCompanion data) {
+    return EntrySearchToken(
+      entryId: data.entryId.present ? data.entryId.value : this.entryId,
+      shareId: data.shareId.present ? data.shareId.value : this.shareId,
+      token: data.token.present ? data.token.value : this.token,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EntrySearchToken(')
+          ..write('entryId: $entryId, ')
+          ..write('shareId: $shareId, ')
+          ..write('token: $token')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(entryId, shareId, token);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is EntrySearchToken &&
+          other.entryId == this.entryId &&
+          other.shareId == this.shareId &&
+          other.token == this.token);
+}
+
+class EntrySearchTokensCompanion extends UpdateCompanion<EntrySearchToken> {
+  final Value<String> entryId;
+  final Value<String> shareId;
+  final Value<String> token;
+  final Value<int> rowid;
+  const EntrySearchTokensCompanion({
+    this.entryId = const Value.absent(),
+    this.shareId = const Value.absent(),
+    this.token = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  EntrySearchTokensCompanion.insert({
+    required String entryId,
+    required String shareId,
+    required String token,
+    this.rowid = const Value.absent(),
+  }) : entryId = Value(entryId),
+       shareId = Value(shareId),
+       token = Value(token);
+  static Insertable<EntrySearchToken> custom({
+    Expression<String>? entryId,
+    Expression<String>? shareId,
+    Expression<String>? token,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (entryId != null) 'entry_id': entryId,
+      if (shareId != null) 'share_id': shareId,
+      if (token != null) 'token': token,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  EntrySearchTokensCompanion copyWith({
+    Value<String>? entryId,
+    Value<String>? shareId,
+    Value<String>? token,
+    Value<int>? rowid,
+  }) {
+    return EntrySearchTokensCompanion(
+      entryId: entryId ?? this.entryId,
+      shareId: shareId ?? this.shareId,
+      token: token ?? this.token,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (entryId.present) {
+      map['entry_id'] = Variable<String>(entryId.value);
+    }
+    if (shareId.present) {
+      map['share_id'] = Variable<String>(shareId.value);
+    }
+    if (token.present) {
+      map['token'] = Variable<String>(token.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EntrySearchTokensCompanion(')
+          ..write('entryId: $entryId, ')
+          ..write('shareId: $shareId, ')
+          ..write('token: $token, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $DownloadGroupsTable extends DownloadGroups
     with TableInfo<$DownloadGroupsTable, DownloadGroup> {
   @override
@@ -5649,6 +6689,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PeersTable peers = $PeersTable(this);
   late final $RemoteEntriesCacheTable remoteEntriesCache =
       $RemoteEntriesCacheTable(this);
+  late final $RemoteFilesTable remoteFiles = $RemoteFilesTable(this);
+  late final $EntrySearchTokensTable entrySearchTokens =
+      $EntrySearchTokensTable(this);
   late final $DownloadGroupsTable downloadGroups = $DownloadGroupsTable(this);
   late final $DownloadsTable downloads = $DownloadsTable(this);
   late final $DownloadChunksTable downloadChunks = $DownloadChunksTable(this);
@@ -5664,6 +6707,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     chunks,
     peers,
     remoteEntriesCache,
+    remoteFiles,
+    entrySearchTokens,
     downloadGroups,
     downloads,
     downloadChunks,
@@ -6322,6 +7367,27 @@ final class $$EntriesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$EntrySearchTokensTable, List<EntrySearchToken>>
+  _entrySearchTokensRefsTable(_$AppDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.entrySearchTokens,
+        aliasName: 'entries__id__entry_search_tokens__entry_id',
+      );
+
+  $$EntrySearchTokensTableProcessedTableManager get entrySearchTokensRefs {
+    final manager = $$EntrySearchTokensTableTableManager(
+      $_db,
+      $_db.entrySearchTokens,
+    ).filter((f) => f.entryId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(
+      _entrySearchTokensRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$EntriesTableFilterComposer
@@ -6417,6 +7483,31 @@ class $$EntriesTableFilterComposer
           }) => $$ChunksTableFilterComposer(
             $db: $db,
             $table: $db.chunks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> entrySearchTokensRefs(
+    Expression<bool> Function($$EntrySearchTokensTableFilterComposer f) f,
+  ) {
+    final $$EntrySearchTokensTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.entrySearchTokens,
+      getReferencedColumn: (t) => t.entryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntrySearchTokensTableFilterComposer(
+            $db: $db,
+            $table: $db.entrySearchTokens,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -6594,6 +7685,32 @@ class $$EntriesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> entrySearchTokensRefs<T extends Object>(
+    Expression<T> Function($$EntrySearchTokensTableAnnotationComposer a) f,
+  ) {
+    final $$EntrySearchTokensTableAnnotationComposer composer =
+        $composerBuilder(
+          composer: this,
+          getCurrentColumn: (t) => t.id,
+          referencedTable: $db.entrySearchTokens,
+          getReferencedColumn: (t) => t.entryId,
+          builder:
+              (
+                joinBuilder, {
+                $addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer,
+              }) => $$EntrySearchTokensTableAnnotationComposer(
+                $db: $db,
+                $table: $db.entrySearchTokens,
+                $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+                joinBuilder: joinBuilder,
+                $removeJoinBuilderFromRootComposer:
+                    $removeJoinBuilderFromRootComposer,
+              ),
+        );
+    return f(composer);
+  }
 }
 
 class $$EntriesTableTableManager
@@ -6609,7 +7726,11 @@ class $$EntriesTableTableManager
           $$EntriesTableUpdateCompanionBuilder,
           (Entry, $$EntriesTableReferences),
           Entry,
-          PrefetchHooks Function({bool shareId, bool chunksRefs})
+          PrefetchHooks Function({
+            bool shareId,
+            bool chunksRefs,
+            bool entrySearchTokensRefs,
+          })
         > {
   $$EntriesTableTableManager(_$AppDatabase db, $EntriesTable table)
     : super(
@@ -6682,59 +7803,94 @@ class $$EntriesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({shareId = false, chunksRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [if (chunksRefs) db.chunks],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (shareId) {
-                      state =
-                          state.withJoin(
-                                currentTable: table,
-                                currentColumn: table.shareId,
-                                referencedTable: $$EntriesTableReferences
-                                    ._shareIdTable(db),
-                                referencedColumn: $$EntriesTableReferences
-                                    ._shareIdTable(db)
-                                    .id,
-                              )
-                              as T;
-                    }
+          prefetchHooksCallback:
+              ({
+                shareId = false,
+                chunksRefs = false,
+                entrySearchTokensRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (chunksRefs) db.chunks,
+                    if (entrySearchTokensRefs) db.entrySearchTokens,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (shareId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.shareId,
+                                    referencedTable: $$EntriesTableReferences
+                                        ._shareIdTable(db),
+                                    referencedColumn: $$EntriesTableReferences
+                                        ._shareIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
 
-                    return state;
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (chunksRefs)
+                        await $_getPrefetchedData<Entry, $EntriesTable, Chunk>(
+                          currentTable: table,
+                          referencedTable: $$EntriesTableReferences
+                              ._chunksRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$EntriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).chunksRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.entryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (entrySearchTokensRefs)
+                        await $_getPrefetchedData<
+                          Entry,
+                          $EntriesTable,
+                          EntrySearchToken
+                        >(
+                          currentTable: table,
+                          referencedTable: $$EntriesTableReferences
+                              ._entrySearchTokensRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$EntriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).entrySearchTokensRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.entryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
                   },
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (chunksRefs)
-                    await $_getPrefetchedData<Entry, $EntriesTable, Chunk>(
-                      currentTable: table,
-                      referencedTable: $$EntriesTableReferences
-                          ._chunksRefsTable(db),
-                      managerFromTypedResult: (p0) =>
-                          $$EntriesTableReferences(db, table, p0).chunksRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.entryId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -6751,7 +7907,11 @@ typedef $$EntriesTableProcessedTableManager =
       $$EntriesTableUpdateCompanionBuilder,
       (Entry, $$EntriesTableReferences),
       Entry,
-      PrefetchHooks Function({bool shareId, bool chunksRefs})
+      PrefetchHooks Function({
+        bool shareId,
+        bool chunksRefs,
+        bool entrySearchTokensRefs,
+      })
     >;
 typedef $$ChunksTableCreateCompanionBuilder =
     ChunksCompanion Function({
@@ -7178,6 +8338,24 @@ final class $$PeersTableReferences
     );
   }
 
+  static MultiTypedResultKey<$RemoteFilesTable, List<RemoteFile>>
+  _remoteFilesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.remoteFiles,
+    aliasName: 'peers__id__remote_files__peer_id',
+  );
+
+  $$RemoteFilesTableProcessedTableManager get remoteFilesRefs {
+    final manager = $$RemoteFilesTableTableManager(
+      $_db,
+      $_db.remoteFiles,
+    ).filter((f) => f.peerId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_remoteFilesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
   static MultiTypedResultKey<$DownloadsTable, List<Download>>
   _downloadsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
     db.downloads,
@@ -7266,6 +8444,31 @@ class $$PeersTableFilterComposer extends Composer<_$AppDatabase, $PeersTable> {
           }) => $$RemoteEntriesCacheTableFilterComposer(
             $db: $db,
             $table: $db.remoteEntriesCache,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> remoteFilesRefs(
+    Expression<bool> Function($$RemoteFilesTableFilterComposer f) f,
+  ) {
+    final $$RemoteFilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.remoteFiles,
+      getReferencedColumn: (t) => t.peerId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RemoteFilesTableFilterComposer(
+            $db: $db,
+            $table: $db.remoteFiles,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -7422,6 +8625,31 @@ class $$PeersTableAnnotationComposer
     return f(composer);
   }
 
+  Expression<T> remoteFilesRefs<T extends Object>(
+    Expression<T> Function($$RemoteFilesTableAnnotationComposer a) f,
+  ) {
+    final $$RemoteFilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.remoteFiles,
+      getReferencedColumn: (t) => t.peerId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RemoteFilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.remoteFiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
   Expression<T> downloadsRefs<T extends Object>(
     Expression<T> Function($$DownloadsTableAnnotationComposer a) f,
   ) {
@@ -7463,6 +8691,7 @@ class $$PeersTableTableManager
           Peer,
           PrefetchHooks Function({
             bool remoteEntriesCacheRefs,
+            bool remoteFilesRefs,
             bool downloadsRefs,
           })
         > {
@@ -7532,11 +8761,16 @@ class $$PeersTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({remoteEntriesCacheRefs = false, downloadsRefs = false}) {
+              ({
+                remoteEntriesCacheRefs = false,
+                remoteFilesRefs = false,
+                downloadsRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (remoteEntriesCacheRefs) db.remoteEntriesCache,
+                    if (remoteFilesRefs) db.remoteFiles,
                     if (downloadsRefs) db.downloads,
                   ],
                   addJoins: null,
@@ -7557,6 +8791,27 @@ class $$PeersTableTableManager
                                 table,
                                 p0,
                               ).remoteEntriesCacheRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.peerId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (remoteFilesRefs)
+                        await $_getPrefetchedData<
+                          Peer,
+                          $PeersTable,
+                          RemoteFile
+                        >(
+                          currentTable: table,
+                          referencedTable: $$PeersTableReferences
+                              ._remoteFilesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$PeersTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).remoteFilesRefs,
                           referencedItemsForCurrentItem:
                               (item, referencedItems) => referencedItems.where(
                                 (e) => e.peerId == item.id,
@@ -7600,7 +8855,11 @@ typedef $$PeersTableProcessedTableManager =
       $$PeersTableUpdateCompanionBuilder,
       (Peer, $$PeersTableReferences),
       Peer,
-      PrefetchHooks Function({bool remoteEntriesCacheRefs, bool downloadsRefs})
+      PrefetchHooks Function({
+        bool remoteEntriesCacheRefs,
+        bool remoteFilesRefs,
+        bool downloadsRefs,
+      })
     >;
 typedef $$RemoteEntriesCacheTableCreateCompanionBuilder =
     RemoteEntriesCacheCompanion Function({
@@ -7951,6 +9210,778 @@ typedef $$RemoteEntriesCacheTableProcessedTableManager =
       (RemoteEntriesCacheData, $$RemoteEntriesCacheTableReferences),
       RemoteEntriesCacheData,
       PrefetchHooks Function({bool peerId})
+    >;
+typedef $$RemoteFilesTableCreateCompanionBuilder =
+    RemoteFilesCompanion Function({
+      required String id,
+      required String peerId,
+      required String shareId,
+      required String entryId,
+      required String relativePath,
+      required String name,
+      Value<bool> isDirectory,
+      Value<int> size,
+      Value<int> mtimeMs,
+      Value<bool> hashReady,
+      Value<String?> contentSignature,
+      Value<String?> manifestJson,
+      Value<DateTime> cachedAt,
+      Value<int> rowid,
+    });
+typedef $$RemoteFilesTableUpdateCompanionBuilder =
+    RemoteFilesCompanion Function({
+      Value<String> id,
+      Value<String> peerId,
+      Value<String> shareId,
+      Value<String> entryId,
+      Value<String> relativePath,
+      Value<String> name,
+      Value<bool> isDirectory,
+      Value<int> size,
+      Value<int> mtimeMs,
+      Value<bool> hashReady,
+      Value<String?> contentSignature,
+      Value<String?> manifestJson,
+      Value<DateTime> cachedAt,
+      Value<int> rowid,
+    });
+
+final class $$RemoteFilesTableReferences
+    extends BaseReferences<_$AppDatabase, $RemoteFilesTable, RemoteFile> {
+  $$RemoteFilesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $PeersTable _peerIdTable(_$AppDatabase db) =>
+      db.peers.createAlias('remote_files__peer_id__peers__id');
+
+  $$PeersTableProcessedTableManager get peerId {
+    final $_column = $_itemColumn<String>('peer_id')!;
+
+    final manager = $$PeersTableTableManager(
+      $_db,
+      $_db.peers,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_peerIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$RemoteFilesTableFilterComposer
+    extends Composer<_$AppDatabase, $RemoteFilesTable> {
+  $$RemoteFilesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get shareId => $composableBuilder(
+    column: $table.shareId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get entryId => $composableBuilder(
+    column: $table.entryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get relativePath => $composableBuilder(
+    column: $table.relativePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDirectory => $composableBuilder(
+    column: $table.isDirectory,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get size => $composableBuilder(
+    column: $table.size,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get mtimeMs => $composableBuilder(
+    column: $table.mtimeMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get hashReady => $composableBuilder(
+    column: $table.hashReady,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contentSignature => $composableBuilder(
+    column: $table.contentSignature,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get manifestJson => $composableBuilder(
+    column: $table.manifestJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get cachedAt => $composableBuilder(
+    column: $table.cachedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$PeersTableFilterComposer get peerId {
+    final $$PeersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.peerId,
+      referencedTable: $db.peers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PeersTableFilterComposer(
+            $db: $db,
+            $table: $db.peers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RemoteFilesTableOrderingComposer
+    extends Composer<_$AppDatabase, $RemoteFilesTable> {
+  $$RemoteFilesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get shareId => $composableBuilder(
+    column: $table.shareId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get entryId => $composableBuilder(
+    column: $table.entryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get relativePath => $composableBuilder(
+    column: $table.relativePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isDirectory => $composableBuilder(
+    column: $table.isDirectory,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get size => $composableBuilder(
+    column: $table.size,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get mtimeMs => $composableBuilder(
+    column: $table.mtimeMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get hashReady => $composableBuilder(
+    column: $table.hashReady,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contentSignature => $composableBuilder(
+    column: $table.contentSignature,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get manifestJson => $composableBuilder(
+    column: $table.manifestJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get cachedAt => $composableBuilder(
+    column: $table.cachedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$PeersTableOrderingComposer get peerId {
+    final $$PeersTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.peerId,
+      referencedTable: $db.peers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PeersTableOrderingComposer(
+            $db: $db,
+            $table: $db.peers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RemoteFilesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RemoteFilesTable> {
+  $$RemoteFilesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get shareId =>
+      $composableBuilder(column: $table.shareId, builder: (column) => column);
+
+  GeneratedColumn<String> get entryId =>
+      $composableBuilder(column: $table.entryId, builder: (column) => column);
+
+  GeneratedColumn<String> get relativePath => $composableBuilder(
+    column: $table.relativePath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDirectory => $composableBuilder(
+    column: $table.isDirectory,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get size =>
+      $composableBuilder(column: $table.size, builder: (column) => column);
+
+  GeneratedColumn<int> get mtimeMs =>
+      $composableBuilder(column: $table.mtimeMs, builder: (column) => column);
+
+  GeneratedColumn<bool> get hashReady =>
+      $composableBuilder(column: $table.hashReady, builder: (column) => column);
+
+  GeneratedColumn<String> get contentSignature => $composableBuilder(
+    column: $table.contentSignature,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get manifestJson => $composableBuilder(
+    column: $table.manifestJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get cachedAt =>
+      $composableBuilder(column: $table.cachedAt, builder: (column) => column);
+
+  $$PeersTableAnnotationComposer get peerId {
+    final $$PeersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.peerId,
+      referencedTable: $db.peers,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$PeersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.peers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RemoteFilesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RemoteFilesTable,
+          RemoteFile,
+          $$RemoteFilesTableFilterComposer,
+          $$RemoteFilesTableOrderingComposer,
+          $$RemoteFilesTableAnnotationComposer,
+          $$RemoteFilesTableCreateCompanionBuilder,
+          $$RemoteFilesTableUpdateCompanionBuilder,
+          (RemoteFile, $$RemoteFilesTableReferences),
+          RemoteFile,
+          PrefetchHooks Function({bool peerId})
+        > {
+  $$RemoteFilesTableTableManager(_$AppDatabase db, $RemoteFilesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RemoteFilesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RemoteFilesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RemoteFilesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> peerId = const Value.absent(),
+                Value<String> shareId = const Value.absent(),
+                Value<String> entryId = const Value.absent(),
+                Value<String> relativePath = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<bool> isDirectory = const Value.absent(),
+                Value<int> size = const Value.absent(),
+                Value<int> mtimeMs = const Value.absent(),
+                Value<bool> hashReady = const Value.absent(),
+                Value<String?> contentSignature = const Value.absent(),
+                Value<String?> manifestJson = const Value.absent(),
+                Value<DateTime> cachedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RemoteFilesCompanion(
+                id: id,
+                peerId: peerId,
+                shareId: shareId,
+                entryId: entryId,
+                relativePath: relativePath,
+                name: name,
+                isDirectory: isDirectory,
+                size: size,
+                mtimeMs: mtimeMs,
+                hashReady: hashReady,
+                contentSignature: contentSignature,
+                manifestJson: manifestJson,
+                cachedAt: cachedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String peerId,
+                required String shareId,
+                required String entryId,
+                required String relativePath,
+                required String name,
+                Value<bool> isDirectory = const Value.absent(),
+                Value<int> size = const Value.absent(),
+                Value<int> mtimeMs = const Value.absent(),
+                Value<bool> hashReady = const Value.absent(),
+                Value<String?> contentSignature = const Value.absent(),
+                Value<String?> manifestJson = const Value.absent(),
+                Value<DateTime> cachedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RemoteFilesCompanion.insert(
+                id: id,
+                peerId: peerId,
+                shareId: shareId,
+                entryId: entryId,
+                relativePath: relativePath,
+                name: name,
+                isDirectory: isDirectory,
+                size: size,
+                mtimeMs: mtimeMs,
+                hashReady: hashReady,
+                contentSignature: contentSignature,
+                manifestJson: manifestJson,
+                cachedAt: cachedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$RemoteFilesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({peerId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (peerId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.peerId,
+                                referencedTable: $$RemoteFilesTableReferences
+                                    ._peerIdTable(db),
+                                referencedColumn: $$RemoteFilesTableReferences
+                                    ._peerIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$RemoteFilesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RemoteFilesTable,
+      RemoteFile,
+      $$RemoteFilesTableFilterComposer,
+      $$RemoteFilesTableOrderingComposer,
+      $$RemoteFilesTableAnnotationComposer,
+      $$RemoteFilesTableCreateCompanionBuilder,
+      $$RemoteFilesTableUpdateCompanionBuilder,
+      (RemoteFile, $$RemoteFilesTableReferences),
+      RemoteFile,
+      PrefetchHooks Function({bool peerId})
+    >;
+typedef $$EntrySearchTokensTableCreateCompanionBuilder =
+    EntrySearchTokensCompanion Function({
+      required String entryId,
+      required String shareId,
+      required String token,
+      Value<int> rowid,
+    });
+typedef $$EntrySearchTokensTableUpdateCompanionBuilder =
+    EntrySearchTokensCompanion Function({
+      Value<String> entryId,
+      Value<String> shareId,
+      Value<String> token,
+      Value<int> rowid,
+    });
+
+final class $$EntrySearchTokensTableReferences
+    extends
+        BaseReferences<
+          _$AppDatabase,
+          $EntrySearchTokensTable,
+          EntrySearchToken
+        > {
+  $$EntrySearchTokensTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $EntriesTable _entryIdTable(_$AppDatabase db) =>
+      db.entries.createAlias('entry_search_tokens__entry_id__entries__id');
+
+  $$EntriesTableProcessedTableManager get entryId {
+    final $_column = $_itemColumn<String>('entry_id')!;
+
+    final manager = $$EntriesTableTableManager(
+      $_db,
+      $_db.entries,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_entryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$EntrySearchTokensTableFilterComposer
+    extends Composer<_$AppDatabase, $EntrySearchTokensTable> {
+  $$EntrySearchTokensTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get shareId => $composableBuilder(
+    column: $table.shareId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get token => $composableBuilder(
+    column: $table.token,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$EntriesTableFilterComposer get entryId {
+    final $$EntriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.entryId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableFilterComposer(
+            $db: $db,
+            $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$EntrySearchTokensTableOrderingComposer
+    extends Composer<_$AppDatabase, $EntrySearchTokensTable> {
+  $$EntrySearchTokensTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get shareId => $composableBuilder(
+    column: $table.shareId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get token => $composableBuilder(
+    column: $table.token,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$EntriesTableOrderingComposer get entryId {
+    final $$EntriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.entryId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$EntrySearchTokensTableAnnotationComposer
+    extends Composer<_$AppDatabase, $EntrySearchTokensTable> {
+  $$EntrySearchTokensTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get shareId =>
+      $composableBuilder(column: $table.shareId, builder: (column) => column);
+
+  GeneratedColumn<String> get token =>
+      $composableBuilder(column: $table.token, builder: (column) => column);
+
+  $$EntriesTableAnnotationComposer get entryId {
+    final $$EntriesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.entryId,
+      referencedTable: $db.entries,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$EntriesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.entries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$EntrySearchTokensTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $EntrySearchTokensTable,
+          EntrySearchToken,
+          $$EntrySearchTokensTableFilterComposer,
+          $$EntrySearchTokensTableOrderingComposer,
+          $$EntrySearchTokensTableAnnotationComposer,
+          $$EntrySearchTokensTableCreateCompanionBuilder,
+          $$EntrySearchTokensTableUpdateCompanionBuilder,
+          (EntrySearchToken, $$EntrySearchTokensTableReferences),
+          EntrySearchToken,
+          PrefetchHooks Function({bool entryId})
+        > {
+  $$EntrySearchTokensTableTableManager(
+    _$AppDatabase db,
+    $EntrySearchTokensTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$EntrySearchTokensTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$EntrySearchTokensTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$EntrySearchTokensTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> entryId = const Value.absent(),
+                Value<String> shareId = const Value.absent(),
+                Value<String> token = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => EntrySearchTokensCompanion(
+                entryId: entryId,
+                shareId: shareId,
+                token: token,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String entryId,
+                required String shareId,
+                required String token,
+                Value<int> rowid = const Value.absent(),
+              }) => EntrySearchTokensCompanion.insert(
+                entryId: entryId,
+                shareId: shareId,
+                token: token,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$EntrySearchTokensTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({entryId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (entryId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.entryId,
+                                referencedTable:
+                                    $$EntrySearchTokensTableReferences
+                                        ._entryIdTable(db),
+                                referencedColumn:
+                                    $$EntrySearchTokensTableReferences
+                                        ._entryIdTable(db)
+                                        .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$EntrySearchTokensTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $EntrySearchTokensTable,
+      EntrySearchToken,
+      $$EntrySearchTokensTableFilterComposer,
+      $$EntrySearchTokensTableOrderingComposer,
+      $$EntrySearchTokensTableAnnotationComposer,
+      $$EntrySearchTokensTableCreateCompanionBuilder,
+      $$EntrySearchTokensTableUpdateCompanionBuilder,
+      (EntrySearchToken, $$EntrySearchTokensTableReferences),
+      EntrySearchToken,
+      PrefetchHooks Function({bool entryId})
     >;
 typedef $$DownloadGroupsTableCreateCompanionBuilder =
     DownloadGroupsCompanion Function({
@@ -9754,6 +11785,10 @@ class $AppDatabaseManager {
       $$PeersTableTableManager(_db, _db.peers);
   $$RemoteEntriesCacheTableTableManager get remoteEntriesCache =>
       $$RemoteEntriesCacheTableTableManager(_db, _db.remoteEntriesCache);
+  $$RemoteFilesTableTableManager get remoteFiles =>
+      $$RemoteFilesTableTableManager(_db, _db.remoteFiles);
+  $$EntrySearchTokensTableTableManager get entrySearchTokens =>
+      $$EntrySearchTokensTableTableManager(_db, _db.entrySearchTokens);
   $$DownloadGroupsTableTableManager get downloadGroups =>
       $$DownloadGroupsTableTableManager(_db, _db.downloadGroups);
   $$DownloadsTableTableManager get downloads =>

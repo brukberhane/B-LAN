@@ -245,6 +245,23 @@ void main() {
     expect(response.statusCode, 403);
   });
 
+  test('search endpoint returns local matches with signature', () async {
+    await db.rebuildSearchTokensForEntry(fileId);
+
+    final response = await http.get(
+      uri('/search').replace(queryParameters: {'q': 'hello'}),
+      headers: authHeaders(),
+    );
+    expect(response.statusCode, 200);
+
+    final body = SearchResponseDto.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+    expect(body.results, hasLength(1));
+    expect(body.results.first.name, 'hello.txt');
+    expect(body.results.first.contentSignature, contains('sha256:'));
+  });
+
   test('cors headers are present on responses and preflight', () async {
     final options = await http.Request('OPTIONS', uri('/shares'))
       ..headers['Origin'] = 'http://example.com';

@@ -227,6 +227,7 @@ class ShareScanner {
           );
     }
 
+    await _db.rebuildSearchTokensForEntry(entryId);
     await _hashEntry(
       shareId: shareId,
       entryId: entryId,
@@ -262,6 +263,10 @@ class ShareScanner {
             chunkSize: Value(chunkSize),
           ),
         );
+    final created = await _db.entryBySharePath(shareId, dirPath);
+    if (created != null) {
+      await _db.rebuildSearchTokensForEntry(created.id);
+    }
   }
 
   Future<void> _ensureParentDirectories({

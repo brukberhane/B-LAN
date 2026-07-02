@@ -41,6 +41,8 @@ class TransferServer {
       ..post('/session', _session)
       ..get('/shares', _shares)
       ..get('/entries', _entries)
+      ..get('/search', _search)
+      ..get('/manifest/shares/<shareId>', _shareManifest)
       ..get('/manifest/files/<fileId>', _manifestFile)
       ..get('/files/<fileId>', _file)
       ..get('/chunks', _chunkByQuery)
@@ -145,7 +147,7 @@ class TransferServer {
       fingerprint: identity.fingerprint,
       publicKey: identity.publicKeyBase64,
       identityVersion: identity.identityVersion,
-      capabilities: const ['shares', 'browse', 'download', 'range'],
+      capabilities: const ['shares', 'browse', 'download', 'range', 'search'],
     );
     return Response.ok(
       jsonEncode(body.toJson()),
@@ -197,6 +199,83 @@ class TransferServer {
         .toList();
     return Response.ok(
       jsonEncode(dtos.map((e) => e.toJson()).toList()),
+      headers: {'content-type': 'application/json'},
+    );
+  }
+
+  Future<Response> _search(Request request) async {
+    final query = request.url.queryParameters['q']?.trim() ?? '';
+    if (query.isEmpty) {
+      return Response.ok(
+        jsonEncode(const SearchResponseDto(results: []).toJson()),
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    final type = request.url.queryParameters['type'] ?? 'all';
+    final minSize = int.tryParse(request.url.queryParameters['minSize'] ?? '');
+    final maxSize = int.tryParse(request.url.queryParameters['maxSize'] ?? '');
+    final pageSize = int.tryParse(request.url.queryParameters['pageSize'] ?? '') ?? 50;
+    final offset = int.tryParse(request.url.queryParameters['pageToken'] ?? '') ?? 0;
+
+    final localPeerId = await _db.ensurePeerId();
+    final localNick = await _db.ensureNick();
+    final rows = await _db.searchLocalEntries(
+      query: query,
+      type: type,
+      minSize: minSize,
+      maxSize: maxSize,
+      pageSize: pageSize + 1,
+      offset: offset,
+    );
+    final hasMore = rows.length > pageSize;
+    final page = hasMore ? rows.sublist(0, pageSize) : rows;
+    final results = <SearchResultDto>[];
+    for (final entry in page) {
+      final share = await (_db.select(_db.shares)
+            ..where((t) => t.id.equals(entry.shareId)))
+          .getSingleOrNull();
+      if (share == null) {
+        continue;
+      }
+      final signature = await _db.contentSignatureForEntry(entry.id);
+      results.add(
+        SearchResultDto(
+          peerId: localPeerId,
+          peerNick: localNick,
+          shareId: entry.shareId,
+          shareName: share.displayName,
+          entryId: entry.id,
+          name: entry.name,
+          path: entry.relativePath,
+          isDirectory: entry.isDirectory,
+          size: entry.size,
+          mtimeMs: entry.mtimeMs,
+          hashReady: entry.hashStatus == 'ready',
+          contentSignature: signature,
+          trusted: true,
+        ),
+      );
+    }
+    final response = SearchResponseDto(
+      results: results,
+      nextPageToken: hasMore ? '${offset + pageSize}' : null,
+    );
+    return Response.ok(
+      jsonEncode(response.toJson()),
+      headers: {'content-type': 'application/json'},
+    );
+  }
+
+  Future<Response> _shareManifest(Request request, String shareId) async {
+    final pageSize = int.tryParse(request.url.queryParameters['pageSize'] ?? '') ?? 100;
+    final offset = int.tryParse(request.url.queryParameters['pageToken'] ?? '') ?? 0;
+    final page = await _db.shareManifestPage(
+      shareId,
+      pageSize: pageSize,
+      offset: offset,
+    );
+    return Response.ok(
+      jsonEncode(page.toJson()),
       headers: {'content-type': 'application/json'},
     );
   }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../features/downloads/downloads_page.dart';
 import '../features/peers/peers_page.dart';
+import '../features/search/search_page.dart';
 import '../features/settings/settings_page.dart';
 import '../features/shares/shares_page.dart';
 
@@ -21,6 +22,7 @@ class _AppShellState extends State<AppShell> {
     final pages = <Widget>[
       if (!kIsWeb) const SharesPage(),
       const PeersPage(),
+      const SearchPage(),
       const DownloadsPage(),
       const SettingsPage(),
     ];
@@ -33,6 +35,10 @@ class _AppShellState extends State<AppShell> {
       const NavigationDestination(
         icon: Icon(Icons.devices_other_outlined),
         label: 'Peers',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.search_outlined),
+        label: 'Search',
       ),
       const NavigationDestination(
         icon: Icon(Icons.download_outlined),

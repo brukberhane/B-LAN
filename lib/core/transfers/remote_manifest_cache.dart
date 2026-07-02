@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../persistence/database.dart';
 import '../protocol/models.dart';
+import '../search/content_signature.dart';
 
 /// Persists remote file manifests for multi-source chunk discovery.
 class RemoteManifestCache {
@@ -50,7 +51,7 @@ class RemoteManifestCache {
     );
   }
 
-  /// Peers whose cached manifest matches [manifest] chunk hashes and size.
+  /// Peers whose cached manifest matches [manifest] by path or content signature.
   Future<List<Peer>> matchingPeers({
     required String shareId,
     required String relativePath,
@@ -59,6 +60,12 @@ class RemoteManifestCache {
   }) async {
     final normalizedPath = _normalizePath(relativePath);
     final targetHashes = _chunkHashes(manifest);
+    final signature = contentSignatureFromManifest(manifest);
+    final peerIds = <String>{};
+    if (primaryPeerId != null) {
+      peerIds.add(primaryPeerId);
+    }
+
     final rows = await (_db.select(_db.remoteEntriesCache)
           ..where(
             (t) =>
@@ -66,11 +73,6 @@ class RemoteManifestCache {
                 t.relativePath.equals(normalizedPath),
           ))
         .get();
-
-    final peerIds = <String>{};
-    if (primaryPeerId != null) {
-      peerIds.add(primaryPeerId);
-    }
 
     for (final row in rows) {
       final cached = _decodeManifest(row.payloadJson);
@@ -84,6 +86,27 @@ class RemoteManifestCache {
         continue;
       }
       peerIds.add(row.peerId);
+    }
+
+    final signatureRows = await _db.remoteFilesBySignature(signature);
+    for (final row in signatureRows) {
+      if (row.manifestJson != null) {
+        final cached = _decodeManifest(row.manifestJson!);
+        if (cached == null) {
+          continue;
+        }
+        if (cached.totalBytes != manifest.totalBytes) {
+          continue;
+        }
+        if (!_listEquals(_chunkHashes(cached), targetHashes)) {
+          continue;
+        }
+        peerIds.add(row.peerId);
+        continue;
+      }
+      if (row.hashReady && row.size == manifest.totalBytes) {
+        peerIds.add(row.peerId);
+      }
     }
 
     if (peerIds.isEmpty) {

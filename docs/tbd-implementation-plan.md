@@ -19,7 +19,7 @@ Last reviewed: 2026-07-01
 | 10 Tests / stress / release | **complete** | Expanded automated suite, stress fixtures, matrix scaffold + README |
 | 11 Persistent download queue and controls | **complete** | `DownloadQueue` worker, schema v7 groups/queue fields, pause/resume/cancel/retry UI, non-blocking enqueue |
 | 11.5 In-flight chunk progress | **complete** | Schema v8 `inFlightBytes`, streaming chunk fetch, throttled progress tracker, Downloads UI shows mid-chunk progress |
-| 12 Global search and remote index discovery | pending | Search endpoint/UI, indexed filename/path search, cross-path multi-source |
+| 12 Global search and remote index | **complete** | Schema v9 search tokens + `remote_files`, `GET /search`, share manifest page, `SearchService`, Search UI, signature merge |
 | 12.5 Chunk-level swarm scheduling | pending | Torrent-like per-chunk availability, rarest-first, dynamic peer striping |
 | 13 Upload visibility and network health | pending | Upload rows, rates, bandwidth/concurrency limits, range hardening |
 | 14 Platform proof and native UX | pending | Execute matrix, platform help, Android/Windows/Linux/Web validation |
@@ -1011,6 +1011,8 @@ This phase must include a full walk through implemented backend capability and m
 - User can search visible LAN content without manually browsing each peer.
 - Identical files on different peers are grouped and usable by multi-source downloads.
 - Search stays responsive on large shares.
+
+**Status: complete (2026-07-02).** Schema v9 `entry_search_tokens` + `remote_files`; `GET /search` and `GET /manifest/shares/<id>`; local token index maintained by scanner; `SearchService` parallel peer queries with signature merge; Search nav page; `matchingPeers` cross-path via signature; 96 tests pass.
 
 ## Phase 12.5: Chunk-Level Swarm Scheduling
 

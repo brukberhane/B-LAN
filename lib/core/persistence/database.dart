@@ -9,6 +9,8 @@ import '../protocol/download_states.dart';
 import '../protocol/models.dart';
 import '../security/peer_identity.dart';
 import '../indexing/chunker.dart';
+import '../search/content_signature.dart';
+import '../search/search_tokenizer.dart';
 import 'tables.dart';
 
 part 'database.g.dart';
@@ -21,6 +23,8 @@ part 'database.g.dart';
     Chunks,
     Peers,
     RemoteEntriesCache,
+    RemoteFiles,
+    EntrySearchTokens,
     DownloadGroups,
     Downloads,
     DownloadChunks,
@@ -31,7 +35,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -77,6 +81,21 @@ class AppDatabase extends _$AppDatabase {
       if (from < 8) {
         await migrator.addColumn(downloads, downloads.inFlightBytes);
       }
+      if (from < 9) {
+        await migrator.createTable(remoteFiles);
+        await migrator.createTable(entrySearchTokens);
+        await customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_entry_search_tokens_token '
+          'ON entry_search_tokens (token)',
+        );
+        await customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_remote_files_signature '
+          'ON remote_files (content_signature)',
+        );
+      }
+      if (from < 10) {
+        await delete(entrySearchTokens).go();
+      }
     },
   );
 
@@ -94,6 +113,14 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE UNIQUE INDEX IF NOT EXISTS idx_download_chunks_download_index '
       'ON download_chunks (download_id, chunk_index)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_entry_search_tokens_token '
+      'ON entry_search_tokens (token)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_remote_files_signature '
+      'ON remote_files (content_signature)',
     );
   }
 
@@ -566,6 +593,7 @@ class AppDatabase extends _$AppDatabase {
           .get();
 
   Future<void> deleteEntryWithChunks(String entryId) async {
+    await removeSearchTokensForEntry(entryId);
     await (delete(chunks)..where((t) => t.entryId.equals(entryId))).go();
     await (delete(entries)..where((t) => t.id.equals(entryId))).go();
   }
@@ -593,6 +621,279 @@ class AppDatabase extends _$AppDatabase {
         const EntriesCompanion(hashStatus: Value('ready')),
       );
     });
+    await rebuildSearchTokensForEntry(entryId);
+  }
+
+  Future<void> rebuildSearchTokensForEntry(String entryId) async {
+    final entry = await entryById(entryId);
+    if (entry == null) {
+      return;
+    }
+    final tokens = <String>{
+      ...SearchTokenizer.indexTokens(entry.name),
+      ...SearchTokenizer.indexTokens(entry.relativePath),
+    };
+    await transaction(() async {
+      await (delete(entrySearchTokens)
+            ..where((t) => t.entryId.equals(entryId)))
+          .go();
+      if (tokens.isEmpty) {
+        return;
+      }
+      await batch((batch) {
+        batch.insertAll(
+          entrySearchTokens,
+          tokens
+              .map(
+                (token) => EntrySearchTokensCompanion.insert(
+                  entryId: entryId,
+                  shareId: entry.shareId,
+                  token: token,
+                ),
+              )
+              .toList(),
+        );
+      });
+    });
+  }
+
+  Future<void> rebuildShareSearchIndex(String shareId) async {
+    final rows = await (select(entries)
+          ..where((t) => t.shareId.equals(shareId)))
+        .get();
+    for (final row in rows) {
+      await rebuildSearchTokensForEntry(row.id);
+    }
+  }
+
+  Future<void> rebuildAllSearchTokens() async {
+    final rows = await select(entries).get();
+    for (final row in rows) {
+      await rebuildSearchTokensForEntry(row.id);
+    }
+  }
+
+  Future<bool> hasSearchTokens(String entryId) async {
+    final row = await (select(entrySearchTokens)
+          ..where((t) => t.entryId.equals(entryId))
+          ..limit(1))
+        .getSingleOrNull();
+    return row != null;
+  }
+
+  Future<int> countEntriesMissingSearchTokens() async {
+    final row = await customSelect(
+      'SELECT COUNT(*) AS missing_count FROM entries e '
+      'LEFT JOIN entry_search_tokens t ON t.entry_id = e.id '
+      'WHERE t.entry_id IS NULL',
+      readsFrom: {entries, entrySearchTokens},
+    ).getSingle();
+    return row.read<int>('missing_count');
+  }
+
+  /// Backfills search tokens incrementally; yields so the UI stays responsive.
+  Future<void> ensureSearchIndex({
+    void Function(int indexed, int total)? onProgress,
+    int batchSize = 25,
+  }) async {
+    final total = await countEntriesMissingSearchTokens();
+    if (total == 0) {
+      return;
+    }
+    var indexed = 0;
+    while (true) {
+      final missing = await customSelect(
+        'SELECT e.id AS entry_id FROM entries e '
+        'LEFT JOIN entry_search_tokens t ON t.entry_id = e.id '
+        'WHERE t.entry_id IS NULL LIMIT ?',
+        variables: [Variable<int>(batchSize)],
+        readsFrom: {entries, entrySearchTokens},
+      ).get();
+      if (missing.isEmpty) {
+        break;
+      }
+      for (final row in missing) {
+        await rebuildSearchTokensForEntry(row.read<String>('entry_id'));
+        indexed++;
+      }
+      onProgress?.call(indexed, total);
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
+
+  Future<void> removeSearchTokensForEntry(String entryId) async {
+    await (delete(entrySearchTokens)
+          ..where((t) => t.entryId.equals(entryId)))
+        .go();
+  }
+
+  Future<String?> contentSignatureForEntry(String entryId) async {
+    final entry = await entryById(entryId);
+    if (entry == null || entry.isDirectory || entry.hashStatus != 'ready') {
+      return null;
+    }
+    final chunkRows = await chunksForEntry(entryId);
+    if (chunkRows.isEmpty) {
+      return null;
+    }
+    return buildContentSignature(
+      totalBytes: entry.size,
+      chunks: chunkRows
+          .map(
+            (row) => ChunkDto(
+              index: row.chunkIndex,
+              offset: row.offset,
+              length: row.length,
+              hash: row.hash,
+              hashAlgorithm: row.hashAlgorithm,
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  Future<List<Entry>> searchLocalEntries({
+    required String query,
+    String type = 'all',
+    int? minSize,
+    int? maxSize,
+    int pageSize = 50,
+    int offset = 0,
+  }) async {
+    final terms = SearchTokenizer.queryTerms(query);
+    if (terms.isEmpty) {
+      return [];
+    }
+    final primary = terms.reduce(
+      (a, b) => a.length >= b.length ? a : b,
+    );
+    final rows = await customSelect(
+      'SELECT DISTINCT e.id AS entry_id '
+      'FROM entries e '
+      'INNER JOIN entry_search_tokens t ON t.entry_id = e.id '
+      'INNER JOIN shares s ON s.id = e.share_id '
+      'WHERE s.enabled = 1 AND t.token = ? '
+      'ORDER BY e.name ASC '
+      'LIMIT ? OFFSET ?',
+      variables: [
+        Variable<String>(primary),
+        Variable<int>(pageSize),
+        Variable<int>(offset),
+      ],
+      readsFrom: {entries, entrySearchTokens, shares},
+    ).get();
+    final results = <Entry>[];
+    for (final row in rows) {
+      final entry = await entryById(row.read<String>('entry_id'));
+      if (entry == null) {
+        continue;
+      }
+      if (type == 'file' && entry.isDirectory) {
+        continue;
+      }
+      if (type == 'directory' && !entry.isDirectory) {
+        continue;
+      }
+      if (minSize != null && entry.size < minSize) {
+        continue;
+      }
+      if (maxSize != null && entry.size > maxSize) {
+        continue;
+      }
+      final haystack = SearchTokenizer.normalizeHaystack(
+        entry.name,
+        entry.relativePath,
+      );
+      if (!SearchTokenizer.matchesAllTerms(haystack, terms)) {
+        continue;
+      }
+      results.add(entry);
+    }
+    return results;
+  }
+
+  Future<ShareManifestPageDto> shareManifestPage(
+    String shareId, {
+    int pageSize = 100,
+    int offset = 0,
+  }) async {
+    final share = await (select(shares)..where((t) => t.id.equals(shareId)))
+        .getSingleOrNull();
+    if (share == null || !share.enabled) {
+      return ShareManifestPageDto(shareId: shareId, entries: const []);
+    }
+    final rows = await (select(entries)
+          ..where((t) => t.shareId.equals(shareId))
+          ..orderBy([(t) => OrderingTerm.asc(t.relativePath)])
+          ..limit(pageSize, offset: offset))
+        .get();
+    final total = await (select(entries)
+          ..where((t) => t.shareId.equals(shareId)))
+        .get();
+    final nextOffset = offset + rows.length;
+    return ShareManifestPageDto(
+      shareId: shareId,
+      entries: rows
+          .map(
+            (row) => EntryDto(
+              id: row.id,
+              name: row.name,
+              path: row.relativePath,
+              isDirectory: row.isDirectory,
+              size: row.size,
+              mtimeMs: row.mtimeMs,
+              hashReady: row.hashStatus == 'ready',
+            ),
+          )
+          .toList(),
+      nextPageToken: nextOffset < total.length ? '$nextOffset' : null,
+    );
+  }
+
+  Future<void> upsertRemoteFile({
+    required String peerId,
+    required String shareId,
+    required String entryId,
+    required String relativePath,
+    required String name,
+    required bool isDirectory,
+    required int size,
+    required int mtimeMs,
+    required bool hashReady,
+    String? contentSignature,
+    String? manifestJson,
+  }) async {
+    final id = '$peerId:$shareId:$entryId';
+    await into(remoteFiles).insertOnConflictUpdate(
+      RemoteFilesCompanion.insert(
+        id: id,
+        peerId: peerId,
+        shareId: shareId,
+        entryId: entryId,
+        relativePath: relativePath,
+        name: name,
+        isDirectory: Value(isDirectory),
+        size: Value(size),
+        mtimeMs: Value(mtimeMs),
+        hashReady: Value(hashReady),
+        contentSignature: contentSignature == null
+            ? const Value.absent()
+            : Value(contentSignature),
+        manifestJson:
+            manifestJson == null ? const Value.absent() : Value(manifestJson),
+        cachedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<List<RemoteFile>> remoteFilesBySignature(String signature) =>
+      (select(remoteFiles)..where((t) => t.contentSignature.equals(signature)))
+          .get();
+
+  Future<void> purgeStaleRemoteFiles({Duration maxAge = const Duration(hours: 24)}) async {
+    final cutoff = DateTime.now().subtract(maxAge);
+    await (delete(remoteFiles)..where((t) => t.cachedAt.isSmallerThanValue(cutoff)))
+        .go();
   }
 
   Future<Peer?> peerById(String id) =>
@@ -671,6 +972,9 @@ class AppDatabase extends _$AppDatabase {
       await (delete(chunks)..where((t) => t.entryId.equals(entry.id))).go();
     }
     await (delete(entries)..where((t) => t.shareId.equals(shareId))).go();
+    await (delete(entrySearchTokens)
+          ..where((t) => t.shareId.equals(shareId)))
+        .go();
   }
 
   Future<Download?> findResumableDownload({

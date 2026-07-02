@@ -209,6 +209,129 @@ class SessionResponse {
       );
 }
 
+class SearchResultDto {
+  const SearchResultDto({
+    required this.peerId,
+    required this.peerNick,
+    required this.shareId,
+    required this.shareName,
+    required this.entryId,
+    required this.name,
+    required this.path,
+    required this.isDirectory,
+    required this.size,
+    required this.mtimeMs,
+    required this.hashReady,
+    this.contentSignature,
+    this.sourceCount = 1,
+    this.trusted = false,
+    this.stale = false,
+  });
+
+  final String peerId;
+  final String peerNick;
+  final String shareId;
+  final String shareName;
+  final String entryId;
+  final String name;
+  final String path;
+  final bool isDirectory;
+  final int size;
+  final int mtimeMs;
+  final bool hashReady;
+  final String? contentSignature;
+  final int sourceCount;
+  final bool trusted;
+  final bool stale;
+
+  Map<String, dynamic> toJson() => {
+        'peerId': peerId,
+        'peerNick': peerNick,
+        'shareId': shareId,
+        'shareName': shareName,
+        'entryId': entryId,
+        'name': name,
+        'path': path,
+        'isDirectory': isDirectory,
+        'size': size,
+        'mtimeMs': mtimeMs,
+        'hashReady': hashReady,
+        if (contentSignature != null) 'contentSignature': contentSignature,
+        'sourceCount': sourceCount,
+        'trusted': trusted,
+        'stale': stale,
+      };
+
+  factory SearchResultDto.fromJson(Map<String, dynamic> json) =>
+      SearchResultDto(
+        peerId: json['peerId'] as String,
+        peerNick: json['peerNick'] as String,
+        shareId: json['shareId'] as String,
+        shareName: json['shareName'] as String,
+        entryId: json['entryId'] as String,
+        name: json['name'] as String,
+        path: json['path'] as String,
+        isDirectory: json['isDirectory'] as bool? ?? false,
+        size: json['size'] as int? ?? 0,
+        mtimeMs: json['mtimeMs'] as int? ?? 0,
+        hashReady: json['hashReady'] as bool? ?? false,
+        contentSignature: json['contentSignature'] as String?,
+        sourceCount: json['sourceCount'] as int? ?? 1,
+        trusted: json['trusted'] as bool? ?? false,
+        stale: json['stale'] as bool? ?? false,
+      );
+}
+
+class SearchResponseDto {
+  const SearchResponseDto({
+    required this.results,
+    this.nextPageToken,
+  });
+
+  final List<SearchResultDto> results;
+  final String? nextPageToken;
+
+  Map<String, dynamic> toJson() => {
+        'results': results.map((e) => e.toJson()).toList(),
+        if (nextPageToken != null) 'nextPageToken': nextPageToken,
+      };
+
+  factory SearchResponseDto.fromJson(Map<String, dynamic> json) =>
+      SearchResponseDto(
+        results: (json['results'] as List<dynamic>? ?? const [])
+            .map((e) => SearchResultDto.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        nextPageToken: json['nextPageToken'] as String?,
+      );
+}
+
+class ShareManifestPageDto {
+  const ShareManifestPageDto({
+    required this.shareId,
+    required this.entries,
+    this.nextPageToken,
+  });
+
+  final String shareId;
+  final List<EntryDto> entries;
+  final String? nextPageToken;
+
+  Map<String, dynamic> toJson() => {
+        'shareId': shareId,
+        'entries': entries.map((e) => e.toJson()).toList(),
+        if (nextPageToken != null) 'nextPageToken': nextPageToken,
+      };
+
+  factory ShareManifestPageDto.fromJson(Map<String, dynamic> json) =>
+      ShareManifestPageDto(
+        shareId: json['shareId'] as String,
+        entries: (json['entries'] as List<dynamic>? ?? const [])
+            .map((e) => EntryDto.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        nextPageToken: json['nextPageToken'] as String?,
+      );
+}
+
 class DiscoveredPeer {
   const DiscoveredPeer({
     required this.peerId,

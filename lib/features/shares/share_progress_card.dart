@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 
-import '../../core/ui/format.dart';
-
 import '../../core/persistence/database.dart';
+import '../../core/services/app_service.dart';
+import '../../core/ui/format.dart';
+import 'search_index_banner.dart';
 
 class ShareProgressCard extends StatelessWidget {
-  const ShareProgressCard({super.key, required this.share});
+  const ShareProgressCard({
+    super.key,
+    required this.share,
+    this.searchIndexState = const SearchIndexState(),
+  });
 
   final Share share;
+  final SearchIndexState searchIndexState;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +49,7 @@ class ShareProgressCard extends StatelessWidget {
             '${share.totalFiles} files indexed · ${formatBytes(share.totalHashBytes)}',
             style: theme.textTheme.bodySmall,
           ),
+          SearchIndexShareStatus(state: searchIndexState),
         ] else if (share.scanStatus == 'error') ...[
           Text(
             'Indexing failed',

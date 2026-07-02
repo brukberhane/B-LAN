@@ -20,7 +20,7 @@ void main() {
   });
 
   test('opens at current schema version', () {
-    expect(db.schemaVersion, 8);
+    expect(db.schemaVersion, 10);
   });
 
   test('chunk hash index exists', () async {

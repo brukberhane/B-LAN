@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../core/services/app_service.dart';
 import '../../core/persistence/database.dart';
 import '../../core/platform/platform_capabilities.dart';
 import 'share_progress_card.dart';
+import 'search_index_banner.dart';
 
 class SharesPage extends ConsumerWidget {
   const SharesPage({super.key});
@@ -44,6 +46,7 @@ class SharesPage extends ConsumerWidget {
             advertising: advertising,
             supportsAdvertising: supportsAdvertising,
           ),
+          const SearchIndexProgressBanner(),
           Expanded(
             child: shares.when(
               data: (rows) {
@@ -143,7 +146,10 @@ class _ShareTile extends ConsumerWidget {
     final service = ref.watch(appServiceProvider);
     final isServed = share.enabled && share.scanStatus == 'ready';
 
-    return ListTile(
+    return ValueListenableBuilder<SearchIndexState>(
+      valueListenable: service.searchIndexStatus,
+      builder: (context, searchIndexState, _) {
+        return ListTile(
       leading: Icon(
         share.storageType == 'saf' ? Icons.android : Icons.folder,
         color: share.enabled ? null : Theme.of(context).disabledColor,
@@ -178,7 +184,10 @@ class _ShareTile extends ConsumerWidget {
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 8),
-          ShareProgressCard(share: share),
+          ShareProgressCard(
+            share: share,
+            searchIndexState: searchIndexState,
+          ),
         ],
       ),
       isThreeLine: true,
@@ -219,6 +228,8 @@ class _ShareTile extends ConsumerWidget {
           ),
         ],
       ),
+        );
+      },
     );
   }
 

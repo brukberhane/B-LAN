@@ -6,10 +6,12 @@ import 'package:http/http.dart' as http;
 
 import '../indexing/chunker.dart';
 import '../persistence/database.dart';
+import '../search/content_signature.dart';
 import '../protocol/constants.dart';
 import '../protocol/download_states.dart';
 import '../protocol/models.dart';
 import '../protocol/path_safety.dart';
+import '../search/content_signature.dart';
 import '../security/peer_session_store.dart';
 import 'chunk_source_scheduler.dart';
 import 'download_progress.dart';
@@ -113,6 +115,79 @@ class TransferClient {
     );
     return FileManifestDto.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<SearchResponseDto> search(
+    String baseUrl, {
+    required String query,
+    String type = 'all',
+    int? minSize,
+    int? maxSize,
+    int pageSize = 50,
+    String? pageToken,
+    String? token,
+  }) async {
+    final params = <String, String>{
+      'q': query,
+      'type': type,
+      'pageSize': '$pageSize',
+      if (minSize != null) 'minSize': '$minSize',
+      if (maxSize != null) 'maxSize': '$maxSize',
+      if (pageToken != null) 'pageToken': pageToken,
+    };
+    final uri = Uri.parse('$baseUrl/search').replace(queryParameters: params);
+    final response = await _get(uri.toString(), token: token);
+    return SearchResponseDto.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<ShareManifestPageDto> fetchShareManifestPage(
+    String baseUrl, {
+    required String shareId,
+    int pageSize = 100,
+    String? pageToken,
+    String? token,
+  }) async {
+    final params = <String, String>{
+      'pageSize': '$pageSize',
+      if (pageToken != null) 'pageToken': pageToken,
+    };
+    final uri = Uri.parse('$baseUrl/manifest/shares/$shareId')
+        .replace(queryParameters: params);
+    final response = await _get(uri.toString(), token: token);
+    return ShareManifestPageDto.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  Future<void> cacheRemoteManifest({
+    required String peerId,
+    required String shareId,
+    required String relativePath,
+    required FileManifestDto manifest,
+  }) async {
+    final normalizedPath = normalizeRemoteEntryPath(relativePath);
+    await _manifestCache.put(
+      peerId: peerId,
+      shareId: shareId,
+      relativePath: normalizedPath,
+      manifest: manifest,
+    );
+    final signature = contentSignatureFromManifest(manifest);
+    await _db.upsertRemoteFile(
+      peerId: peerId,
+      shareId: shareId,
+      entryId: manifest.entry.id,
+      relativePath: normalizedPath,
+      name: manifest.entry.name,
+      isDirectory: manifest.entry.isDirectory,
+      size: manifest.totalBytes,
+      mtimeMs: manifest.entry.mtimeMs,
+      hashReady: manifest.entry.hashReady,
+      contentSignature: signature,
+      manifestJson: jsonEncode(manifest.toJson()),
     );
   }
 

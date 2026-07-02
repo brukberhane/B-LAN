@@ -144,6 +144,36 @@ class DownloadChunks extends Table {
   TextColumn get sourcePeerId => text().nullable()();
 }
 
+class RemoteFiles extends Table {
+  TextColumn get id => text()();
+  TextColumn get peerId => text().references(Peers, #id)();
+  TextColumn get shareId => text()();
+  TextColumn get entryId => text()();
+  TextColumn get relativePath => text()();
+  TextColumn get name => text()();
+  BoolColumn get isDirectory =>
+      boolean().withDefault(const Constant(false))();
+  IntColumn get size => integer().withDefault(const Constant(0))();
+  IntColumn get mtimeMs => integer().withDefault(const Constant(0))();
+  BoolColumn get hashReady => boolean().withDefault(const Constant(false))();
+  TextColumn get contentSignature => text().nullable()();
+  TextColumn get manifestJson => text().nullable()();
+  DateTimeColumn get cachedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+class EntrySearchTokens extends Table {
+  TextColumn get entryId => text().references(Entries, #id)();
+  TextColumn get shareId => text()();
+  TextColumn get token => text()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {entryId, token};
+}
+
 class Transfers extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get direction => text()();

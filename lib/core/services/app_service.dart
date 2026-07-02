@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -14,11 +15,24 @@ import '../indexing/share_watcher.dart';
 import '../persistence/database.dart';
 import '../protocol/constants.dart';
 import '../protocol/models.dart';
+import '../search/search_service.dart';
 import '../security/device_identity.dart';
 import '../security/peer_session_store.dart';
 import '../transfers/download_queue.dart';
 import '../transfers/transfer_client.dart';
 import '../transfers/transfer_server.dart';
+
+class SearchIndexState {
+  const SearchIndexState({
+    this.building = false,
+    this.indexed = 0,
+    this.remaining = 0,
+  });
+
+  final bool building;
+  final int indexed;
+  final int remaining;
+}
 
 class AppService {
   AppService._(this.db, this.platform)
@@ -36,6 +50,7 @@ class AppService {
       platform: platform,
       downloadsDirectory: () => downloadsDirectory(),
     );
+    searchService = SearchService(db, client, sessions: _sessions);
   }
 
   factory AppService(AppDatabase db, {PlatformServices? platform}) {
@@ -50,6 +65,9 @@ class AppService {
   final TransferClient client;
   final MdnsDiscovery discovery;
   late final DownloadQueue downloadQueue;
+  late final SearchService searchService;
+  final searchIndexStatus = ValueNotifier(const SearchIndexState());
+  Future<void>? _searchIndexTask;
   final _log = Logger('AppService');
   final _uuid = const Uuid();
   final _sessions = PeerSessionStore();
@@ -93,10 +111,41 @@ class AppService {
       );
     }
     await downloadQueue.start();
+    unawaited(_warmSearchIndex());
     _log.info('Core services started on port $boundPort');
   }
 
+  Future<void> _warmSearchIndex() {
+    return _searchIndexTask ??= _runSearchIndexBuild();
+  }
+
+  Future<void> _runSearchIndexBuild() async {
+    final remaining = await db.countEntriesMissingSearchTokens();
+    if (remaining == 0) {
+      searchIndexStatus.value = const SearchIndexState();
+      return;
+    }
+    searchIndexStatus.value = SearchIndexState(building: true, remaining: remaining);
+    try {
+      await db.ensureSearchIndex(
+        onProgress: (indexed, total) {
+          searchIndexStatus.value = SearchIndexState(
+            building: true,
+            indexed: indexed,
+            remaining: total - indexed,
+          );
+        },
+      );
+    } catch (error, stack) {
+      _log.warning('Search index build failed', error, stack);
+    } finally {
+      searchIndexStatus.value = const SearchIndexState();
+      _searchIndexTask = null;
+    }
+  }
+
   Future<void> dispose() async {
+    await _searchIndexTask;
     await downloadQueue.stop();
     _reconcileTimer?.cancel();
     _reconcileTimer = null;
