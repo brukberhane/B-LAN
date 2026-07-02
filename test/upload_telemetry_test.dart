@@ -9,9 +9,12 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
+import 'support/transfer_server_harness.dart';
+
 void main() {
   late AppDatabase db;
   late TransferServer server;
+  late TestTransferServerSetup harness;
   late Directory tempDir;
   late File testFile;
   const browserToken = 'upload-telemetry-token';
@@ -57,7 +60,11 @@ void main() {
           ),
         );
 
-    await server.start(port: 0, browserToken: browserToken);
+    harness = await startTestTransferServer(
+      db: db,
+      server: server,
+      browserToken: browserToken,
+    );
   });
 
   tearDown(() async {
@@ -68,8 +75,7 @@ void main() {
     }
   });
 
-  Uri uri(String path) =>
-      Uri.parse('http://127.0.0.1:${server.boundPort}$path');
+  Uri uri(String path) => Uri.parse('${harness.browserBaseUrl}$path');
 
   Map<String, String> authHeaders() => {
         'Authorization': 'Bearer $browserToken',

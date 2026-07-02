@@ -11,6 +11,8 @@ import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/transfer_server_harness.dart';
+
 void main() {
   group('peer identity', () {
     late AppDatabase db;
@@ -146,6 +148,7 @@ void main() {
         nick: 'remote',
         host: '127.0.0.1',
         port: 1234,
+        scheme: 'https',
         fingerprint: null,
         trusted: false,
         identityStatus: PeerIdentityStatus.normal,
@@ -156,12 +159,32 @@ void main() {
       expect(await db.getSetting('session_127.0.0.1:1234'), isEmpty);
     });
 
+    test('saveToken stores pipe-delimited v2 payload', () async {
+      final peer = Peer(
+        id: 'peer-1',
+        nick: 'remote',
+        host: '127.0.0.1',
+        port: 1234,
+        scheme: 'https',
+        fingerprint: 'fp-a',
+        trusted: false,
+        identityStatus: PeerIdentityStatus.normal,
+        lastSeen: DateTime.now(),
+        manual: false,
+      );
+      await store.saveToken(db, peer, 'session-token');
+      final raw = await db.getSetting('session_127.0.0.1:1234');
+      expect(raw.startsWith('v2|session-token|'), isTrue);
+      expect(await store.readValidToken(db, peer), 'session-token');
+    });
+
     test('fingerprint mismatch invalidates bound session', () async {
       final peer = Peer(
         id: 'peer-1',
         nick: 'remote',
         host: '127.0.0.1',
         port: 1234,
+        scheme: 'https',
         fingerprint: 'fp-a',
         trusted: false,
         identityStatus: PeerIdentityStatus.normal,
@@ -174,6 +197,7 @@ void main() {
         nick: peer.nick,
         host: peer.host,
         port: peer.port,
+        scheme: peer.scheme,
         fingerprint: 'fp-b',
         trusted: peer.trusted,
         identityStatus: peer.identityStatus,
@@ -220,6 +244,14 @@ void main() {
       expect(second.fingerprint, first.fingerprint);
       expect(await secrets.readOrEmpty('device_private_key'), isNotEmpty);
     });
+
+    test('secure value codec round-trips PEM without raw newlines', () {
+      const pem = '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n';
+      final encoded = encodeSecureValue(pem);
+      expect(encoded.contains('\n'), isFalse);
+      expect(decodeSecureValue(encoded), pem);
+      expect(decodeSecureValue('legacy-single-line'), 'legacy-single-line');
+    });
   });
 
   group('browser token', () {
@@ -242,7 +274,12 @@ void main() {
 
     test('rotated browser token rejects old token', () async {
       final initial = await tokens.ensureToken();
-      await server.start(port: 0, browserToken: initial);
+      await startTestTransferServer(
+        db: db,
+        server: server,
+        secrets: secrets,
+        browserToken: initial,
+      );
       expect(server.isAuthorized(initial), isTrue);
 
       final rotated = await tokens.rotate();
@@ -258,7 +295,12 @@ void main() {
         'browser_token_issued_at',
         '${DateTime.now().subtract(const Duration(hours: 2)).millisecondsSinceEpoch}',
       );
-      await server.start(port: 0, browserToken: token);
+      await startTestTransferServer(
+        db: db,
+        server: server,
+        secrets: secrets,
+        browserToken: token,
+      );
       server.configureBrowserToken(
         token,
         issuedAt: DateTime.now().subtract(const Duration(hours: 2)),

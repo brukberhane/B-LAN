@@ -11,6 +11,7 @@ import 'security_settings_section.dart';
 import 'platform_sections.dart';
 import '../browse/browse_page.dart';
 import '../../core/persistence/database.dart';
+import '../../core/protocol/constants.dart';
 import '../../core/security/peer_identity.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -75,8 +76,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 children: [
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('HTTP port'),
-                    subtitle: Text('$value'),
+                    title: const Text('Browser HTTP port'),
+                    subtitle: Text('$value (loopback browser API)'),
                     trailing: Wrap(
                       spacing: 4,
                       children: [
@@ -85,7 +86,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           tooltip: 'Copy localhost URL',
                           onPressed: () => _copyText(
                             context,
-                            ref.read(appServiceProvider).localPeerUrl(value),
+                            ref.read(appServiceProvider).localBrowserUrl(value),
                             'Localhost URL copied',
                           ),
                         ),
@@ -95,7 +96,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           onPressed: () async {
                             final url = await ref
                                 .read(appServiceProvider)
-                                .primaryLanPeerUrl(value);
+                                .primaryLanBrowserUrl(value);
                             if (!context.mounted) {
                               return;
                             }
@@ -132,20 +133,29 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ],
               );
             },
-            loading: () => const ListTile(title: Text('HTTP port')),
+            loading: () => const ListTile(title: Text('Browser HTTP port')),
             error: (_, _) => const SizedBox.shrink(),
           ),
           ListTile(
             title: const Text('Service status'),
             subtitle: Text(
               [
-                serverRunning ? 'HTTP server running' : 'HTTP server stopped',
+                serverRunning ? 'Transfer servers running' : 'Transfer servers stopped',
                 if (!kIsWeb)
                   advertising
                       ? 'Advertising on LAN'
                       : 'Not advertising on LAN',
               ].join(' · '),
             ),
+          ),
+          ref.watch(httpsPortProvider).when(
+            data: (value) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Peer HTTPS port'),
+              subtitle: Text('$value (mDNS + peer transfers)'),
+            ),
+            loading: () => const ListTile(title: Text('Peer HTTPS port')),
+            error: (_, _) => const SizedBox.shrink(),
           ),
           token.when(
             data: (value) => ListTile(
@@ -346,7 +356,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       nick: host,
       host: host,
       port: port,
+      scheme: peerSchemeHttp,
       fingerprint: null,
+      tlsCertFingerprint: null,
       trusted: false,
       identityStatus: PeerIdentityStatus.normal,
       lastSeen: DateTime.now(),

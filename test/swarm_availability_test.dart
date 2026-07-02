@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:blan/core/persistence/database.dart';
+import 'package:blan/core/protocol/constants.dart';
 import 'package:blan/core/protocol/models.dart';
 import 'package:blan/core/search/content_signature.dart';
 import 'package:blan/core/transfers/swarm_availability_store.dart';
@@ -11,10 +12,12 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
+import 'support/transfer_server_harness.dart';
+
 void main() {
   late AppDatabase db;
   late TransferServer server;
-  late int port;
+  late TestTransferServerSetup harness;
   const browserToken = 'swarm-availability-token';
   const shareId = 'share-1';
   const fileId = 'file-1';
@@ -61,8 +64,11 @@ void main() {
             status: const Value('ready'),
           ),
         );
-    await server.start(port: 0, browserToken: browserToken);
-    port = server.boundPort!;
+    harness = await startTestTransferServer(
+      db: db,
+      server: server,
+      browserToken: browserToken,
+    );
   });
 
   tearDown(() async {
@@ -70,7 +76,7 @@ void main() {
     await db.close();
   });
 
-  Uri uri(String path) => Uri.parse('http://127.0.0.1:$port$path');
+  Uri uri(String path) => Uri.parse('${harness.browserBaseUrl}$path');
 
   test('chunk availability endpoint returns ready hashes only', () async {
     final response = await http.post(
@@ -95,12 +101,15 @@ void main() {
   });
 
   test('swarm store ingests manifest chunks and groups by index', () async {
+    final httpsPort = harness.server.boundHttpsPort!;
     final peer = Peer(
       id: 'peer-a',
       nick: 'A',
       host: '127.0.0.1',
-      port: port,
+      port: httpsPort,
+      scheme: peerSchemeHttps,
       fingerprint: null,
+      tlsCertFingerprint: harness.tlsFingerprint,
       trusted: true,
       identityStatus: 'normal',
       lastSeen: DateTime.now(),
@@ -112,6 +121,7 @@ void main() {
             nick: peer.nick,
             host: peer.host,
             port: peer.port,
+            tlsCertFingerprint: Value(harness.tlsFingerprint),
             trusted: const Value(true),
           ),
         );
@@ -156,12 +166,15 @@ void main() {
   });
 
   test('cross-path manifests group under same signature', () async {
+    final httpsPort = harness.server.boundHttpsPort!;
     final peerA = Peer(
       id: 'peer-a',
       nick: 'A',
       host: '127.0.0.1',
-      port: port,
+      port: httpsPort,
+      scheme: peerSchemeHttps,
       fingerprint: null,
+      tlsCertFingerprint: harness.tlsFingerprint,
       trusted: true,
       identityStatus: 'normal',
       lastSeen: DateTime.now(),
@@ -171,8 +184,10 @@ void main() {
       id: 'peer-b',
       nick: 'B',
       host: '127.0.0.1',
-      port: port + 1,
+      port: httpsPort + 1,
+      scheme: peerSchemeHttps,
       fingerprint: null,
+      tlsCertFingerprint: null,
       trusted: false,
       identityStatus: 'normal',
       lastSeen: DateTime.now(),

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:blan/core/indexing/chunker.dart';
 import 'package:blan/core/persistence/database.dart';
+import 'package:blan/core/protocol/constants.dart';
 import 'package:blan/core/protocol/download_states.dart';
 import 'package:blan/core/protocol/models.dart';
 import 'package:blan/core/security/peer_identity.dart';
@@ -11,6 +12,8 @@ import 'package:blan/core/transfers/transfer_server.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/transfer_server_harness.dart';
 
 void main() {
   const browserToken = 'browser-token';
@@ -54,13 +57,16 @@ void main() {
         fileId: fileId,
       );
 
+      client.registerTlsPin('127.0.0.1', serverA.port, serverA.tlsFingerprint);
+      client.registerTlsPin('127.0.0.1', serverB.port, serverB.tlsFingerprint);
+
       final manifestA = await client.fetchFileManifest(
-        'http://127.0.0.1:${serverA.port}',
+        serverA.peerBaseUrl,
         fileId: fileId,
         token: browserToken,
       );
       final manifestB = await client.fetchFileManifest(
-        'http://127.0.0.1:${serverB.port}',
+        serverB.peerBaseUrl,
         fileId: fileId,
         token: browserToken,
       );
@@ -94,6 +100,7 @@ void main() {
               nick: 'peer-a',
               host: '127.0.0.1',
               port: serverA.port,
+              tlsCertFingerprint: Value(serverA.tlsFingerprint),
             ),
           );
       await db.into(db.peers).insert(
@@ -102,6 +109,7 @@ void main() {
               nick: 'peer-b',
               host: '127.0.0.1',
               port: serverB.port,
+              tlsCertFingerprint: Value(serverB.tlsFingerprint),
             ),
           );
 
@@ -110,7 +118,9 @@ void main() {
         nick: 'peer-a',
         host: '127.0.0.1',
         port: serverA.port,
+        scheme: peerSchemeHttps,
         fingerprint: null,
+        tlsCertFingerprint: serverA.tlsFingerprint,
         trusted: false,
         identityStatus: PeerIdentityStatus.normal,
         lastSeen: DateTime.now(),
@@ -166,13 +176,16 @@ void main() {
         fileId: fileId,
       );
 
+      client.registerTlsPin('127.0.0.1', serverA.port, serverA.tlsFingerprint);
+      client.registerTlsPin('127.0.0.1', serverB.port, serverB.tlsFingerprint);
+
       final manifestA = await client.fetchFileManifest(
-        'http://127.0.0.1:${serverA.port}',
+        serverA.peerBaseUrl,
         fileId: fileId,
         token: browserToken,
       );
       final manifestB = await client.fetchFileManifest(
-        'http://127.0.0.1:${serverB.port}',
+        serverB.peerBaseUrl,
         fileId: fileId,
         token: browserToken,
       );
@@ -202,6 +215,7 @@ void main() {
               nick: 'peer-a',
               host: '127.0.0.1',
               port: serverA.port,
+              tlsCertFingerprint: Value(serverA.tlsFingerprint),
             ),
           );
       await db.into(db.peers).insert(
@@ -210,6 +224,7 @@ void main() {
               nick: 'peer-b',
               host: '127.0.0.1',
               port: serverB.port,
+              tlsCertFingerprint: Value(serverB.tlsFingerprint),
             ),
           );
 
@@ -218,7 +233,9 @@ void main() {
         nick: 'peer-a',
         host: '127.0.0.1',
         port: serverA.port,
+        scheme: peerSchemeHttps,
         fingerprint: null,
+        tlsCertFingerprint: serverA.tlsFingerprint,
         trusted: false,
         identityStatus: PeerIdentityStatus.normal,
         lastSeen: DateTime.now(),
@@ -263,8 +280,10 @@ void main() {
         fileId: fileId,
       );
 
+      client.registerTlsPin('127.0.0.1', server.port, server.tlsFingerprint);
+
       final manifest = await client.fetchFileManifest(
-        'http://127.0.0.1:${server.port}',
+        server.peerBaseUrl,
         fileId: fileId,
         token: browserToken,
       );
@@ -278,6 +297,7 @@ void main() {
               nick: 'bad-peer',
               host: '127.0.0.1',
               port: server.port,
+              tlsCertFingerprint: Value(server.tlsFingerprint),
             ),
           );
 
@@ -286,7 +306,9 @@ void main() {
         nick: 'bad-peer',
         host: '127.0.0.1',
         port: server.port,
+        scheme: peerSchemeHttps,
         fingerprint: null,
+        tlsCertFingerprint: server.tlsFingerprint,
         trusted: false,
         identityStatus: PeerIdentityStatus.normal,
         lastSeen: DateTime.now(),
@@ -320,17 +342,20 @@ void main() {
 class _IndexedServer {
   _IndexedServer({
     required this.db,
-    required this.server,
+    required this.harness,
     required this.tempDir,
     required this.peerId,
-    required this.port,
   });
 
   final AppDatabase db;
-  final TransferServer server;
+  final TestTransferServerSetup harness;
   final Directory tempDir;
   final String peerId;
-  final int port;
+
+  TransferServer get server => harness.server;
+  int get port => harness.server.boundHttpsPort!;
+  String get peerBaseUrl => harness.peerBaseUrl;
+  String get tlsFingerprint => harness.tlsFingerprint;
 
   Future<void> stop() => server.stop();
 }
@@ -385,12 +410,15 @@ Future<_IndexedServer> _startIndexedServer({
         );
   }
 
-  await server.start(port: 0, browserToken: browserToken);
-  return _IndexedServer(
+  final harness = await startTestTransferServer(
     db: db,
     server: server,
+    browserToken: browserToken,
+  );
+  return _IndexedServer(
+    db: db,
+    harness: harness,
     tempDir: tempDir,
     peerId: peerId,
-    port: server.boundPort!,
   );
 }

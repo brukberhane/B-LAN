@@ -1,4 +1,5 @@
 import 'package:blan/core/persistence/database.dart';
+import 'package:blan/core/protocol/constants.dart';
 import 'package:blan/core/transfers/swarm_scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -7,6 +8,7 @@ Peer _peer(String id, {bool trusted = false}) => Peer(
       nick: id,
       host: '127.0.0.1',
       port: 1,
+      scheme: peerSchemeHttps,
       fingerprint: null,
       trusted: trusted,
       identityStatus: 'normal',

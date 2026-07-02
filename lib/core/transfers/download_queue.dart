@@ -9,6 +9,7 @@ import '../persistence/database.dart';
 import '../protocol/download_states.dart';
 import '../protocol/models.dart';
 import '../protocol/path_safety.dart';
+import '../network/peer_url.dart';
 import '../security/peer_session_store.dart';
 import 'transfer_client.dart';
 
@@ -87,7 +88,7 @@ class DownloadQueue {
     final relativePath = normalizeRemoteEntryPath(entry.path);
     final targetPath = localTargetPath(targetDir, relativePath);
     final manifest = await _client.fetchFileManifest(
-      'http://${peer.host}:${peer.port}',
+      peerBaseUrl(peer),
       fileId: entry.id,
       token: authToken,
     );
@@ -178,7 +179,7 @@ class DownloadQueue {
     required String targetDirectory,
     required String token,
   }) async {
-    final baseUrl = 'http://${peer.host}:${peer.port}';
+    final baseUrl = peerBaseUrl(peer);
     final files = await _client.listEntriesRecursive(
       baseUrl,
       shareId: shareId,
@@ -317,10 +318,12 @@ class DownloadQueue {
   Future<String> _ensurePeerSession(Peer peer) async {
     final existing = await _sessions.readValidToken(_db, peer);
     if (existing != null) {
+      _client.registerTlsPinForPeer(peer);
       return existing;
     }
+    _client.registerTlsPinForPeer(peer);
     final localPeerId = await _db.ensurePeerId();
-    final baseUrl = 'http://${peer.host}:${peer.port}';
+    final baseUrl = peerBaseUrl(peer);
     final token = await _client.createSession(baseUrl, peerId: localPeerId);
     await _sessions.saveToken(_db, peer, token);
     return token;

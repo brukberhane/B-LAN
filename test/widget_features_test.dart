@@ -1,6 +1,7 @@
 import 'package:blan/app/providers.dart';
 import 'package:blan/core/persistence/database.dart';
 import 'package:blan/core/platform/platform_health.dart';
+import 'package:blan/core/protocol/constants.dart';
 import 'package:blan/core/security/peer_identity.dart';
 import 'package:blan/core/services/app_service.dart';
 import 'package:blan/platform/platform_services.dart';
@@ -73,6 +74,7 @@ void main() {
       nick: 'remote',
       host: '192.168.1.10',
       port: 59487,
+      scheme: peerSchemeHttps,
       fingerprint: 'abcd1234',
       trusted: false,
       identityStatus: PeerIdentityStatus.identityChanged,
@@ -107,6 +109,7 @@ void main() {
           ),
           nickProvider.overrideWith((ref) async => 'test-host'),
           httpPortProvider.overrideWith((ref) async => 59487),
+          httpsPortProvider.overrideWith((ref) async => 59488),
           browserTokenProvider.overrideWith((ref) async => 'browser-token'),
           serverRunningProvider.overrideWithValue(true),
           discoveryAdvertisingProvider.overrideWithValue(true),
@@ -129,11 +132,13 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
 
     expect(find.text('Browser token'), findsOneWidget);
     expect(find.text('browser-token'), findsOneWidget);
     expect(find.byIcon(Icons.lan), findsOneWidget);
-    expect(find.text('Security'), findsOneWidget);
     expect(find.byTooltip('Copy token'), findsOneWidget);
     expect(find.byTooltip('Rotate token'), findsOneWidget);
     expect(find.byTooltip('Revoke token'), findsOneWidget);

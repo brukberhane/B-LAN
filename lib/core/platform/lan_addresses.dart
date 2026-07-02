@@ -69,7 +69,10 @@ int _lanAddressScore(String host) {
   return 0;
 }
 
-String peerUrl(String host, int port) => 'http://$host:$port';
+String browserUrl(String host, int port) => 'http://$host:$port';
+
+@Deprecated('Use browserUrl for browser HTTP API')
+String peerUrl(String host, int port) => browserUrl(host, port);
 
 @visibleForTesting
 bool isUsableLanIpv4Address(String host) => _isUsableLanAddress(host);

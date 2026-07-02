@@ -48,6 +48,11 @@ final httpPortProvider = FutureProvider<int>((ref) async {
   return db.ensureHttpPort();
 });
 
+final httpsPortProvider = FutureProvider<int>((ref) async {
+  final db = ref.watch(databaseProvider);
+  return db.ensureHttpsPort();
+});
+
 final nickProvider = FutureProvider<String>((ref) async {
   final db = ref.watch(databaseProvider);
   return db.ensureNick();

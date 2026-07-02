@@ -2125,6 +2125,16 @@ class $PeersTable extends Peers with TableInfo<$PeersTable, Peer> {
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _schemeMeta = const VerificationMeta('scheme');
+  @override
+  late final GeneratedColumn<String> scheme = GeneratedColumn<String>(
+    'scheme',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(peerSchemeHttps),
+  );
   static const VerificationMeta _fingerprintMeta = const VerificationMeta(
     'fingerprint',
   );
@@ -2136,6 +2146,17 @@ class $PeersTable extends Peers with TableInfo<$PeersTable, Peer> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _tlsCertFingerprintMeta =
+      const VerificationMeta('tlsCertFingerprint');
+  @override
+  late final GeneratedColumn<String> tlsCertFingerprint =
+      GeneratedColumn<String>(
+        'tls_cert_fingerprint',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _trustedMeta = const VerificationMeta(
     'trusted',
   );
@@ -2193,7 +2214,9 @@ class $PeersTable extends Peers with TableInfo<$PeersTable, Peer> {
     nick,
     host,
     port,
+    scheme,
     fingerprint,
+    tlsCertFingerprint,
     trusted,
     identityStatus,
     lastSeen,
@@ -2240,12 +2263,27 @@ class $PeersTable extends Peers with TableInfo<$PeersTable, Peer> {
     } else if (isInserting) {
       context.missing(_portMeta);
     }
+    if (data.containsKey('scheme')) {
+      context.handle(
+        _schemeMeta,
+        scheme.isAcceptableOrUnknown(data['scheme']!, _schemeMeta),
+      );
+    }
     if (data.containsKey('fingerprint')) {
       context.handle(
         _fingerprintMeta,
         fingerprint.isAcceptableOrUnknown(
           data['fingerprint']!,
           _fingerprintMeta,
+        ),
+      );
+    }
+    if (data.containsKey('tls_cert_fingerprint')) {
+      context.handle(
+        _tlsCertFingerprintMeta,
+        tlsCertFingerprint.isAcceptableOrUnknown(
+          data['tls_cert_fingerprint']!,
+          _tlsCertFingerprintMeta,
         ),
       );
     }
@@ -2301,9 +2339,17 @@ class $PeersTable extends Peers with TableInfo<$PeersTable, Peer> {
         DriftSqlType.int,
         data['${effectivePrefix}port'],
       )!,
+      scheme: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}scheme'],
+      )!,
       fingerprint: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}fingerprint'],
+      ),
+      tlsCertFingerprint: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tls_cert_fingerprint'],
       ),
       trusted: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
@@ -2335,7 +2381,9 @@ class Peer extends DataClass implements Insertable<Peer> {
   final String nick;
   final String host;
   final int port;
+  final String scheme;
   final String? fingerprint;
+  final String? tlsCertFingerprint;
   final bool trusted;
   final String identityStatus;
   final DateTime? lastSeen;
@@ -2345,7 +2393,9 @@ class Peer extends DataClass implements Insertable<Peer> {
     required this.nick,
     required this.host,
     required this.port,
+    required this.scheme,
     this.fingerprint,
+    this.tlsCertFingerprint,
     required this.trusted,
     required this.identityStatus,
     this.lastSeen,
@@ -2358,8 +2408,12 @@ class Peer extends DataClass implements Insertable<Peer> {
     map['nick'] = Variable<String>(nick);
     map['host'] = Variable<String>(host);
     map['port'] = Variable<int>(port);
+    map['scheme'] = Variable<String>(scheme);
     if (!nullToAbsent || fingerprint != null) {
       map['fingerprint'] = Variable<String>(fingerprint);
+    }
+    if (!nullToAbsent || tlsCertFingerprint != null) {
+      map['tls_cert_fingerprint'] = Variable<String>(tlsCertFingerprint);
     }
     map['trusted'] = Variable<bool>(trusted);
     map['identity_status'] = Variable<String>(identityStatus);
@@ -2376,9 +2430,13 @@ class Peer extends DataClass implements Insertable<Peer> {
       nick: Value(nick),
       host: Value(host),
       port: Value(port),
+      scheme: Value(scheme),
       fingerprint: fingerprint == null && nullToAbsent
           ? const Value.absent()
           : Value(fingerprint),
+      tlsCertFingerprint: tlsCertFingerprint == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tlsCertFingerprint),
       trusted: Value(trusted),
       identityStatus: Value(identityStatus),
       lastSeen: lastSeen == null && nullToAbsent
@@ -2398,7 +2456,11 @@ class Peer extends DataClass implements Insertable<Peer> {
       nick: serializer.fromJson<String>(json['nick']),
       host: serializer.fromJson<String>(json['host']),
       port: serializer.fromJson<int>(json['port']),
+      scheme: serializer.fromJson<String>(json['scheme']),
       fingerprint: serializer.fromJson<String?>(json['fingerprint']),
+      tlsCertFingerprint: serializer.fromJson<String?>(
+        json['tlsCertFingerprint'],
+      ),
       trusted: serializer.fromJson<bool>(json['trusted']),
       identityStatus: serializer.fromJson<String>(json['identityStatus']),
       lastSeen: serializer.fromJson<DateTime?>(json['lastSeen']),
@@ -2413,7 +2475,9 @@ class Peer extends DataClass implements Insertable<Peer> {
       'nick': serializer.toJson<String>(nick),
       'host': serializer.toJson<String>(host),
       'port': serializer.toJson<int>(port),
+      'scheme': serializer.toJson<String>(scheme),
       'fingerprint': serializer.toJson<String?>(fingerprint),
+      'tlsCertFingerprint': serializer.toJson<String?>(tlsCertFingerprint),
       'trusted': serializer.toJson<bool>(trusted),
       'identityStatus': serializer.toJson<String>(identityStatus),
       'lastSeen': serializer.toJson<DateTime?>(lastSeen),
@@ -2426,7 +2490,9 @@ class Peer extends DataClass implements Insertable<Peer> {
     String? nick,
     String? host,
     int? port,
+    String? scheme,
     Value<String?> fingerprint = const Value.absent(),
+    Value<String?> tlsCertFingerprint = const Value.absent(),
     bool? trusted,
     String? identityStatus,
     Value<DateTime?> lastSeen = const Value.absent(),
@@ -2436,7 +2502,11 @@ class Peer extends DataClass implements Insertable<Peer> {
     nick: nick ?? this.nick,
     host: host ?? this.host,
     port: port ?? this.port,
+    scheme: scheme ?? this.scheme,
     fingerprint: fingerprint.present ? fingerprint.value : this.fingerprint,
+    tlsCertFingerprint: tlsCertFingerprint.present
+        ? tlsCertFingerprint.value
+        : this.tlsCertFingerprint,
     trusted: trusted ?? this.trusted,
     identityStatus: identityStatus ?? this.identityStatus,
     lastSeen: lastSeen.present ? lastSeen.value : this.lastSeen,
@@ -2448,9 +2518,13 @@ class Peer extends DataClass implements Insertable<Peer> {
       nick: data.nick.present ? data.nick.value : this.nick,
       host: data.host.present ? data.host.value : this.host,
       port: data.port.present ? data.port.value : this.port,
+      scheme: data.scheme.present ? data.scheme.value : this.scheme,
       fingerprint: data.fingerprint.present
           ? data.fingerprint.value
           : this.fingerprint,
+      tlsCertFingerprint: data.tlsCertFingerprint.present
+          ? data.tlsCertFingerprint.value
+          : this.tlsCertFingerprint,
       trusted: data.trusted.present ? data.trusted.value : this.trusted,
       identityStatus: data.identityStatus.present
           ? data.identityStatus.value
@@ -2467,7 +2541,9 @@ class Peer extends DataClass implements Insertable<Peer> {
           ..write('nick: $nick, ')
           ..write('host: $host, ')
           ..write('port: $port, ')
+          ..write('scheme: $scheme, ')
           ..write('fingerprint: $fingerprint, ')
+          ..write('tlsCertFingerprint: $tlsCertFingerprint, ')
           ..write('trusted: $trusted, ')
           ..write('identityStatus: $identityStatus, ')
           ..write('lastSeen: $lastSeen, ')
@@ -2482,7 +2558,9 @@ class Peer extends DataClass implements Insertable<Peer> {
     nick,
     host,
     port,
+    scheme,
     fingerprint,
+    tlsCertFingerprint,
     trusted,
     identityStatus,
     lastSeen,
@@ -2496,7 +2574,9 @@ class Peer extends DataClass implements Insertable<Peer> {
           other.nick == this.nick &&
           other.host == this.host &&
           other.port == this.port &&
+          other.scheme == this.scheme &&
           other.fingerprint == this.fingerprint &&
+          other.tlsCertFingerprint == this.tlsCertFingerprint &&
           other.trusted == this.trusted &&
           other.identityStatus == this.identityStatus &&
           other.lastSeen == this.lastSeen &&
@@ -2508,7 +2588,9 @@ class PeersCompanion extends UpdateCompanion<Peer> {
   final Value<String> nick;
   final Value<String> host;
   final Value<int> port;
+  final Value<String> scheme;
   final Value<String?> fingerprint;
+  final Value<String?> tlsCertFingerprint;
   final Value<bool> trusted;
   final Value<String> identityStatus;
   final Value<DateTime?> lastSeen;
@@ -2519,7 +2601,9 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     this.nick = const Value.absent(),
     this.host = const Value.absent(),
     this.port = const Value.absent(),
+    this.scheme = const Value.absent(),
     this.fingerprint = const Value.absent(),
+    this.tlsCertFingerprint = const Value.absent(),
     this.trusted = const Value.absent(),
     this.identityStatus = const Value.absent(),
     this.lastSeen = const Value.absent(),
@@ -2531,7 +2615,9 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     required String nick,
     required String host,
     required int port,
+    this.scheme = const Value.absent(),
     this.fingerprint = const Value.absent(),
+    this.tlsCertFingerprint = const Value.absent(),
     this.trusted = const Value.absent(),
     this.identityStatus = const Value.absent(),
     this.lastSeen = const Value.absent(),
@@ -2546,7 +2632,9 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     Expression<String>? nick,
     Expression<String>? host,
     Expression<int>? port,
+    Expression<String>? scheme,
     Expression<String>? fingerprint,
+    Expression<String>? tlsCertFingerprint,
     Expression<bool>? trusted,
     Expression<String>? identityStatus,
     Expression<DateTime>? lastSeen,
@@ -2558,7 +2646,10 @@ class PeersCompanion extends UpdateCompanion<Peer> {
       if (nick != null) 'nick': nick,
       if (host != null) 'host': host,
       if (port != null) 'port': port,
+      if (scheme != null) 'scheme': scheme,
       if (fingerprint != null) 'fingerprint': fingerprint,
+      if (tlsCertFingerprint != null)
+        'tls_cert_fingerprint': tlsCertFingerprint,
       if (trusted != null) 'trusted': trusted,
       if (identityStatus != null) 'identity_status': identityStatus,
       if (lastSeen != null) 'last_seen': lastSeen,
@@ -2572,7 +2663,9 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     Value<String>? nick,
     Value<String>? host,
     Value<int>? port,
+    Value<String>? scheme,
     Value<String?>? fingerprint,
+    Value<String?>? tlsCertFingerprint,
     Value<bool>? trusted,
     Value<String>? identityStatus,
     Value<DateTime?>? lastSeen,
@@ -2584,7 +2677,9 @@ class PeersCompanion extends UpdateCompanion<Peer> {
       nick: nick ?? this.nick,
       host: host ?? this.host,
       port: port ?? this.port,
+      scheme: scheme ?? this.scheme,
       fingerprint: fingerprint ?? this.fingerprint,
+      tlsCertFingerprint: tlsCertFingerprint ?? this.tlsCertFingerprint,
       trusted: trusted ?? this.trusted,
       identityStatus: identityStatus ?? this.identityStatus,
       lastSeen: lastSeen ?? this.lastSeen,
@@ -2608,8 +2703,14 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     if (port.present) {
       map['port'] = Variable<int>(port.value);
     }
+    if (scheme.present) {
+      map['scheme'] = Variable<String>(scheme.value);
+    }
     if (fingerprint.present) {
       map['fingerprint'] = Variable<String>(fingerprint.value);
+    }
+    if (tlsCertFingerprint.present) {
+      map['tls_cert_fingerprint'] = Variable<String>(tlsCertFingerprint.value);
     }
     if (trusted.present) {
       map['trusted'] = Variable<bool>(trusted.value);
@@ -2636,7 +2737,9 @@ class PeersCompanion extends UpdateCompanion<Peer> {
           ..write('nick: $nick, ')
           ..write('host: $host, ')
           ..write('port: $port, ')
+          ..write('scheme: $scheme, ')
           ..write('fingerprint: $fingerprint, ')
+          ..write('tlsCertFingerprint: $tlsCertFingerprint, ')
           ..write('trusted: $trusted, ')
           ..write('identityStatus: $identityStatus, ')
           ..write('lastSeen: $lastSeen, ')
@@ -9416,7 +9519,9 @@ typedef $$PeersTableCreateCompanionBuilder =
       required String nick,
       required String host,
       required int port,
+      Value<String> scheme,
       Value<String?> fingerprint,
+      Value<String?> tlsCertFingerprint,
       Value<bool> trusted,
       Value<String> identityStatus,
       Value<DateTime?> lastSeen,
@@ -9429,7 +9534,9 @@ typedef $$PeersTableUpdateCompanionBuilder =
       Value<String> nick,
       Value<String> host,
       Value<int> port,
+      Value<String> scheme,
       Value<String?> fingerprint,
+      Value<String?> tlsCertFingerprint,
       Value<bool> trusted,
       Value<String> identityStatus,
       Value<DateTime?> lastSeen,
@@ -9551,8 +9658,18 @@ class $$PeersTableFilterComposer extends Composer<_$AppDatabase, $PeersTable> {
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get scheme => $composableBuilder(
+    column: $table.scheme,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get fingerprint => $composableBuilder(
     column: $table.fingerprint,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tlsCertFingerprint => $composableBuilder(
+    column: $table.tlsCertFingerprint,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9706,8 +9823,18 @@ class $$PeersTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get scheme => $composableBuilder(
+    column: $table.scheme,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get fingerprint => $composableBuilder(
     column: $table.fingerprint,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tlsCertFingerprint => $composableBuilder(
+    column: $table.tlsCertFingerprint,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -9753,8 +9880,16 @@ class $$PeersTableAnnotationComposer
   GeneratedColumn<int> get port =>
       $composableBuilder(column: $table.port, builder: (column) => column);
 
+  GeneratedColumn<String> get scheme =>
+      $composableBuilder(column: $table.scheme, builder: (column) => column);
+
   GeneratedColumn<String> get fingerprint => $composableBuilder(
     column: $table.fingerprint,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get tlsCertFingerprint => $composableBuilder(
+    column: $table.tlsCertFingerprint,
     builder: (column) => column,
   );
 
@@ -9912,7 +10047,9 @@ class $$PeersTableTableManager
                 Value<String> nick = const Value.absent(),
                 Value<String> host = const Value.absent(),
                 Value<int> port = const Value.absent(),
+                Value<String> scheme = const Value.absent(),
                 Value<String?> fingerprint = const Value.absent(),
+                Value<String?> tlsCertFingerprint = const Value.absent(),
                 Value<bool> trusted = const Value.absent(),
                 Value<String> identityStatus = const Value.absent(),
                 Value<DateTime?> lastSeen = const Value.absent(),
@@ -9923,7 +10060,9 @@ class $$PeersTableTableManager
                 nick: nick,
                 host: host,
                 port: port,
+                scheme: scheme,
                 fingerprint: fingerprint,
+                tlsCertFingerprint: tlsCertFingerprint,
                 trusted: trusted,
                 identityStatus: identityStatus,
                 lastSeen: lastSeen,
@@ -9936,7 +10075,9 @@ class $$PeersTableTableManager
                 required String nick,
                 required String host,
                 required int port,
+                Value<String> scheme = const Value.absent(),
                 Value<String?> fingerprint = const Value.absent(),
+                Value<String?> tlsCertFingerprint = const Value.absent(),
                 Value<bool> trusted = const Value.absent(),
                 Value<String> identityStatus = const Value.absent(),
                 Value<DateTime?> lastSeen = const Value.absent(),
@@ -9947,7 +10088,9 @@ class $$PeersTableTableManager
                 nick: nick,
                 host: host,
                 port: port,
+                scheme: scheme,
                 fingerprint: fingerprint,
+                tlsCertFingerprint: tlsCertFingerprint,
                 trusted: trusted,
                 identityStatus: identityStatus,
                 lastSeen: lastSeen,

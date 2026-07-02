@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:blan/core/indexing/chunker.dart';
 import 'package:blan/core/persistence/database.dart';
+import 'package:blan/core/protocol/constants.dart';
 import 'package:blan/core/protocol/download_states.dart';
 import 'package:blan/core/protocol/models.dart';
 import 'package:blan/core/security/peer_identity.dart';
@@ -11,12 +12,16 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/transfer_server_harness.dart';
+
 Future<({
   AppDatabase db,
-  TransferServer server,
+  TestTransferServerSetup harness,
   Directory tempDir,
   String peerId,
   int port,
+  String peerBaseUrl,
+  String tlsFingerprint,
 })> _startIndexedServer({
   required List<int> bytes,
   required int chunkSize,
@@ -67,13 +72,19 @@ Future<({
         );
   }
 
-  await server.start(port: 0, browserToken: browserToken);
-  return (
+  final harness = await startTestTransferServer(
     db: db,
     server: server,
+    browserToken: browserToken,
+  );
+  return (
+    db: db,
+    harness: harness,
     tempDir: tempDir,
     peerId: peerId,
-    port: server.boundPort!,
+    port: harness.server.boundHttpsPort!,
+    peerBaseUrl: harness.peerBaseUrl,
+    tlsFingerprint: harness.tlsFingerprint,
   );
 }
 
@@ -125,18 +136,22 @@ void main() {
       fileId: fileId,
     );
 
+    for (final server in [serverA, serverB, serverC]) {
+      client.registerTlsPin('127.0.0.1', server.port, server.tlsFingerprint);
+    }
+
     final manifestA = await client.fetchFileManifest(
-      'http://127.0.0.1:${serverA.port}',
+      serverA.peerBaseUrl,
       fileId: fileId,
       token: browserToken,
     );
     final manifestB = await client.fetchFileManifest(
-      'http://127.0.0.1:${serverB.port}',
+      serverB.peerBaseUrl,
       fileId: fileId,
       token: browserToken,
     );
     final manifestC = await client.fetchFileManifest(
-      'http://127.0.0.1:${serverC.port}',
+      serverC.peerBaseUrl,
       fileId: fileId,
       token: browserToken,
     );
@@ -181,6 +196,7 @@ void main() {
               nick: server.peerId,
               host: '127.0.0.1',
               port: server.port,
+              tlsCertFingerprint: Value(server.tlsFingerprint),
             ),
           );
     }
@@ -190,7 +206,9 @@ void main() {
       nick: 'peer-a',
       host: '127.0.0.1',
       port: serverA.port,
+      scheme: peerSchemeHttps,
       fingerprint: null,
+      tlsCertFingerprint: serverA.tlsFingerprint,
       trusted: false,
       identityStatus: PeerIdentityStatus.normal,
       lastSeen: DateTime.now(),
@@ -218,9 +236,9 @@ void main() {
       containsAll({serverA.peerId, serverB.peerId, serverC.peerId}),
     );
 
-    await serverA.server.stop();
-    await serverB.server.stop();
-    await serverC.server.stop();
+    await serverA.harness.server.stop();
+    await serverB.harness.server.stop();
+    await serverC.harness.server.stop();
     await serverA.db.close();
     await serverB.db.close();
     await serverC.db.close();

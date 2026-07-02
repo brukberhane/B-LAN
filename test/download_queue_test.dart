@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:blan/core/indexing/chunker.dart';
 import 'package:blan/core/persistence/database.dart';
+import 'package:blan/core/protocol/constants.dart';
 import 'package:blan/core/protocol/download_states.dart';
 import 'package:blan/core/protocol/models.dart';
 import 'package:blan/core/security/peer_identity.dart';
@@ -14,15 +15,18 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
+import 'support/transfer_server_harness.dart';
+
 void main() {
   late AppDatabase db;
   late TransferServer server;
   late TransferClient client;
+  late TestTransferServerSetup harness;
   late DownloadQueue queue;
   late Directory tempDir;
   late Directory downloadDir;
   late File sourceFile;
-  late int port;
+  late int httpsPort;
   late Peer peer;
 
   const browserToken = 'browser-token';
@@ -34,7 +38,6 @@ void main() {
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
     server = TransferServer(db);
-    client = TransferClient(db);
     tempDir = await Directory.systemTemp.createTemp('blan-queue-src');
     downloadDir = await Directory.systemTemp.createTemp('blan-queue-dst');
     sourceFile = File('${tempDir.path}/data.bin');
@@ -83,21 +86,31 @@ void main() {
           ),
         );
 
-    await server.start(port: 0, browserToken: browserToken);
-    port = server.boundPort!;
+    harness = await startTestTransferServer(
+      db: db,
+      server: server,
+      browserToken: browserToken,
+    );
+    client = TransferClient(db, httpClient: harness.pinnedClient);
+    httpsPort = server.boundHttpsPort!;
     peer = Peer(
       id: peerId,
       nick: 'remote',
       host: '127.0.0.1',
-      port: port,
+      port: httpsPort,
+      scheme: peerSchemeHttps,
       fingerprint: null,
+      tlsCertFingerprint: harness.tlsFingerprint,
       trusted: false,
       identityStatus: PeerIdentityStatus.normal,
       lastSeen: DateTime.now(),
       manual: true,
     );
     await (db.update(db.peers)..where((t) => t.id.equals(peerId))).write(
-      PeersCompanion(port: Value(port)),
+      PeersCompanion(
+        port: Value(httpsPort),
+        tlsCertFingerprint: Value(harness.tlsFingerprint),
+      ),
     );
 
     queue = DownloadQueue(
@@ -167,7 +180,7 @@ void main() {
   });
 
   test('pause and resume keep partial progress', () async {
-    final slowClient = _SlowChunkClient();
+    final slowClient = _SlowChunkClient(harness.pinnedClient);
     final slowQueue = DownloadQueue(
       db,
       TransferClient(db, httpClient: slowClient),
@@ -196,7 +209,7 @@ void main() {
   });
 
   test('cancel marks download cancelled', () async {
-    final slowClient = _SlowChunkClient();
+    final slowClient = _SlowChunkClient(harness.pinnedClient);
     final slowQueue = DownloadQueue(
       db,
       TransferClient(db, httpClient: slowClient),
@@ -383,7 +396,7 @@ class _NoopPlatform implements PlatformServices {
 }
 
 class _SlowChunkClient extends http.BaseClient {
-  _SlowChunkClient() : _inner = http.Client();
+  _SlowChunkClient(this._inner);
 
   final http.Client _inner;
 

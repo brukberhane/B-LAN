@@ -17,7 +17,7 @@ class PeerSessionRecord {
 
 class PeerSessionStore {
   static String settingKey(String host, int port) => 'session_$host:$port';
-  static const _versionPrefix = 'v2|';
+  static const _version = 'v2';
 
   Future<void> saveToken(
     AppDatabase db,
@@ -27,12 +27,12 @@ class PeerSessionStore {
   }) async {
     final expiresAt = DateTime.now().add(ttl).millisecondsSinceEpoch;
     final payload = [
-      _versionPrefix,
+      _version,
       token,
       '$expiresAt',
       peer.id,
       peer.fingerprint ?? '',
-    ].join();
+    ].join('|');
     await db.setSetting(settingKey(peer.host, peer.port), payload);
   }
 
@@ -83,21 +83,25 @@ class PeerSessionStore {
       db.deleteSetting(settingKey(host, port));
 
   PeerSessionRecord? _parse(String raw) {
-    if (raw.startsWith(_versionPrefix)) {
-      final parts = raw.substring(_versionPrefix.length).split('|');
-      if (parts.length < 2) {
-        return null;
+    if (raw.startsWith('$_version|')) {
+      final parts = raw.split('|');
+      if (parts.length >= 3 && parts[0] == _version) {
+        final token = parts[1];
+        final expiresAt = int.tryParse(parts[2]);
+        final peerId = parts.length > 3 ? parts[3] : null;
+        final fingerprint = parts.length > 4 ? parts[4] : null;
+        return PeerSessionRecord(
+          token: token,
+          expiresAtMillis: expiresAt,
+          peerId: peerId == null || peerId.isEmpty ? null : peerId,
+          fingerprint:
+              fingerprint == null || fingerprint.isEmpty ? null : fingerprint,
+        );
       }
-      final token = parts[0];
-      final expiresAt = int.tryParse(parts[1]);
-      final peerId = parts.length > 2 ? parts[2] : null;
-      final fingerprint = parts.length > 3 ? parts[3] : null;
-      return PeerSessionRecord(
-        token: token,
-        expiresAtMillis: expiresAt,
-        peerId: peerId == null || peerId.isEmpty ? null : peerId,
-        fingerprint: fingerprint == null || fingerprint.isEmpty ? null : fingerprint,
-      );
+      if (parts.length == 2 && parts[0] == _version) {
+        return PeerSessionRecord(token: parts[1], expiresAtMillis: null);
+      }
+      return null;
     }
 
     final separator = raw.indexOf('|');

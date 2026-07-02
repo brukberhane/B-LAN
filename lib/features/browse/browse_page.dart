@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../core/persistence/database.dart';
 import '../../core/protocol/models.dart';
+import '../../core/network/peer_url.dart';
 import '../../core/protocol/path_safety.dart';
 import '../../core/security/peer_identity.dart';
 import '../../core/ui/format.dart';
@@ -66,7 +67,7 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
     });
     try {
       final client = ref.read(appServiceProvider).client;
-      final baseUrl = 'http://${widget.peer.host}:${widget.peer.port}';
+      final baseUrl = peerBaseUrl(widget.peer);
       final shares = await client.listShares(baseUrl, token: _authToken);
       if (!mounted) {
         return;
@@ -98,7 +99,7 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
     });
     try {
       final client = ref.read(appServiceProvider).client;
-      final baseUrl = 'http://${widget.peer.host}:${widget.peer.port}';
+      final baseUrl = peerBaseUrl(widget.peer);
       final entries = await client.listEntries(
         baseUrl,
         shareId: share.id,

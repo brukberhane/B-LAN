@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../persistence/database.dart';
@@ -8,6 +11,19 @@ const _legacySecretKeys = [
   'device_public_key',
   'browser_token',
 ];
+
+/// Linux keyring stores JSON; PEM newlines must be base64-wrapped.
+const secureValuePrefix = 'b64:';
+
+String encodeSecureValue(String value) =>
+    '$secureValuePrefix${base64Encode(utf8.encode(value))}';
+
+String decodeSecureValue(String stored) {
+  if (stored.startsWith(secureValuePrefix)) {
+    return utf8.decode(base64Decode(stored.substring(secureValuePrefix.length)));
+  }
+  return stored;
+}
 
 class CompositeSecretStore implements SecretStore {
   CompositeSecretStore._(this._db, this._secure, this._usesSecureStorage);
@@ -42,9 +58,13 @@ class CompositeSecretStore implements SecretStore {
   @override
   Future<String> readOrEmpty(String key) async {
     if (_secure != null) {
-      final value = await _secure!.read(key: key);
-      if (value != null && value.isNotEmpty) {
-        return value;
+      try {
+        final value = await _secure!.read(key: key);
+        if (value != null && value.isNotEmpty) {
+          return decodeSecureValue(value);
+        }
+      } on PlatformException {
+        await _secure!.delete(key: key);
       }
     }
     final wrapped = await _db.getSetting('secret_$key');
@@ -57,7 +77,7 @@ class CompositeSecretStore implements SecretStore {
   @override
   Future<void> write(String key, String value) async {
     if (_secure != null) {
-      await _secure!.write(key: key, value: value);
+      await _secure!.write(key: key, value: encodeSecureValue(value));
       await _db.deleteSetting('secret_$key');
       await _db.deleteSetting(key);
       return;

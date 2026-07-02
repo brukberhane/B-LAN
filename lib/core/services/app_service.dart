@@ -18,11 +18,13 @@ import '../persistence/database.dart';
 import '../protocol/constants.dart';
 import '../protocol/models.dart';
 import '../search/search_service.dart';
+import '../network/peer_url.dart';
 import '../security/browser_token_store.dart';
 import '../security/composite_secret_store.dart';
 import '../security/device_identity.dart';
 import '../security/peer_session_store.dart';
 import '../security/secret_store.dart';
+import '../security/tls_identity.dart';
 import '../transfers/download_queue.dart';
 import '../transfers/transfer_client.dart';
 import '../transfers/transfer_server.dart';
@@ -81,6 +83,7 @@ class AppService {
   ShareWatcher? _shareWatcher;
   Timer? _reconcileTimer;
   static const _reconcileInterval = Duration(minutes: 30);
+  final _peerHandshakesInFlight = <String, Future<void>>{};
 
   SecretStore? get secrets => _secrets;
 
@@ -94,18 +97,34 @@ class AppService {
     await DeviceIdentity(_secrets!).ensureIdentity();
     await db.ensurePeerId();
     await db.ensureNick();
-    final port = await db.ensureHttpPort();
+    final browserPort = await db.ensureHttpPort();
+    final httpsPort = await db.ensureHttpsPort();
     final token = await browserToken();
     final peerId = await db.ensurePeerId();
     final nick = await db.ensureNick();
 
-    final boundPort = await server.start(port: port, browserToken: token);
+    final tls = await TlsIdentity(_secrets!).ensureIdentity(commonName: nick);
+    final tlsContext = TlsIdentity(_secrets!).createServerContext(tls);
+    final ports = await server.start(
+      tlsContext: tlsContext,
+      httpsPort: httpsPort,
+      browserHttpPort: browserPort,
+      browserToken: token,
+    );
     await _syncBrowserTokenAuth(token);
-    if (boundPort != port) {
-      await db.setSetting('http_port', '$boundPort');
+    if (ports.httpsPort != httpsPort) {
+      await db.setSetting('peer_https_port', '${ports.httpsPort}');
+    }
+    if (ports.browserPort != browserPort) {
+      await db.setSetting('browser_http_port', '${ports.browserPort}');
     }
 
-    await discovery.start(peerId: peerId, nick: nick, port: boundPort);
+    await discovery.start(
+      peerId: peerId,
+      nick: nick,
+      port: ports.httpsPort,
+      browserHttpPort: ports.browserPort,
+    );
     discovery.onPeerFound = _onDiscoveredPeer;
     discovery.onPeerLost = _onLostPeer;
     if (Platform.isAndroid) {
@@ -128,7 +147,9 @@ class AppService {
     await db.purgeStaleTransfers();
     unawaited(_warmSearchIndex());
     unawaited(client.warmSwarmCache());
-    _log.info('Core services started on port $boundPort');
+    _log.info(
+      'Core services started on HTTPS :${ports.httpsPort}, browser HTTP :${ports.browserPort}',
+    );
   }
 
   Future<void> _warmSearchIndex() {
@@ -276,16 +297,26 @@ class AppService {
     await _sessions.revoke(db, peer.host, peer.port);
   }
 
-  String localPeerUrl(int port) => peerUrl('127.0.0.1', port);
+  String localBrowserUrl(int port) => browserHttpUrl('127.0.0.1', port);
+
+  String localPeerUrl(int port) => peerHttpsUrl('127.0.0.1', port);
 
   Future<List<String>> lanIpv4Addresses() => listLanIpv4Addresses();
+
+  Future<String?> primaryLanBrowserUrl(int port) async {
+    final addresses = await lanIpv4Addresses();
+    if (addresses.isEmpty) {
+      return null;
+    }
+    return browserHttpUrl(addresses.first, port);
+  }
 
   Future<String?> primaryLanPeerUrl(int port) async {
     final addresses = await lanIpv4Addresses();
     if (addresses.isEmpty) {
       return null;
     }
-    return peerUrl(addresses.first, port);
+    return peerHttpsUrl(addresses.first, port);
   }
 
   Future<bool> openPathInFileManager(String path) => openPathInShell(path);
@@ -298,19 +329,63 @@ class AppService {
   Future<void> forgetPeerTrust(String peerId) => db.forgetPeerTrust(peerId);
 
   Future<void> addManualPeer(String host, int port, {String? nick}) async {
-    final baseUrl = 'http://$host:$port';
-    final hello = await client.hello(baseUrl);
+    await _handshakePeer(host: host, port: port, manual: true);
+  }
+
+  Future<void> _handshakePeer({
+    required String host,
+    required int port,
+    required bool manual,
+    Iterable<String> ghostPeerIds = const [],
+  }) {
+    final flightKey = '$host:$port';
+    final inFlight = _peerHandshakesInFlight[flightKey];
+    if (inFlight != null) {
+      return inFlight;
+    }
+    final task = _runHandshakePeer(
+      host: host,
+      port: port,
+      manual: manual,
+      ghostPeerIds: ghostPeerIds,
+    );
+    _peerHandshakesInFlight[flightKey] = task;
+    return task.whenComplete(() => _peerHandshakesInFlight.remove(flightKey));
+  }
+
+  Future<void> _runHandshakePeer({
+    required String host,
+    required int port,
+    required bool manual,
+    Iterable<String> ghostPeerIds = const [],
+  }) async {
+    final baseUrl = peerHttpsUrl(host, port);
+    final hello = await client.helloAndRegisterPin(
+      baseUrl,
+      secrets: _secrets,
+    );
+    final tlsFp = hello.tlsCertSha256!;
+
     final localPeerId = await db.ensurePeerId();
+    if (hello.peerId == localPeerId) {
+      return;
+    }
+
     final session = await client.createSession(baseUrl, peerId: localPeerId);
-    final ghostId = '$host:$port';
-    if (ghostId != hello.peerId) {
-      await (db.delete(db.peers)..where((t) => t.id.equals(ghostId))).go();
+    for (final ghostId in {
+      ...ghostPeerIds,
+      '$host:$port',
+    }) {
+      if (ghostId != hello.peerId) {
+        await (db.delete(db.peers)..where((t) => t.id.equals(ghostId))).go();
+      }
     }
     await db.upsertPeerFromHello(
       hello: hello,
       host: host,
       port: port,
-      manual: true,
+      manual: manual,
+      tlsCertFingerprint: tlsFp,
     );
     final peer = await db.peerById(hello.peerId);
     if (peer != null) {
@@ -364,7 +439,8 @@ class AppService {
     if (existing != null) {
       return existing;
     }
-    final baseUrl = 'http://${peer.host}:${peer.port}';
+    client.registerTlsPinForPeer(peer);
+    final baseUrl = peerBaseUrl(peer);
     final localPeerId = await db.ensurePeerId();
     final session = await client.createSession(baseUrl, peerId: localPeerId);
     await _sessions.saveToken(db, peer, session);
@@ -395,53 +471,25 @@ class AppService {
     }
 
     try {
-      final baseUrl = 'http://${peer.host}:${peer.port}';
-      final hello = await client.hello(baseUrl);
-      if (hello.peerId == localPeerId) {
-        return;
-      }
-
-      final session = await client.createSession(baseUrl, peerId: localPeerId);
-
-      for (final ghostId in {peer.peerId, '${peer.host}:${peer.port}'}) {
-        if (ghostId != hello.peerId) {
-          await (db.delete(db.peers)..where((t) => t.id.equals(ghostId))).go();
-        }
-      }
-
-      await db.upsertPeerFromHello(
-        hello: hello,
+      await _handshakePeer(
         host: peer.host,
         port: peer.port,
         manual: false,
+        ghostPeerIds: {peer.peerId},
       );
-      final saved = await db.peerById(hello.peerId);
-      if (saved != null) {
-        await _sessions.saveToken(db, saved, session);
-      }
-      _log.info('Discovered peer ${hello.nick} at ${peer.host}:${peer.port}');
-    } catch (error) {
+      final saved = await db.peerByEndpoint(host: peer.host, port: peer.port);
+      _log.info('Discovered peer ${saved?.nick ?? peer.nick} at ${peer.host}:${peer.port}');
+    } catch (error, stack) {
       _log.warning(
         'mDNS peer handshake failed for ${peer.host}:${peer.port}: $error',
+        error,
+        stack,
       );
-      await _removePeerIfHostMatches(peer);
     }
   }
 
   Future<void> _onLostPeer(DiscoveredPeer peer) async {
     if (peer.manual) {
-      return;
-    }
-    await (db.delete(db.peers)..where((t) => t.id.equals(peer.peerId))).go();
-    await _sessions.revoke(db, peer.host, peer.port);
-    discovery.removePeer(peer.peerId);
-  }
-
-  Future<void> _removePeerIfHostMatches(DiscoveredPeer peer) async {
-    final existing = await db.peerById(peer.peerId);
-    if (existing == null ||
-        existing.host != peer.host ||
-        existing.port != peer.port) {
       return;
     }
     await (db.delete(db.peers)..where((t) => t.id.equals(peer.peerId))).go();

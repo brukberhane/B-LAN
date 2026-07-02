@@ -38,7 +38,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -126,6 +126,13 @@ class AppDatabase extends _$AppDatabase {
           'ON transfers (state)',
         );
       }
+      if (from < 13) {
+        await migrator.addColumn(peers, peers.scheme);
+        await migrator.addColumn(peers, peers.tlsCertFingerprint);
+        await customStatement(
+          "UPDATE peers SET scheme = '${peerSchemeHttps}' WHERE scheme IS NULL OR scheme = ''",
+        );
+      }
     },
   );
 
@@ -190,13 +197,13 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> setSetting(String key, String value) async {
-    final updated = await (update(settings)..where((t) => t.key.equals(key)))
-        .write(SettingsCompanion(value: Value(value)));
-    if (updated == 0) {
-      await into(
-        settings,
-      ).insert(SettingsCompanion.insert(key: key, value: value));
-    }
+    await into(settings).insert(
+      SettingsCompanion.insert(key: key, value: value),
+      onConflict: DoUpdate(
+        (old) => SettingsCompanion(value: Value(value)),
+        target: [settings.key],
+      ),
+    );
   }
 
   Future<void> deleteSetting(String key) async {
@@ -222,12 +229,26 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<int> ensureHttpPort() async {
-    final raw = await getSetting('http_port');
+    final raw = await getSetting('browser_http_port');
     if (raw.isEmpty) {
-      await setSetting('http_port', '$defaultHttpPort');
-      return defaultHttpPort;
+      final legacy = await getSetting('http_port');
+      if (legacy.isNotEmpty) {
+        await setSetting('browser_http_port', legacy);
+        return int.tryParse(legacy) ?? defaultBrowserHttpPort;
+      }
+      await setSetting('browser_http_port', '$defaultBrowserHttpPort');
+      return defaultBrowserHttpPort;
     }
-    return int.tryParse(raw) ?? defaultHttpPort;
+    return int.tryParse(raw) ?? defaultBrowserHttpPort;
+  }
+
+  Future<int> ensureHttpsPort() async {
+    final raw = await getSetting('peer_https_port');
+    if (raw.isEmpty) {
+      await setSetting('peer_https_port', '$defaultPeerHttpsPort');
+      return defaultPeerHttpsPort;
+    }
+    return int.tryParse(raw) ?? defaultPeerHttpsPort;
   }
 
   Future<String> ensureBrowserToken() async {
@@ -1240,19 +1261,35 @@ class AppDatabase extends _$AppDatabase {
   Future<Peer?> peerById(String id) =>
       (select(peers)..where((t) => t.id.equals(id))).getSingleOrNull();
 
+  Future<Peer?> peerByEndpoint({required String host, required int port}) =>
+      (select(peers)
+            ..where((t) => t.host.equals(host) & t.port.equals(port)))
+          .getSingleOrNull();
+
   Future<void> upsertPeerFromHello({
     required HelloResponse hello,
     required String host,
     required int port,
     required bool manual,
+    String scheme = peerSchemeHttps,
+    String? tlsCertFingerprint,
   }) async {
     final existing = await peerById(hello.peerId);
     var identityStatus = PeerIdentityStatus.normal;
     var trusted = existing?.trusted ?? false;
+    final resolvedTls = tlsCertFingerprint ?? hello.tlsCertSha256;
 
     if (existing?.fingerprint != null &&
         existing!.fingerprint!.isNotEmpty &&
         existing.fingerprint != hello.fingerprint) {
+      identityStatus = PeerIdentityStatus.identityChanged;
+      trusted = false;
+      await deleteSetting(PeerSessionStore.settingKey(host, port));
+    } else if (existing?.tlsCertFingerprint != null &&
+        existing!.tlsCertFingerprint!.isNotEmpty &&
+        resolvedTls != null &&
+        resolvedTls.isNotEmpty &&
+        existing.tlsCertFingerprint != resolvedTls) {
       identityStatus = PeerIdentityStatus.identityChanged;
       trusted = false;
       await deleteSetting(PeerSessionStore.settingKey(host, port));
@@ -1264,7 +1301,9 @@ class AppDatabase extends _$AppDatabase {
         nick: hello.nick,
         host: host,
         port: port,
+        scheme: Value(scheme),
         fingerprint: Value(hello.fingerprint),
+        tlsCertFingerprint: Value(resolvedTls),
         trusted: Value(trusted),
         identityStatus: Value(identityStatus),
         manual: Value(manual),

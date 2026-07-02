@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 
 import '../persistence/database.dart';
 import '../protocol/models.dart';
+import '../network/peer_url.dart';
 import '../security/peer_session_store.dart';
 import '../transfers/transfer_client.dart';
 
@@ -113,7 +114,7 @@ class SearchService {
       return;
     }
     final manifest = await _client.fetchFileManifest(
-      'http://${peer.host}:${peer.port}',
+      peerBaseUrl(peer),
       fileId: result.entryId,
       token: token,
     );
@@ -136,7 +137,7 @@ class SearchService {
         final otherToken = await _ensurePeerSession(otherPeer);
         try {
           final otherManifest = await _client.fetchFileManifest(
-            'http://${otherPeer.host}:${otherPeer.port}',
+            peerBaseUrl(otherPeer),
             fileId: row.entryId,
             token: otherToken,
           );
@@ -163,7 +164,7 @@ class SearchService {
     try {
       final token = await _ensurePeerSession(peer);
       final response = await _client.search(
-        'http://${peer.host}:${peer.port}',
+        peerBaseUrl(peer),
         query: query,
         type: type,
         minSize: minSize,
@@ -247,11 +248,13 @@ class SearchService {
   Future<String> _ensurePeerSession(Peer peer) async {
     final existing = await _sessions.readValidToken(_db, peer);
     if (existing != null) {
+      _client.registerTlsPinForPeer(peer);
       return existing;
     }
+    _client.registerTlsPinForPeer(peer);
     final localPeerId = await _db.ensurePeerId();
     final token = await _client.createSession(
-      'http://${peer.host}:${peer.port}',
+      peerBaseUrl(peer),
       peerId: localPeerId,
     );
     await _sessions.saveToken(_db, peer, token);

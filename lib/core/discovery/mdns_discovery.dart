@@ -38,6 +38,7 @@ class MdnsDiscovery {
     required String peerId,
     required String nick,
     required int port,
+    int? browserHttpPort,
   }) async {
     await stop();
     _localPeerId = peerId;
@@ -52,13 +53,19 @@ class MdnsDiscovery {
       return;
     }
 
-    await _startBonsoir(peerId: peerId, nick: nick, port: port);
+    await _startBonsoir(
+      peerId: peerId,
+      nick: nick,
+      port: port,
+      browserHttpPort: browserHttpPort,
+    );
   }
 
   Future<void> _startBonsoir({
     required String peerId,
     required String nick,
     required int port,
+    int? browserHttpPort,
   }) async {
     final serviceName = sanitizeMdnsServiceName(nick, peerId);
     final service = BonsoirService(
@@ -69,6 +76,9 @@ class MdnsDiscovery {
         'peerId': peerId,
         'pv': '$protocolVersion',
         'nick': nick.length > 64 ? nick.substring(0, 64) : nick,
+        'tls': '1',
+        'scheme': peerSchemeHttps,
+        if (browserHttpPort != null) 'browserHttpPort': '$browserHttpPort',
       },
     );
 
@@ -121,11 +131,14 @@ class MdnsDiscovery {
     }
 
     for (final host in hosts) {
+      final browserPort = int.tryParse(attrs['browserHttpPort'] ?? '');
       final peer = DiscoveredPeer(
         peerId: advertisedPeerId ?? '$host:${service.port}',
         nick: attrs['nick'] ?? service.name,
         host: host,
         port: service.port,
+        scheme: attrs['scheme'] ?? peerSchemeHttps,
+        browserHttpPort: browserPort,
         lastSeen: DateTime.now(),
       );
       _registerPeer(peer);

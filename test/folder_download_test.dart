@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:blan/core/indexing/chunker.dart';
 import 'package:blan/core/persistence/database.dart';
+import 'package:blan/core/protocol/constants.dart';
 import 'package:blan/core/protocol/download_states.dart';
 import 'package:blan/core/protocol/models.dart';
 import 'package:blan/core/protocol/path_safety.dart';
@@ -14,13 +15,16 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
+import 'support/transfer_server_harness.dart';
+
 void main() {
   late AppDatabase db;
   late TransferServer server;
   late TransferClient client;
+  late TestTransferServerSetup harness;
   late Directory tempDir;
   late Directory downloadDir;
-  late int port;
+  late int httpsPort;
   late Peer peer;
 
   const browserToken = 'browser-token';
@@ -31,7 +35,6 @@ void main() {
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
     server = TransferServer(db);
-    client = TransferClient(db);
     tempDir = await Directory.systemTemp.createTemp('blan-folder-src');
     downloadDir = await Directory.systemTemp.createTemp('blan-folder-dst');
 
@@ -97,21 +100,31 @@ void main() {
           ),
         );
 
-    await server.start(port: 0, browserToken: browserToken);
-    port = server.boundPort!;
+    harness = await startTestTransferServer(
+      db: db,
+      server: server,
+      browserToken: browserToken,
+    );
+    client = TransferClient(db, httpClient: harness.pinnedClient);
+    httpsPort = server.boundHttpsPort!;
     peer = Peer(
       id: peerId,
       nick: 'remote',
       host: '127.0.0.1',
-      port: port,
+      port: httpsPort,
+      scheme: peerSchemeHttps,
       fingerprint: null,
+      tlsCertFingerprint: harness.tlsFingerprint,
       trusted: false,
       identityStatus: PeerIdentityStatus.normal,
       lastSeen: DateTime.now(),
       manual: true,
     );
     await (db.update(db.peers)..where((t) => t.id.equals(peerId))).write(
-      PeersCompanion(port: Value(port)),
+      PeersCompanion(
+        port: Value(httpsPort),
+        tlsCertFingerprint: Value(harness.tlsFingerprint),
+      ),
     );
   });
 
@@ -139,7 +152,7 @@ void main() {
 
   test('listEntriesRecursive returns nested files breadth-first', () async {
     final files = await client.listEntriesRecursive(
-      'http://127.0.0.1:$port',
+      harness.peerBaseUrl,
       shareId: shareId,
       rootPath: 'folder/',
       token: browserToken,
@@ -205,12 +218,12 @@ void main() {
   });
 
   test('listEntriesRecursive rejects traversal paths from remote listing', () async {
-    final badClient = _BadListingClient();
+    final badClient = _BadListingClient(harness.pinnedClient);
     final listingClient = TransferClient(db, httpClient: badClient);
     try {
       await expectLater(
         listingClient.listEntriesRecursive(
-          'http://127.0.0.1:$port',
+          harness.peerBaseUrl,
           shareId: shareId,
           rootPath: 'folder/',
           token: browserToken,
@@ -260,7 +273,7 @@ Future<void> _insertFileEntry({
 }
 
 class _BadListingClient extends http.BaseClient {
-  _BadListingClient() : _inner = http.Client();
+  _BadListingClient(this._inner);
 
   final http.Client _inner;
 

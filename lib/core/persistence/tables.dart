@@ -1,5 +1,7 @@
 import 'package:drift/drift.dart';
 
+import '../protocol/constants.dart';
+
 class Settings extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get key => text().unique()();
@@ -63,7 +65,10 @@ class Peers extends Table {
   TextColumn get nick => text()();
   TextColumn get host => text()();
   IntColumn get port => integer()();
+  TextColumn get scheme =>
+      text().withDefault(const Constant(peerSchemeHttps))();
   TextColumn get fingerprint => text().nullable()();
+  TextColumn get tlsCertFingerprint => text().nullable()();
   BoolColumn get trusted => boolean().withDefault(const Constant(false))();
   TextColumn get identityStatus =>
       text().withDefault(const Constant('normal'))();

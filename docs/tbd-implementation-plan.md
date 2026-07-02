@@ -1,6 +1,6 @@
 # B-LAN TBD Implementation Plan
 
-Last reviewed: 2026-07-01
+Last reviewed: 2026-07-02
 
 ## Implementation Status
 
@@ -24,6 +24,7 @@ Last reviewed: 2026-07-01
 | 13 Upload visibility and network health | **complete** | Schema v12 transfer telemetry, `UploadManager`, Uploads page, settings limits, range 416 hardening |
 | 14 Platform proof and native UX | **partial** | Network health UI, LAN URL copy, open-folder actions, matrix auto rows; device matrix mostly pending |
 | 15 Security hardening | **complete** | Secure storage, session fingerprint binding, suspicious peers, browser token TTL |
+| 15.5 Peer TLS / HTTPS transport | done | HTTPS between app peers with pinned self-signed certs; browser API on HTTP |
 | 16 Remote control / headless mode | optional | Decide scope; CLI/admin API/daemon if wanted |
 | 17 Chat and LAN presence | optional | Decide scope; D-LAN-style chat if wanted |
 | 18 Release engineering and distribution | pending | CI, packaging, migration fixtures, support bundle |
@@ -134,9 +135,9 @@ The next work should focus on turning the transfer MVP into a usable product rat
    - Required before calling B-LAN release-ready.
    - CI, packaging, migration fixtures, and support bundles reduce regression risk.
 
-7. **Phase 13 and Phase 15**
+7. **Phase 13, Phase 15, and Phase 15.5**
    - Do before broad LAN-party usage.
-   - Upload visibility, throttling, secure storage, and suspicious-peer handling improve trust and operability.
+   - Upload visibility, throttling, secure storage, suspicious-peer handling, and peer HTTPS improve trust and operability.
 
 8. **Phase 16 and Phase 17**
    - Optional product-scope decisions.
@@ -1403,6 +1404,113 @@ This phase must include a full walk through implemented backend capability and m
 
 **Status: complete (2026-07-02).** `flutter_secure_storage` with settings fallback; device keys + browser token migrated; session tokens bound to peer ID/fingerprint; suspicious peer state on repeated hash mismatch; re-auth/revoke session actions; optional browser token expiry. TLS deferred — friendly-LAN threat model documented in README.
 
+## Phase 15.5: Peer TLS / HTTPS Transport
+
+### Goals
+
+- Encrypt app-to-app peer traffic on the LAN.
+- Keep local browser/API access simple: HTTP on loopback/manual local URL remains available for browser UI.
+- Reuse existing device identity/trust UX instead of depending on public CA certificates.
+- Avoid breaking mDNS discovery, manual peers, downloads, search, swarm, and upload telemetry.
+
+### Current State
+
+- All peer transfer routes use HTTP:
+  - `/hello`, `/session`, `/shares`, `/entries`, `/search`
+  - `/manifest/*`, `/files/<id>`, `/chunks`, `/chunks/availability`
+- Session bearer tokens protect routes after `/session`, but bytes are not encrypted on a hostile LAN.
+- Device identity already exists via Ed25519 key + public fingerprint in `/hello`.
+- Peer trust and identity-change handling already exist.
+- Browser/local API uses the same server/port today and assumes plain HTTP.
+- LAN IPs and self-signed certs will not pass normal Web PKI validation.
+
+### Implementation
+
+1. Split transport modes:
+   - Peer API: HTTPS by default for app-to-app traffic.
+   - Local browser API: HTTP on loopback only, or separate local HTTP listener.
+   - Keep browser token auth on local HTTP.
+   - Do not require browsers to trust self-signed LAN certs.
+
+2. TLS identity material:
+   - Generate a per-device self-signed certificate and private key.
+   - Store TLS private key in `SecretStore` alongside the Ed25519 device key.
+   - Persist and expose TLS certificate SHA-256 fingerprint.
+   - Rotate only via explicit user action or identity reset.
+
+3. Device identity binding:
+   - Extend `/hello` with:
+     - `transportSecurity`: `http`, `https`, or `mixed`.
+     - `tlsCertSha256`.
+     - optional `helloSignature`.
+   - Sign `peerId`, protocol version, device public key, and `tlsCertSha256` with Ed25519.
+   - Client verifies signature before pinning TLS fingerprint when possible.
+   - Store peer TLS fingerprint separately from device fingerprint.
+
+4. Server:
+   - Add HTTPS peer listener using `HttpServer.bindSecure` + `SecurityContext`.
+   - Keep existing HTTP listener for loopback/browser API.
+   - Ensure non-loopback HTTP transfer routes either:
+     - redirect/reject with "use HTTPS", or
+     - stay behind a temporary compatibility flag during rollout.
+   - Advertise the peer HTTPS port via mDNS.
+
+5. Discovery:
+   - Add mDNS attributes:
+     - `tls=1`
+     - `scheme=https`
+     - optional `httpPort=<loopback-only port>` only if useful for local diagnostics.
+   - Parse discovered peers into scheme-aware URLs.
+   - Manual peer add should accept host/port plus scheme, defaulting to HTTPS once enabled.
+
+6. Client:
+   - Replace hardcoded `http://host:port` construction with peer URL helpers.
+   - Use `IOClient(HttpClient)` with pinned certificate validation.
+   - On first trust:
+     - show device fingerprint and TLS fingerprint.
+     - save both if user trusts peer.
+   - On TLS fingerprint mismatch:
+     - mark peer `identity_changed`.
+     - revoke stored sessions.
+     - block downloads/search until user re-trusts.
+
+7. Compatibility rollout:
+   - Phase 1: optional HTTPS listener and client support; HTTP peer traffic still works.
+   - Phase 2: mDNS advertises HTTPS-capable peers; client prefers HTTPS.
+   - Phase 3: non-loopback HTTP peer transfer routes disabled by default.
+   - Keep local browser HTTP unchanged throughout.
+
+8. UX:
+   - Settings: show peer HTTPS enabled, local browser HTTP enabled.
+   - Peers page: show TLS-pinned / TLS changed badge.
+   - Trust dialog: explain "encrypted peer transfer" without certificate jargon.
+   - Error copy:
+     - TLS fingerprint changed.
+     - Peer supports HTTP only.
+     - HTTPS connection failed; check same app version/firewall.
+
+### Tests
+
+- TLS certificate generation persists across restart.
+- `/hello` returns TLS fingerprint and signed transport identity.
+- Client accepts pinned cert and rejects mismatched cert.
+- Existing bearer session flow works over HTTPS.
+- HTTP local browser token still works on loopback.
+- Non-loopback HTTP peer routes are rejected once strict mode is enabled.
+- mDNS HTTPS attributes parse into correct base URL.
+- Identity-change flow revokes sessions on TLS fingerprint mismatch.
+- Download/search/swarm tests pass over HTTPS client/server.
+
+### Acceptance
+
+- App peers transfer over HTTPS by default.
+- Local browser API remains HTTP and usable without installing certificates.
+- First-time trust and identity-change UX stays understandable.
+- TLS mismatch cannot silently downgrade to HTTP.
+- No public CA or external network dependency is required.
+
+**Status: pending.** Target: native app-to-app HTTPS with pinned self-signed device certs; local browser API stays HTTP.
+
 ## Phase 16: Remote Control / Headless Mode
 
 ### Goals
@@ -1628,5 +1736,5 @@ These are valuable if B-LAN aims to fully recreate D-LAN, but they should be acc
 - Do not add Turso/cloud sync.
 - Do not preserve compatibility with legacy C++ D-LAN wire protocol.
 - Do not promise full web peer behavior.
-- Do not add TLS by default until Phase 15 threat model and UX decisions are complete.
+- Do not force TLS for the local browser API; keep browser access on HTTP/loopback unless self-signed browser UX is solved.
 - Do not replace SQLite with libSQL without measured wins on desktop and Android.

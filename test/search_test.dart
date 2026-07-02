@@ -11,10 +11,12 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
+import 'support/transfer_server_harness.dart';
+
 void main() {
   late AppDatabase db;
   late TransferServer server;
-  late int port;
+  late TestTransferServerSetup harness;
   const browserToken = 'search-test-token';
   const shareId = 'share-1';
   const fileId = 'file-hello';
@@ -67,8 +69,11 @@ void main() {
         );
     await db.rebuildSearchTokensForEntry(fileId);
     await db.rebuildSearchTokensForEntry(otherFileId);
-    await server.start(port: 0, browserToken: browserToken);
-    port = server.boundPort!;
+    harness = await startTestTransferServer(
+      db: db,
+      server: server,
+      browserToken: browserToken,
+    );
   });
 
   tearDown(() async {
@@ -76,7 +81,7 @@ void main() {
     await db.close();
   });
 
-  Uri uri(String path) => Uri.parse('http://127.0.0.1:$port$path');
+  Uri uri(String path) => Uri.parse('${harness.browserBaseUrl}$path');
 
   Map<String, String> authHeaders() => {
         'Authorization': 'Bearer $browserToken',
@@ -208,8 +213,12 @@ void main() {
           ),
         );
     await remoteDb.rebuildSearchTokensForEntry('remote-copy');
-    await remoteServer.start(port: 0, browserToken: browserToken);
-    final remotePort = remoteServer.boundPort!;
+    final remoteHarness = await startTestTransferServer(
+      db: remoteDb,
+      server: remoteServer,
+      browserToken: browserToken,
+    );
+    final remotePort = remoteHarness.server.boundHttpsPort!;
 
     await db.into(db.peers).insert(
           PeersCompanion.insert(
@@ -217,11 +226,15 @@ void main() {
             nick: 'PeerB',
             host: '127.0.0.1',
             port: remotePort,
+            tlsCertFingerprint: Value(remoteHarness.tlsFingerprint),
             trusted: const Value(true),
           ),
         );
 
-    final client = TransferClient(db);
+    final client = TransferClient(
+      db,
+      httpClient: remoteHarness.pinnedClient,
+    );
     final service = SearchService(db, client);
     final merged = await service.search(query: 'hello');
     final grouped = merged.where((row) => row.name.contains('hello')).toList();
@@ -230,6 +243,7 @@ void main() {
     expect(grouped.first.sourceCount, greaterThanOrEqualTo(2));
 
     await remoteServer.stop();
+    client.close();
     await remoteDb.close();
   });
 

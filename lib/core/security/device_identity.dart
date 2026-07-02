@@ -50,6 +50,21 @@ class DeviceIdentity {
       identityVersion: int.tryParse(versionRaw) ?? deviceIdentityVersion,
     );
   }
+
+  Future<String> signUtf8(String message) async {
+    final privateB64 = await _secrets.readOrEmpty(_privateKeySetting);
+    if (privateB64.isEmpty) {
+      throw StateError('Device private key missing');
+    }
+    final keyPair = await _algorithm.newKeyPairFromSeed(
+      base64Decode(privateB64),
+    );
+    final signature = await _algorithm.sign(
+      utf8.encode(message),
+      keyPair: keyPair,
+    );
+    return base64Encode(signature.bytes);
+  }
 }
 
 String fingerprintFromPublicKeyBytes(List<int> publicKeyBytes) {

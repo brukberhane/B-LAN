@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:blan/core/indexing/chunker.dart';
 import 'package:blan/core/persistence/database.dart';
+import 'package:blan/core/protocol/constants.dart';
 import 'package:blan/core/protocol/download_states.dart';
 import 'package:blan/core/protocol/models.dart';
 import 'package:blan/core/protocol/path_safety.dart';
@@ -13,14 +14,17 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
+import 'support/transfer_server_harness.dart';
+
 void main() {
   late AppDatabase db;
   late TransferServer server;
   late TransferClient client;
+  late TestTransferServerSetup harness;
   late Directory tempDir;
   late Directory downloadDir;
   late File sourceFile;
-  late int port;
+  late int httpsPort;
   late Peer peer;
 
   const browserToken = 'browser-token';
@@ -32,7 +36,6 @@ void main() {
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
     server = TransferServer(db);
-    client = TransferClient(db);
     tempDir = await Directory.systemTemp.createTemp('blan-client-src');
     downloadDir = await Directory.systemTemp.createTemp('blan-client-dst');
     sourceFile = File('${tempDir.path}/data.bin');
@@ -82,21 +85,31 @@ void main() {
           ),
         );
 
-    await server.start(port: 0, browserToken: browserToken);
-    port = server.boundPort!;
+    harness = await startTestTransferServer(
+      db: db,
+      server: server,
+      browserToken: browserToken,
+    );
+    client = TransferClient(db, httpClient: harness.pinnedClient);
+    httpsPort = server.boundHttpsPort!;
     peer = Peer(
       id: peerId,
       nick: 'remote',
       host: '127.0.0.1',
-      port: port,
+      port: httpsPort,
+      scheme: peerSchemeHttps,
       fingerprint: null,
+      tlsCertFingerprint: harness.tlsFingerprint,
       trusted: false,
       identityStatus: PeerIdentityStatus.normal,
       lastSeen: DateTime.now(),
       manual: true,
     );
     await (db.update(db.peers)..where((t) => t.id.equals(peerId))).write(
-      PeersCompanion(port: Value(port)),
+      PeersCompanion(
+        port: Value(httpsPort),
+        tlsCertFingerprint: Value(harness.tlsFingerprint),
+      ),
     );
   });
 
@@ -157,7 +170,7 @@ void main() {
 
   test('resume skips already verified chunks', () async {
     final manifest = await client.fetchFileManifest(
-      'http://127.0.0.1:$port',
+      harness.peerBaseUrl,
       fileId: fileId,
       token: browserToken,
     );
@@ -189,7 +202,7 @@ void main() {
         .firstWhere((row) => row.chunkIndex == first.index);
     await db.markDownloadChunkVerified(firstRow.id);
 
-    final countingClient = _CountingClient();
+    final countingClient = _CountingClient(harness.pinnedClient);
     try {
       await TransferClient(db, httpClient: countingClient).downloadEntry(
         peer: peer,
@@ -211,7 +224,7 @@ void main() {
 
   test('corrupt verified chunk is re-downloaded', () async {
     final manifest = await client.fetchFileManifest(
-      'http://127.0.0.1:$port',
+      harness.peerBaseUrl,
       fileId: fileId,
       token: browserToken,
     );
@@ -265,7 +278,7 @@ void main() {
       ),
     );
 
-    final trackingClient = _ConcurrencyTrackingClient();
+    final trackingClient = _ConcurrencyTrackingClient(harness.pinnedClient);
     try {
       await TransferClient(
         db,
@@ -298,7 +311,10 @@ void main() {
   });
 
   test('retry recovers from transient chunk fetch failure', () async {
-    final flakyClient = _FlakyChunkClient(failuresBeforeSuccess: 1);
+    final flakyClient = _FlakyChunkClient(
+      harness.pinnedClient,
+      failuresBeforeSuccess: 1,
+    );
     try {
       await TransferClient(db, httpClient: flakyClient).downloadEntry(
         peer: peer,
@@ -319,7 +335,10 @@ void main() {
   });
 
   test('hash mismatch marks download error without finalizing', () async {
-    final badClient = _CorruptChunkClient(corruptFromChunkRequest: 2);
+    final badClient = _CorruptChunkClient(
+      harness.pinnedClient,
+      corruptFromChunkRequest: 2,
+    );
 
     try {
       await expectLater(
@@ -348,7 +367,7 @@ void main() {
     final target = File('${downloadDir.path}/data.bin');
     await target.writeAsBytes(await sourceFile.readAsBytes());
 
-    final countingClient = _CountingClient();
+    final countingClient = _CountingClient(harness.pinnedClient);
     try {
       await TransferClient(db, httpClient: countingClient).downloadEntry(
         peer: peer,
@@ -423,7 +442,7 @@ void main() {
   });
 
   test('cancel leaves download cancelled in db', () async {
-    final slowClient = _SlowChunkClient();
+    final slowClient = _SlowChunkClient(harness.pinnedClient);
     final slowTransfer = TransferClient(db, httpClient: slowClient);
     try {
       final future = slowTransfer.downloadEntry(
@@ -478,7 +497,7 @@ void main() {
       ),
     );
 
-    final countingClient = _CountingClient();
+    final countingClient = _CountingClient(harness.pinnedClient);
     try {
       await TransferClient(db, httpClient: countingClient).downloadEntry(
         peer: peer,
@@ -501,7 +520,7 @@ void main() {
 }
 
 class _CountingClient extends http.BaseClient {
-  _CountingClient() : _inner = http.Client();
+  _CountingClient(this._inner);
 
   final http.Client _inner;
   int chunkRequests = 0;
@@ -529,7 +548,7 @@ bool _isChunkRequest(Uri uri) =>
     uri.path.endsWith('/chunks') || uri.path.contains('/chunks/');
 
 class _ConcurrencyTrackingClient extends http.BaseClient {
-  _ConcurrencyTrackingClient() : _inner = http.Client();
+  _ConcurrencyTrackingClient(this._inner);
 
   final http.Client _inner;
   int inFlight = 0;
@@ -558,7 +577,7 @@ class _ConcurrencyTrackingClient extends http.BaseClient {
 }
 
 class _FlakyChunkClient extends http.BaseClient {
-  _FlakyChunkClient({required this.failuresBeforeSuccess}) : _inner = http.Client();
+  _FlakyChunkClient(this._inner, {required this.failuresBeforeSuccess});
 
   final http.Client _inner;
   final int failuresBeforeSuccess;
@@ -581,8 +600,7 @@ class _FlakyChunkClient extends http.BaseClient {
 }
 
 class _CorruptChunkClient extends http.BaseClient {
-  _CorruptChunkClient({required this.corruptFromChunkRequest})
-      : _inner = http.Client();
+  _CorruptChunkClient(this._inner, {required this.corruptFromChunkRequest});
 
   final http.Client _inner;
   final int corruptFromChunkRequest;
@@ -607,7 +625,7 @@ class _CorruptChunkClient extends http.BaseClient {
 }
 
 class _SlowChunkClient extends http.BaseClient {
-  _SlowChunkClient() : _inner = http.Client();
+  _SlowChunkClient(this._inner);
 
   final http.Client _inner;
 

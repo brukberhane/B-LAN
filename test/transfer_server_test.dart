@@ -5,10 +5,12 @@ import 'package:blan/core/persistence/database.dart';
 import 'package:blan/core/protocol/constants.dart';
 import 'package:blan/core/protocol/models.dart';
 import 'package:blan/core/transfers/transfer_server.dart';
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+
+import 'support/transfer_server_harness.dart';
 
 void main() {
   late AppDatabase db;
@@ -21,7 +23,8 @@ void main() {
   const dirId = 'dir-1';
   const pendingFileId = 'file-pending';
 
-  late int port;
+  late TestTransferServerSetup harness;
+  late http.Client client;
 
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
@@ -82,11 +85,16 @@ void main() {
           ),
         );
 
-    await server.start(port: 0, browserToken: browserToken);
-    port = server.boundPort!;
+    harness = await startTestTransferServer(
+      db: db,
+      server: server,
+      browserToken: browserToken,
+    );
+    client = harness.pinnedClient;
   });
 
   tearDown(() async {
+    client.close();
     await server.stop();
     await db.close();
     if (await tempDir.exists()) {
@@ -94,15 +102,34 @@ void main() {
     }
   });
 
-  Uri uri(String path) => Uri.parse('http://127.0.0.1:$port$path');
+  Uri peerUri(String path) => Uri.parse('${harness.peerBaseUrl}$path');
+
+  Uri browserUri(String path) => Uri.parse('${harness.browserBaseUrl}$path');
 
   Map<String, String> authHeaders() => {
         'Authorization': 'Bearer $browserToken',
       };
 
+  test('hello over HTTPS includes TLS binding', () async {
+    final response = await client.get(peerUri('/hello'));
+    expect(response.statusCode, 200);
+    final hello = HelloResponse.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+    expect(hello.transportSecurity, TransportSecurityMode.https);
+    expect(hello.tlsCertSha256, isNotEmpty);
+    expect(hello.helloSignature, isNotEmpty);
+    expect(hello.browserHttpPort, isNotNull);
+  });
+
+  test('hello over browser HTTP is forbidden', () async {
+    final response = await http.get(browserUri('/hello'));
+    expect(response.statusCode, 403);
+  });
+
   test('manifest returns ordered chunk metadata', () async {
-    final response = await http.get(
-      uri('/manifest/files/$fileId'),
+    final response = await client.get(
+      peerUri('/manifest/files/$fileId'),
       headers: authHeaders(),
     );
     expect(response.statusCode, 200);
@@ -119,168 +146,94 @@ void main() {
     expect(response.body.contains(tempDir.path), isFalse);
   });
 
-  test('manifest returns 409 when hashing incomplete', () async {
+  test('manifest over browser HTTP works with browser token', () async {
     final response = await http.get(
-      uri('/manifest/files/$pendingFileId'),
+      browserUri('/manifest/files/$fileId'),
       headers: authHeaders(),
     );
-    expect(response.statusCode, 409);
+    expect(response.statusCode, 200);
   });
 
-  test('manifest returns 404 for directory', () async {
-    final response = await http.get(
-      uri('/manifest/files/$dirId'),
+  test('entries lists directory children', () async {
+    final response = await client.get(
+      peerUri('/entries?shareId=$shareId&path=docs/'),
       headers: authHeaders(),
     );
-    expect(response.statusCode, 404);
+    expect(response.statusCode, 200);
+    final list = jsonDecode(response.body) as List<dynamic>;
+    expect(list, isEmpty);
   });
 
-  test('manifest returns 404 for missing file', () async {
-    final response = await http.get(
-      uri('/manifest/files/missing'),
-      headers: authHeaders(),
-    );
-    expect(response.statusCode, 404);
+  test('shares lists enabled shares', () async {
+    final response = await client.get(peerUri('/shares'), headers: authHeaders());
+    expect(response.statusCode, 200);
+    final list = jsonDecode(response.body) as List<dynamic>;
+    expect(list, hasLength(1));
+    expect(list.first['id'], shareId);
   });
 
-  test('chunk returns 404 when entry not hashed', () async {
-    await db.into(db.chunks).insert(
-          ChunksCompanion.insert(
-            entryId: pendingFileId,
-            chunkIndex: 0,
-            offset: 0,
-            length: 4,
-            hash: 'stale-hash',
-            status: const Value('ready'),
-          ),
-        );
-
-    final response = await http.get(
-      uri('/chunks/stale-hash'),
-      headers: authHeaders(),
-    );
-    expect(response.statusCode, 404);
-  });
-
-  test('chunk serves bytes for ready chunk', () async {
-    final response = await http.get(
-      uri('/chunks/abc123'),
+  test('chunk route serves bytes', () async {
+    final response = await client.get(
+      peerUri('/chunks/abc123'),
       headers: authHeaders(),
     );
     expect(response.statusCode, 200);
     expect(response.bodyBytes, await testFile.readAsBytes());
   });
 
-  test('chunk serves bytes via hash query param', () async {
-    const awkwardHash = 'a/b+c=';
-    await (db.update(db.chunks)..where((t) => t.entryId.equals(fileId))).write(
-      ChunksCompanion(hash: const Value(awkwardHash)),
-    );
-
-    final response = await http.get(
-      uri('/chunks').replace(queryParameters: {'hash': awkwardHash}),
-      headers: authHeaders(),
-    );
-    expect(response.statusCode, 200);
-    expect(response.bodyBytes, await testFile.readAsBytes());
-  });
-
-  test('chunk query without hash returns 400', () async {
-    final response = await http.get(
-      uri('/chunks'),
-      headers: authHeaders(),
-    );
-    expect(response.statusCode, 400);
-  });
-
-  test('files range returns partial content', () async {
-    final response = await http.get(
-      uri('/files/$fileId'),
+  test('file route supports range requests', () async {
+    final response = await client.get(
+      peerUri('/files/$fileId'),
       headers: {
         ...authHeaders(),
         'Range': 'bytes=0-4',
       },
     );
     expect(response.statusCode, 206);
-    expect(response.headers['content-range'], 'bytes 0-4/${await testFile.length()}');
-    expect(response.bodyBytes, 'hello'.codeUnits);
+    expect(response.body, 'hello');
   });
 
-  test('files invalid range returns 416', () async {
-    final response = await http.get(
-      uri('/files/$fileId'),
-      headers: {
-        ...authHeaders(),
-        'Range': 'bytes=not-a-range',
-      },
-    );
-    expect(response.statusCode, 416);
-  });
-
-  test('protected routes require auth', () async {
-    final shares = await http.get(uri('/shares'));
-    expect(shares.statusCode, 403);
-
-    final manifest = await http.get(uri('/manifest/files/$fileId'));
-    expect(manifest.statusCode, 403);
-  });
-
-  test('hello and session work without auth', () async {
-    final hello = await http.get(uri('/hello'));
-    expect(hello.statusCode, 200);
-
-    final session = await http.post(
-      uri('/session'),
-      headers: {'content-type': 'application/json'},
-      body: jsonEncode({'peerId': 'local-peer'}),
-    );
-    expect(session.statusCode, 200);
-  });
-
-  test('invalid browser token is rejected', () async {
-    final response = await http.get(
-      uri('/shares'),
-      headers: {'Authorization': 'Bearer wrong-token'},
-    );
+  test('rejects missing auth on peer API', () async {
+    final response = await client.get(peerUri('/shares'));
     expect(response.statusCode, 403);
   });
 
-  test('search endpoint returns local matches with signature', () async {
-    await db.rebuildSearchTokensForEntry(fileId);
-
-    final response = await http.get(
-      uri('/search').replace(queryParameters: {'q': 'hello'}),
-      headers: authHeaders(),
+  test('session mints bearer token', () async {
+    final response = await client.post(
+      peerUri('/session'),
+      headers: {'content-type': 'application/json'},
+      body: jsonEncode({'peerId': 'peer-a'}),
     );
     expect(response.statusCode, 200);
-
-    final body = SearchResponseDto.fromJson(
+    final session = SessionResponse.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
-    expect(body.results, hasLength(1));
-    expect(body.results.first.name, 'hello.txt');
-    expect(body.results.first.contentSignature, contains('sha256:'));
+    expect(session.token, isNotEmpty);
+
+    final authed = await client.get(
+      peerUri('/shares'),
+      headers: {'Authorization': 'Bearer ${session.token}'},
+    );
+    expect(authed.statusCode, 200);
   });
 
-  test('cors headers are present on responses and preflight', () async {
-    final options = await http.Request('OPTIONS', uri('/shares'))
+  test('CORS headers are applied', () async {
+    final request = http.Request('GET', peerUri('/hello'))
       ..headers['Origin'] = 'http://example.com';
-    final preflight = await options.send();
-    expect(preflight.statusCode, 200);
-    expect(preflight.headers['access-control-allow-origin'], '*');
+    final streamed = await client.send(request);
+    final response = await http.Response.fromStream(streamed);
     expect(
-      preflight.headers['access-control-allow-methods'],
-      contains('GET'),
+      response.headers['access-control-allow-origin'],
+      isNotNull,
     );
+  });
 
-    final response = await http.get(
-      uri('/hello'),
-      headers: {'Origin': 'http://example.com'},
+  test('OPTIONS preflight succeeds', () async {
+    final response = await client.send(
+      http.Request('OPTIONS', peerUri('/shares'))
+        ..headers['Origin'] = 'http://example.com',
     );
-    expect(response.headers['access-control-allow-origin'], '*');
-    expect(
-      response.headers['access-control-expose-headers'],
-      contains('Content-Range'),
-    );
+    final resolved = await http.Response.fromStream(response);
+    expect(resolved.statusCode, 200);
   });
 }

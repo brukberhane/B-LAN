@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:blan/core/indexing/chunker.dart';
 import 'package:blan/core/persistence/database.dart';
+import 'package:blan/core/protocol/constants.dart';
 import 'package:blan/core/protocol/download_states.dart';
 import 'package:blan/core/protocol/models.dart';
 import 'package:blan/core/security/peer_identity.dart';
@@ -14,13 +15,16 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
+import 'support/transfer_server_harness.dart';
+
 void main() {
   late AppDatabase db;
   late TransferServer server;
+  late TestTransferServerSetup harness;
   late Directory tempDir;
   late Directory downloadDir;
   late File sourceFile;
-  late int port;
+  late int httpsPort;
   late Peer peer;
 
   const browserToken = 'browser-token';
@@ -80,21 +84,30 @@ void main() {
           ),
         );
 
-    await server.start(port: 0, browserToken: browserToken);
-    port = server.boundPort!;
+    harness = await startTestTransferServer(
+      db: db,
+      server: server,
+      browserToken: browserToken,
+    );
+    httpsPort = server.boundHttpsPort!;
     peer = Peer(
       id: peerId,
       nick: 'remote',
       host: '127.0.0.1',
-      port: port,
+      port: httpsPort,
+      scheme: peerSchemeHttps,
       fingerprint: null,
+      tlsCertFingerprint: harness.tlsFingerprint,
       trusted: false,
       identityStatus: PeerIdentityStatus.normal,
       lastSeen: DateTime.now(),
       manual: true,
     );
     await (db.update(db.peers)..where((t) => t.id.equals(peerId))).write(
-      PeersCompanion(port: Value(port)),
+      PeersCompanion(
+        port: Value(httpsPort),
+        tlsCertFingerprint: Value(harness.tlsFingerprint),
+      ),
     );
   });
 
@@ -120,7 +133,7 @@ void main() {
       );
 
   test('streaming chunk updates inFlightBytes before verification', () async {
-    final streamingClient = _IncrementalChunkClient();
+    final streamingClient = _IncrementalChunkClient(harness.pinnedClient);
     final client = TransferClient(db, httpClient: streamingClient);
     var sawInFlight = false;
   var maxDisplayed = 0;
@@ -160,7 +173,7 @@ void main() {
   });
 
   test('pause clears inFlightBytes while keeping verified chunks', () async {
-    final streamingClient = _IncrementalChunkClient();
+    final streamingClient = _IncrementalChunkClient(harness.pinnedClient);
     final client = TransferClient(db, httpClient: streamingClient);
     final future = client.downloadEntry(
       peer: peer,
@@ -194,7 +207,7 @@ bool _isChunkLikeRequest(Uri uri, Map<String, String> headers) =>
     headers.containsKey('range');
 
 class _IncrementalChunkClient extends http.BaseClient {
-  _IncrementalChunkClient() : _inner = http.Client();
+  _IncrementalChunkClient(this._inner);
 
   final http.Client _inner;
 

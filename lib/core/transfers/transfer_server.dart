@@ -12,8 +12,20 @@ import '../protocol/byte_range.dart';
 import '../protocol/constants.dart';
 import '../protocol/models.dart';
 import '../security/device_identity.dart';
+import '../security/hello_transport.dart';
 import '../security/secret_store.dart';
+import '../security/tls_identity.dart';
 import 'upload_manager.dart';
+
+class TransferServerPorts {
+  const TransferServerPorts({
+    required this.httpsPort,
+    required this.browserPort,
+  });
+
+  final int httpsPort;
+  final int browserPort;
+}
 
 class _SessionInfo {
   const _SessionInfo({required this.expiry, required this.peerId});
@@ -27,7 +39,8 @@ class TransferServer {
 
   final AppDatabase _db;
   final UploadManager _uploads;
-  HttpServer? _server;
+  HttpServer? _peerServer;
+  HttpServer? _browserServer;
   String? _browserToken;
   DateTime? _browserTokenIssuedAt;
   Duration? _browserTokenTtl;
@@ -35,24 +48,62 @@ class TransferServer {
   final Map<String, _SessionInfo> _sessions = {};
   SecretStore? _secrets;
 
-  bool get isRunning => _server != null;
+  bool get isRunning => _peerServer != null;
 
-  int? get boundPort => _server?.port;
+  int? get boundHttpsPort => _peerServer?.port;
 
-  Future<int> start({
-    required int port,
+  int? get boundBrowserPort => _browserServer?.port;
+
+  int? get boundPort => boundHttpsPort;
+
+  Future<TransferServerPorts> start({
+    required SecurityContext tlsContext,
+    required int httpsPort,
+    required int browserHttpPort,
     required String browserToken,
     List<String> allowedOrigins = const [],
   }) async {
-    if (_server != null) {
-      return _server!.port;
+    if (_peerServer != null) {
+      return TransferServerPorts(
+        httpsPort: _peerServer!.port,
+        browserPort: _browserServer!.port,
+      );
     }
     _browserToken = browserToken;
     _browserTokenIssuedAt = null;
     _browserTokenTtl = null;
     _allowedOrigins = allowedOrigins;
 
-    final router = Router()
+    final router = _buildRouter();
+    final peerHandler = Pipeline()
+        .addMiddleware(_corsMiddleware)
+        .addMiddleware(_peerAuthMiddleware)
+        .addHandler(router.call);
+    final browserHandler = Pipeline()
+        .addMiddleware(_corsMiddleware)
+        .addMiddleware(_browserAuthMiddleware)
+        .addHandler(router.call);
+
+    _peerServer = await HttpServer.bindSecure(
+      InternetAddress.anyIPv4,
+      httpsPort,
+      tlsContext,
+    );
+    shelf_io.serveRequests(_peerServer!, peerHandler);
+
+    _browserServer = await HttpServer.bind(
+      InternetAddress.anyIPv4,
+      browserHttpPort,
+    );
+    shelf_io.serveRequests(_browserServer!, browserHandler);
+
+    return TransferServerPorts(
+      httpsPort: _peerServer!.port,
+      browserPort: _browserServer!.port,
+    );
+  }
+
+  Router _buildRouter() => Router()
       ..get('/hello', _hello)
       ..post('/session', _session)
       ..get('/shares', _shares)
@@ -65,18 +116,11 @@ class TransferServer {
       ..get('/chunks/<hash>', _chunk)
       ..post('/chunks/availability', _chunkAvailability);
 
-    final handler = Pipeline()
-        .addMiddleware(_corsMiddleware)
-        .addMiddleware(_authMiddleware)
-        .addHandler(router.call);
-
-    _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
-    return _server!.port;
-  }
-
   Future<void> stop() async {
-    await _server?.close(force: true);
-    _server = null;
+    await _peerServer?.close(force: true);
+    await _browserServer?.close(force: true);
+    _peerServer = null;
+    _browserServer = null;
   }
 
   void attachSecrets(SecretStore secrets) => _secrets = secrets;
@@ -95,13 +139,7 @@ class TransferServer {
 
   bool isAuthorized(String token) {
     if (token == _browserToken) {
-      if (_browserTokenTtl != null &&
-          _browserTokenTtl! > Duration.zero &&
-          _browserTokenIssuedAt != null &&
-          DateTime.now().isAfter(_browserTokenIssuedAt!.add(_browserTokenTtl!))) {
-        return false;
-      }
-      return true;
+      return _browserTokenValid();
     }
     final session = _sessions[token];
     if (session == null) {
@@ -141,7 +179,7 @@ class TransferServer {
     });
   }
 
-  Middleware get _authMiddleware => (Handler inner) {
+  Middleware get _peerAuthMiddleware => (Handler inner) {
         return (Request request) async {
           if (request.url.path == 'hello' || request.url.path == 'session') {
             return inner(request);
@@ -157,6 +195,37 @@ class TransferServer {
           return Response.forbidden('Invalid token');
         };
       };
+
+  Middleware get _browserAuthMiddleware => (Handler inner) {
+        return (Request request) async {
+          if (request.url.path == 'hello' || request.url.path == 'session') {
+            return Response(
+              403,
+              body: 'Peer API requires HTTPS',
+              headers: {'content-type': 'text/plain'},
+            );
+          }
+          final auth = request.headers['authorization'];
+          if (auth == null) {
+            return Response.forbidden('Missing browser token');
+          }
+          final token = auth.replaceFirst('Bearer ', '');
+          if (token == _browserToken && _browserTokenValid()) {
+            return inner(request);
+          }
+          return Response.forbidden('Invalid browser token');
+        };
+      };
+
+  bool _browserTokenValid() {
+    if (_browserTokenTtl != null &&
+        _browserTokenTtl! > Duration.zero &&
+        _browserTokenIssuedAt != null &&
+        DateTime.now().isAfter(_browserTokenIssuedAt!.add(_browserTokenTtl!))) {
+      return false;
+    }
+    return true;
+  }
 
   Future<Response> _session(Request request) async {
     final body = await request.readAsString();
@@ -186,6 +255,13 @@ class TransferServer {
     final nick = await _db.ensureNick();
     final store = _secrets ?? SettingsSecretStore(_db);
     final identity = await DeviceIdentity(store).ensureIdentity();
+    final tls = await TlsIdentity(store).ensureIdentity(commonName: nick);
+    final signature = await HelloTransport(store).signHello(
+      peerId: peerId,
+      publicKeyBase64: identity.publicKeyBase64,
+      tlsCertSha256: tls.fingerprintSha256Hex,
+    );
+    final browserPort = await _db.ensureHttpPort();
     final body = HelloResponse(
       protocolVersion: protocolVersion,
       peerId: peerId,
@@ -193,6 +269,10 @@ class TransferServer {
       fingerprint: identity.fingerprint,
       publicKey: identity.publicKeyBase64,
       identityVersion: identity.identityVersion,
+      transportSecurity: TransportSecurityMode.https,
+      tlsCertSha256: tls.fingerprintSha256Hex,
+      helloSignature: signature,
+      browserHttpPort: browserPort,
       capabilities: const [
         'shares',
         'browse',

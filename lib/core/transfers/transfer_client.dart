@@ -11,8 +11,11 @@ import '../protocol/constants.dart';
 import '../protocol/download_states.dart';
 import '../protocol/models.dart';
 import '../protocol/path_safety.dart';
-import '../search/content_signature.dart';
+import '../network/pinned_http_client.dart';
+import '../network/peer_url.dart';
+import '../security/hello_transport.dart';
 import '../security/peer_session_store.dart';
+import '../security/secret_store.dart';
 import 'chunk_source_scheduler.dart';
 import 'download_progress.dart';
 import 'remote_manifest_cache.dart';
@@ -25,6 +28,7 @@ class TransferClient {
     http.Client? httpClient,
     int? maxConcurrentChunkDownloads,
   }) : _httpClient = httpClient ?? http.Client(),
+       _usePinnedClients = httpClient == null,
        _maxConcurrentChunkDownloads =
            maxConcurrentChunkDownloads ?? maxConcurrentDownloads,
        _manifestCache = RemoteManifestCache(_db),
@@ -32,10 +36,12 @@ class TransferClient {
 
   final AppDatabase _db;
   final http.Client _httpClient;
+  final bool _usePinnedClients;
   final int _maxConcurrentChunkDownloads;
   final PeerSessionStore _sessions = PeerSessionStore();
   final RemoteManifestCache _manifestCache;
   final SwarmAvailabilityStore _swarmStore;
+  final Map<String, http.Client> _pinnedClientsByEndpoint = {};
   static const _metadataTimeout = Duration(seconds: 10);
   static const _chunkRequestTimeout = Duration(minutes: 2);
   static const _chunkFetchMaxAttempts = 3;
@@ -63,8 +69,80 @@ class TransferClient {
     );
   }
 
+  /// Fetches `/hello` without a prior pin, verifies binding, registers TLS pin.
+  Future<HelloResponse> helloAndRegisterPin(
+    String baseUrl, {
+    SecretStore? secrets,
+    String? token,
+  }) async {
+    if (!_usePinnedClients) {
+      return hello(baseUrl, token: token);
+    }
+    final uri = Uri.parse('$baseUrl/hello');
+    final probe = PinnedPeerHttpClient.createHelloProbe();
+    final client = probe.createClient();
+    try {
+      final response = await client
+          .get(uri, headers: _authHeaders(token))
+          .timeout(
+            _metadataTimeout,
+            onTimeout: () =>
+                throw TimeoutException('GET ${uri.toString()} timed out'),
+          );
+      if (response.statusCode >= 400) {
+        throw HttpException(
+          'GET ${uri.toString()} failed: ${response.statusCode}',
+        );
+      }
+      final hello = HelloResponse.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+      if (!await verifyHello(hello, secrets: secrets)) {
+        throw HttpException('Invalid hello signature for ${uri.host}:${uri.port}');
+      }
+      final tlsFp = hello.tlsCertSha256;
+      if (tlsFp == null || tlsFp.isEmpty) {
+        throw HttpException('Peer missing TLS fingerprint in hello');
+      }
+      final observed = probe.observedFingerprintSha256Hex;
+      if (observed == null || observed.isEmpty) {
+        throw HttpException('No peer TLS certificate observed');
+      }
+      if (observed != tlsFp.toLowerCase()) {
+        throw HttpException(
+          'Hello TLS fingerprint does not match peer certificate',
+        );
+      }
+      registerTlsPin(uri.host, uri.port, tlsFp);
+      return hello;
+    } finally {
+      client.close();
+    }
+  }
+
+  void registerTlsPin(String host, int port, String fingerprintSha256Hex) {
+    final key = '$host:$port';
+    _pinnedClientsByEndpoint[key]?.close();
+    _pinnedClientsByEndpoint[key] = PinnedPeerHttpClient(
+      expectedFingerprintSha256Hex: fingerprintSha256Hex,
+    );
+  }
+
+  void registerTlsPinForPeer(Peer peer) {
+    final fingerprint = peer.tlsCertFingerprint;
+    if (fingerprint == null || fingerprint.isEmpty) {
+      throw StateError('Peer ${peer.id} missing TLS fingerprint');
+    }
+    registerTlsPin(peer.host, peer.port, fingerprint);
+  }
+
+  Future<bool> verifyHello(HelloResponse hello, {SecretStore? secrets}) {
+    final store = secrets ?? SettingsSecretStore(_db);
+    return HelloTransport(store).verifyHello(hello);
+  }
+
   Future<String> createSession(String baseUrl, {required String peerId}) async {
-    final response = await _httpClient
+    final response = await _clientFor(baseUrl)
         .post(
           Uri.parse('$baseUrl/session'),
           headers: {'content-type': 'application/json'},
@@ -209,7 +287,7 @@ class TransferClient {
     String? token,
     int maxResults = 512,
   }) async {
-    final response = await _httpClient
+    final response = await _clientFor(baseUrl)
         .post(
           Uri.parse('$baseUrl/chunks/availability'),
           headers: {
@@ -900,7 +978,7 @@ class TransferClient {
     final chunkUri = Uri.parse(
       '$baseUrl/chunks',
     ).replace(queryParameters: {'hash': chunk.hash});
-    final chunkResponse = await _httpClient
+    final chunkResponse = await _clientFor(baseUrl)
         .send(
           http.Request('GET', chunkUri)..headers.addAll(_authHeaders(token)),
         )
@@ -923,7 +1001,7 @@ class TransferClient {
 
     final end = chunk.offset + chunk.length - 1;
     final fileUri = Uri.parse('$baseUrl/files/$fileId');
-    final rangeResponse = await _httpClient
+    final rangeResponse = await _clientFor(baseUrl)
         .send(
           http.Request('GET', fileUri)
             ..headers.addAll({
@@ -972,8 +1050,24 @@ class TransferClient {
     return bytes;
   }
 
+  http.Client _clientFor(String url) {
+    if (!_usePinnedClients) {
+      return _httpClient;
+    }
+    final uri = Uri.parse(url);
+    if (uri.scheme != 'https') {
+      throw HttpException('Peer transfers require HTTPS ($url)');
+    }
+    final key = '${uri.host}:${uri.port}';
+    final client = _pinnedClientsByEndpoint[key];
+    if (client == null) {
+      throw HttpException('No TLS pin registered for $key');
+    }
+    return client;
+  }
+
   Future<http.Response> _get(String url, {String? token}) async {
-    final response = await _httpClient
+    final response = await _clientFor(url)
         .get(Uri.parse(url), headers: _authHeaders(token))
         .timeout(
           _metadataTimeout,
@@ -985,11 +1079,20 @@ class TransferClient {
     return response;
   }
 
-  void close() => _httpClient.close();
+  void close() {
+    if (_usePinnedClients) {
+      for (final client in _pinnedClientsByEndpoint.values) {
+        client.close();
+      }
+      _pinnedClientsByEndpoint.clear();
+      return;
+    }
+    _httpClient.close();
+  }
 
   Future<void> warmSwarmCache() => _swarmStore.backfillFromRemoteEntriesCache();
 
-  String _peerBaseUrl(Peer peer) => 'http://${peer.host}:${peer.port}';
+  String _peerBaseUrl(Peer peer) => peerBaseUrl(peer);
 
   Map<String, String> _authHeaders(String? token) => {
     if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',

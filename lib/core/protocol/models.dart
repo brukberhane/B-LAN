@@ -10,6 +10,10 @@ class HelloResponse {
     this.appVersion = '1.0.0',
     this.publicKey,
     this.identityVersion = 1,
+    this.transportSecurity = TransportSecurityMode.https,
+    this.tlsCertSha256,
+    this.helloSignature,
+    this.browserHttpPort,
   });
 
   final int protocolVersion;
@@ -20,6 +24,10 @@ class HelloResponse {
   final String appVersion;
   final String? publicKey;
   final int identityVersion;
+  final String transportSecurity;
+  final String? tlsCertSha256;
+  final String? helloSignature;
+  final int? browserHttpPort;
 
   Map<String, dynamic> toJson() => {
         'protocolVersion': protocolVersion,
@@ -30,6 +38,10 @@ class HelloResponse {
         'appVersion': appVersion,
         if (publicKey != null) 'publicKey': publicKey,
         'identityVersion': identityVersion,
+        'transportSecurity': transportSecurity,
+        if (tlsCertSha256 != null) 'tlsCertSha256': tlsCertSha256,
+        if (helloSignature != null) 'helloSignature': helloSignature,
+        if (browserHttpPort != null) 'browserHttpPort': browserHttpPort,
       };
 
   factory HelloResponse.fromJson(Map<String, dynamic> json) => HelloResponse(
@@ -44,7 +56,16 @@ class HelloResponse {
         appVersion: json['appVersion'] as String? ?? '1.0.0',
         publicKey: json['publicKey'] as String?,
         identityVersion: json['identityVersion'] as int? ?? 1,
+        transportSecurity:
+            json['transportSecurity'] as String? ?? TransportSecurityMode.https,
+        tlsCertSha256: json['tlsCertSha256'] as String?,
+        helloSignature: json['helloSignature'] as String?,
+        browserHttpPort: json['browserHttpPort'] as int?,
       );
+}
+
+abstract final class TransportSecurityMode {
+  static const https = 'https';
 }
 
 class ShareSummary {
@@ -415,6 +436,8 @@ class DiscoveredPeer {
     required this.nick,
     required this.host,
     required this.port,
+    this.scheme = protocol.peerSchemeHttps,
+    this.browserHttpPort,
     this.lastSeen,
     this.manual = false,
   });
@@ -423,16 +446,23 @@ class DiscoveredPeer {
   final String nick;
   final String host;
   final int port;
+  final String scheme;
+  final int? browserHttpPort;
   final DateTime? lastSeen;
   final bool manual;
 
-  String get baseUrl => 'http://$host:$port';
+  String get baseUrl =>
+      scheme == protocol.peerSchemeHttps
+          ? 'https://$host:$port'
+          : 'http://$host:$port';
 
   DiscoveredPeer copyWith({
     String? peerId,
     String? nick,
     String? host,
     int? port,
+    String? scheme,
+    int? browserHttpPort,
     DateTime? lastSeen,
     bool? manual,
   }) =>
@@ -441,6 +471,8 @@ class DiscoveredPeer {
         nick: nick ?? this.nick,
         host: host ?? this.host,
         port: port ?? this.port,
+        scheme: scheme ?? this.scheme,
+        browserHttpPort: browserHttpPort ?? this.browserHttpPort,
         lastSeen: lastSeen ?? this.lastSeen,
         manual: manual ?? this.manual,
       );

@@ -20,7 +20,13 @@ void main() {
   });
 
   test('opens at current schema version', () {
-    expect(db.schemaVersion, 12);
+    expect(db.schemaVersion, 13);
+  });
+
+  test('setSetting upserts existing keys', () async {
+    await db.setSetting('bench_key', 'first');
+    await db.setSetting('bench_key', 'second');
+    expect(await db.getSetting('bench_key'), 'second');
   });
 
   test('chunk hash index exists', () async {

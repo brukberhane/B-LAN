@@ -154,9 +154,13 @@ class PeersPage extends ConsumerWidget {
   String _peerSubtitle(Peer peer) {
     final parts = <String>[
       '${peer.host}:${peer.port}',
+      peer.scheme,
       peer.manual ? 'Manual' : 'Discovered',
       'seen ${formatRelativeTime(peer.lastSeen)}',
     ];
+    if (peer.tlsCertFingerprint != null && peer.tlsCertFingerprint!.isNotEmpty) {
+      parts.add('TLS ${peer.tlsCertFingerprint!.substring(0, 8)}…');
+    }
     if (peer.fingerprint != null && peer.fingerprint!.isNotEmpty) {
       parts.add('fp ${peer.fingerprint!.substring(0, 8)}…');
     }
@@ -165,7 +169,7 @@ class PeersPage extends ConsumerWidget {
 
   Future<void> _showManualPeerDialog(BuildContext context, WidgetRef ref) async {
     final hostController = TextEditingController();
-    final portController = TextEditingController(text: '59487');
+    final portController = TextEditingController(text: '59488');
     final nickController = TextEditingController();
 
     final confirmed = await showDialog<bool>(

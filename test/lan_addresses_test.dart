@@ -16,7 +16,8 @@ void main() {
     expect(sorted.first, '192.168.0.5');
   });
 
-  test('peerUrl formats http host', () {
+  test('browserUrl formats http host', () {
+    expect(browserUrl('192.168.1.2', 59487), 'http://192.168.1.2:59487');
     expect(peerUrl('192.168.1.2', 59487), 'http://192.168.1.2:59487');
   });
 }
