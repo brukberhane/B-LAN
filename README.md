@@ -14,6 +14,8 @@ Flutter rewrite of D-LAN: share folders on your LAN, discover peers, browse remo
 
 Desktop: Settings shows network health checks, copy LAN URL, open downloads/share folders. Tray/background mode not implemented — closing the app stops sharing.
 
+**Security:** Ed25519 device identity; peer trust and identity-changed workflow; sessions bound to peer fingerprint; suspicious-peer warnings after hash mismatches; secrets in platform secure storage when available (settings fallback on desktop/Linux without keyring). Browser token optional expiry in Settings. TLS not enabled — intended for trusted LANs.
+
 See [docs/platform-test-matrix.md](docs/platform-test-matrix.md) for manual validation checklist.
 
 ## Discovery (mDNS)

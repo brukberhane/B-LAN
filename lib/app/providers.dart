@@ -40,8 +40,7 @@ final uploadsProvider = StreamProvider((ref) {
 });
 
 final browserTokenProvider = FutureProvider<String>((ref) async {
-  final db = ref.watch(databaseProvider);
-  return db.ensureBrowserToken();
+  return ref.watch(appServiceProvider).browserToken();
 });
 
 final httpPortProvider = FutureProvider<int>((ref) async {
@@ -71,8 +70,12 @@ final downloadsDirectoryProvider = FutureProvider<String>((ref) async {
 });
 
 final deviceFingerprintProvider = FutureProvider<String>((ref) async {
-  final identity =
-      await DeviceIdentity(ref.watch(databaseProvider)).ensureIdentity();
+  final app = ref.watch(appServiceProvider);
+  final secrets = app.secrets;
+  if (secrets == null) {
+    return '';
+  }
+  final identity = await DeviceIdentity(secrets).ensureIdentity();
   return identity.fingerprint;
 });
 

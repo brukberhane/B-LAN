@@ -18,8 +18,11 @@ import '../persistence/database.dart';
 import '../protocol/constants.dart';
 import '../protocol/models.dart';
 import '../search/search_service.dart';
+import '../security/browser_token_store.dart';
+import '../security/composite_secret_store.dart';
 import '../security/device_identity.dart';
 import '../security/peer_session_store.dart';
+import '../security/secret_store.dart';
 import '../transfers/download_queue.dart';
 import '../transfers/transfer_client.dart';
 import '../transfers/transfer_server.dart';
@@ -73,22 +76,31 @@ class AppService {
   final _log = Logger('AppService');
   final _uuid = const Uuid();
   final _sessions = PeerSessionStore();
+  SecretStore? _secrets;
+  BrowserTokenStore? _browserTokens;
   ShareWatcher? _shareWatcher;
   Timer? _reconcileTimer;
   static const _reconcileInterval = Duration(minutes: 30);
 
+  SecretStore? get secrets => _secrets;
+
+  bool get usesSecureStorage => _secrets?.usesSecureStorage ?? false;
+
   Future<void> initialize() async {
     await platform.initialize();
-    await DeviceIdentity(db).ensureIdentity();
+    _secrets = await CompositeSecretStore.open(db);
+    _browserTokens = BrowserTokenStore(_secrets!, db);
+    server.attachSecrets(_secrets!);
+    await DeviceIdentity(_secrets!).ensureIdentity();
     await db.ensurePeerId();
     await db.ensureNick();
-    await db.ensureBrowserToken();
     final port = await db.ensureHttpPort();
-    final token = await db.ensureBrowserToken();
+    final token = await browserToken();
     final peerId = await db.ensurePeerId();
     final nick = await db.ensureNick();
 
     final boundPort = await server.start(port: port, browserToken: token);
+    await _syncBrowserTokenAuth(token);
     if (boundPort != port) {
       await db.setSetting('http_port', '$boundPort');
     }
@@ -202,14 +214,67 @@ class AppService {
   Future<void> setShareEnabled(String shareId, bool enabled) =>
       db.setShareEnabled(shareId, enabled);
 
+  Future<String> browserToken() async {
+    final store = _browserTokens;
+    if (store == null) {
+      return db.ensureBrowserToken();
+    }
+    return store.ensureToken();
+  }
+
+  Future<void> _syncBrowserTokenAuth(String token) async {
+    final store = _browserTokens;
+    if (store == null) {
+      server.configureBrowserToken(token);
+      return;
+    }
+    final issuedAt = await store.issuedAt();
+    final ttlHours = await store.browserTokenTtlHours();
+    server.configureBrowserToken(
+      token,
+      issuedAt: issuedAt,
+      ttl: ttlHours > 0 ? Duration(hours: ttlHours) : null,
+    );
+  }
+
   Future<String> rotateBrowserToken() async {
-    final token = _uuid.v4();
-    await db.setSetting('browser_token', token);
-    server.updateBrowserToken(token);
+    final store = _browserTokens;
+    final token = store == null
+        ? const Uuid().v4()
+        : await store.rotate();
+    if (store == null) {
+      await db.setSetting('browser_token', token);
+    }
+    await _syncBrowserTokenAuth(token);
     return token;
   }
 
   Future<String> revokeBrowserToken() => rotateBrowserToken();
+
+  Future<int> browserTokenTtlHours() async =>
+      _browserTokens?.browserTokenTtlHours() ?? 0;
+
+  Future<void> setBrowserTokenTtlHours(int hours) async {
+    await _browserTokens?.setBrowserTokenTtlHours(hours);
+    await _syncBrowserTokenAuth(await browserToken());
+  }
+
+  Future<void> reauthenticatePeer(String peerId) async {
+    final peer = await db.peerById(peerId);
+    if (peer == null) {
+      return;
+    }
+    await _sessions.revoke(db, peer.host, peer.port);
+    await ensurePeerSession(peer);
+  }
+
+  Future<void> revokePeerSessions(String peerId) async {
+    final peer = await db.peerById(peerId);
+    if (peer == null) {
+      return;
+    }
+    await _sessions.revoke(db, peer.host, peer.port);
+  }
 
   String localPeerUrl(int port) => peerUrl('127.0.0.1', port);
 
@@ -237,7 +302,6 @@ class AppService {
     final hello = await client.hello(baseUrl);
     final localPeerId = await db.ensurePeerId();
     final session = await client.createSession(baseUrl, peerId: localPeerId);
-    await _sessions.saveToken(db, host, port, session);
     final ghostId = '$host:$port';
     if (ghostId != hello.peerId) {
       await (db.delete(db.peers)..where((t) => t.id.equals(ghostId))).go();
@@ -248,6 +312,10 @@ class AppService {
       port: port,
       manual: true,
     );
+    final peer = await db.peerById(hello.peerId);
+    if (peer != null) {
+      await _sessions.saveToken(db, peer, session);
+    }
   }
 
   Future<void> removePeer(String peerId) async {
@@ -257,8 +325,9 @@ class AppService {
     if (peer == null) {
       return;
     }
+    await db.clearPeerSuspicion(peerId);
     await (db.delete(db.peers)..where((t) => t.id.equals(peerId))).go();
-    await db.deleteSetting('session_${peer.host}:${peer.port}');
+    await _sessions.revoke(db, peer.host, peer.port);
     discovery.removePeer(peerId);
   }
 
@@ -291,14 +360,14 @@ class AppService {
   }
 
   Future<String> ensurePeerSession(Peer peer) async {
-    final existing = await _sessions.readValidToken(db, peer.host, peer.port);
+    final existing = await _sessions.readValidToken(db, peer);
     if (existing != null) {
       return existing;
     }
     final baseUrl = 'http://${peer.host}:${peer.port}';
     final localPeerId = await db.ensurePeerId();
     final session = await client.createSession(baseUrl, peerId: localPeerId);
-    await _sessions.saveToken(db, peer.host, peer.port, session);
+    await _sessions.saveToken(db, peer, session);
     return session;
   }
 
@@ -333,7 +402,6 @@ class AppService {
       }
 
       final session = await client.createSession(baseUrl, peerId: localPeerId);
-      await _sessions.saveToken(db, peer.host, peer.port, session);
 
       for (final ghostId in {peer.peerId, '${peer.host}:${peer.port}'}) {
         if (ghostId != hello.peerId) {
@@ -347,6 +415,10 @@ class AppService {
         port: peer.port,
         manual: false,
       );
+      final saved = await db.peerById(hello.peerId);
+      if (saved != null) {
+        await _sessions.saveToken(db, saved, session);
+      }
       _log.info('Discovered peer ${hello.nick} at ${peer.host}:${peer.port}');
     } catch (error) {
       _log.warning(
@@ -361,7 +433,7 @@ class AppService {
       return;
     }
     await (db.delete(db.peers)..where((t) => t.id.equals(peer.peerId))).go();
-    await db.deleteSetting('session_${peer.host}:${peer.port}');
+    await _sessions.revoke(db, peer.host, peer.port);
     discovery.removePeer(peer.peerId);
   }
 
@@ -373,7 +445,7 @@ class AppService {
       return;
     }
     await (db.delete(db.peers)..where((t) => t.id.equals(peer.peerId))).go();
-    await db.deleteSetting('session_${peer.host}:${peer.port}');
+    await _sessions.revoke(db, peer.host, peer.port);
     discovery.removePeer(peer.peerId);
   }
 

@@ -3,9 +3,12 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:cryptography/cryptography.dart';
 
-import '../persistence/database.dart';
+import 'secret_store.dart';
 
 const deviceIdentityVersion = 1;
+const _privateKeySetting = 'device_private_key';
+const _publicKeySetting = 'device_public_key';
+const _versionSetting = 'device_identity_version';
 
 class DeviceIdentityData {
   const DeviceIdentityData({
@@ -19,36 +22,32 @@ class DeviceIdentityData {
   final int identityVersion;
 }
 
-/// Local Ed25519 identity persisted in settings.
+/// Local Ed25519 identity persisted in secure storage when available.
 class DeviceIdentity {
-  DeviceIdentity(this._db);
+  DeviceIdentity(this._secrets);
 
-  final AppDatabase _db;
+  final SecretStore _secrets;
   static final _algorithm = Ed25519();
 
   Future<DeviceIdentityData> ensureIdentity() async {
-    var privateB64 = await _db.getSetting('device_private_key');
-    var publicB64 = await _db.getSetting('device_public_key');
+    var privateB64 = await _secrets.readOrEmpty(_privateKeySetting);
+    var publicB64 = await _secrets.readOrEmpty(_publicKeySetting);
     if (privateB64.isEmpty || publicB64.isEmpty) {
       final keyPair = await _algorithm.newKeyPair();
       final privateBytes = await keyPair.extractPrivateKeyBytes();
       final publicKey = await keyPair.extractPublicKey();
       privateB64 = base64Encode(privateBytes);
       publicB64 = base64Encode(publicKey.bytes);
-      await _db.setSetting('device_private_key', privateB64);
-      await _db.setSetting('device_public_key', publicB64);
-      await _db.setSetting(
-        'device_identity_version',
-        '$deviceIdentityVersion',
-      );
+      await _secrets.write(_privateKeySetting, privateB64);
+      await _secrets.write(_publicKeySetting, publicB64);
+      await _secrets.write(_versionSetting, '$deviceIdentityVersion');
     }
 
+    final versionRaw = await _secrets.readOrEmpty(_versionSetting);
     return DeviceIdentityData(
       publicKeyBase64: publicB64,
       fingerprint: fingerprintFromPublicKeyBytes(base64Decode(publicB64)),
-      identityVersion:
-          int.tryParse(await _db.getSetting('device_identity_version')) ??
-              deviceIdentityVersion,
+      identityVersion: int.tryParse(versionRaw) ?? deviceIdentityVersion,
     );
   }
 }

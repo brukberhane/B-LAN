@@ -12,6 +12,7 @@ import '../protocol/byte_range.dart';
 import '../protocol/constants.dart';
 import '../protocol/models.dart';
 import '../security/device_identity.dart';
+import '../security/secret_store.dart';
 import 'upload_manager.dart';
 
 class _SessionInfo {
@@ -28,8 +29,11 @@ class TransferServer {
   final UploadManager _uploads;
   HttpServer? _server;
   String? _browserToken;
+  DateTime? _browserTokenIssuedAt;
+  Duration? _browserTokenTtl;
   List<String> _allowedOrigins = const [];
   final Map<String, _SessionInfo> _sessions = {};
+  SecretStore? _secrets;
 
   bool get isRunning => _server != null;
 
@@ -44,6 +48,8 @@ class TransferServer {
       return _server!.port;
     }
     _browserToken = browserToken;
+    _browserTokenIssuedAt = null;
+    _browserTokenTtl = null;
     _allowedOrigins = allowedOrigins;
 
     final router = Router()
@@ -73,10 +79,28 @@ class TransferServer {
     _server = null;
   }
 
-  void updateBrowserToken(String token) => _browserToken = token;
+  void attachSecrets(SecretStore secrets) => _secrets = secrets;
+
+  void configureBrowserToken(
+    String token, {
+    DateTime? issuedAt,
+    Duration? ttl,
+  }) {
+    _browserToken = token;
+    _browserTokenIssuedAt = issuedAt;
+    _browserTokenTtl = ttl;
+  }
+
+  void updateBrowserToken(String token) => configureBrowserToken(token);
 
   bool isAuthorized(String token) {
     if (token == _browserToken) {
+      if (_browserTokenTtl != null &&
+          _browserTokenTtl! > Duration.zero &&
+          _browserTokenIssuedAt != null &&
+          DateTime.now().isAfter(_browserTokenIssuedAt!.add(_browserTokenTtl!))) {
+        return false;
+      }
       return true;
     }
     final session = _sessions[token];
@@ -160,7 +184,8 @@ class TransferServer {
   Future<Response> _hello(Request request) async {
     final peerId = await _db.ensurePeerId();
     final nick = await _db.ensureNick();
-    final identity = await DeviceIdentity(_db).ensureIdentity();
+    final store = _secrets ?? SettingsSecretStore(_db);
+    final identity = await DeviceIdentity(store).ensureIdentity();
     final body = HelloResponse(
       protocolVersion: protocolVersion,
       peerId: peerId,

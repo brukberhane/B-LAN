@@ -245,7 +245,7 @@ class SearchService {
   }
 
   Future<String> _ensurePeerSession(Peer peer) async {
-    final existing = await _sessions.readValidToken(_db, peer.host, peer.port);
+    final existing = await _sessions.readValidToken(_db, peer);
     if (existing != null) {
       return existing;
     }
@@ -254,7 +254,7 @@ class SearchService {
       'http://${peer.host}:${peer.port}',
       peerId: localPeerId,
     );
-    await _sessions.saveToken(_db, peer.host, peer.port, token);
+    await _sessions.saveToken(_db, peer, token);
     return token;
   }
 

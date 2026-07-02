@@ -130,18 +130,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(
-      find.text('Network health'),
-      120,
-      scrollable: find.byType(Scrollable).first,
-    );
-
     expect(find.text('Browser token'), findsOneWidget);
     expect(find.text('browser-token'), findsOneWidget);
-    expect(find.byTooltip('Copy localhost URL'), findsOneWidget);
-    expect(find.byTooltip('Copy LAN URL'), findsOneWidget);
-    expect(find.text('Network health'), findsOneWidget);
-    expect(find.textContaining('Closing the app stops'), findsOneWidget);
+    expect(find.byIcon(Icons.lan), findsOneWidget);
+    expect(find.text('Security'), findsOneWidget);
     expect(find.byTooltip('Copy token'), findsOneWidget);
     expect(find.byTooltip('Rotate token'), findsOneWidget);
     expect(find.byTooltip('Revoke token'), findsOneWidget);

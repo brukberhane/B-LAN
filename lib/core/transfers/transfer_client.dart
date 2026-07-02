@@ -655,6 +655,7 @@ class TransferClient {
             candidate.sourceId,
             hashMismatch: true,
           );
+          await _db.recordPeerHashMismatch(candidate.peer.id);
           throw const HttpException('Chunk hash mismatch');
         }
 
@@ -732,6 +733,7 @@ class TransferClient {
         }
         if (hashChunkBytes(bytes) != chunk.hash) {
           legacyScheduler.recordFailure(peer.id, hashMismatch: true);
+          await _db.recordPeerHashMismatch(peer.id);
           throw const HttpException('Chunk hash mismatch');
         }
 
@@ -773,7 +775,7 @@ class TransferClient {
   }
 
   Future<String?> _tokenForPeer(Peer peer, {String? primaryToken}) async {
-    final stored = await _sessions.readValidToken(_db, peer.host, peer.port);
+    final stored = await _sessions.readValidToken(_db, peer);
     if (stored != null) {
       return stored;
     }

@@ -23,7 +23,7 @@ Last reviewed: 2026-07-01
 | 12.5 Chunk-level swarm scheduling | **complete** | Schema v11 `remote_chunk_sources`, `POST /chunks/availability`, `SwarmScheduler`, rarest-first striping, waiting-for-source UI |
 | 13 Upload visibility and network health | **complete** | Schema v12 transfer telemetry, `UploadManager`, Uploads page, settings limits, range 416 hardening |
 | 14 Platform proof and native UX | **partial** | Network health UI, LAN URL copy, open-folder actions, matrix auto rows; device matrix mostly pending |
-| 15 Security hardening | pending | Secure storage, session binding, suspicious peer state, token expiry |
+| 15 Security hardening | **complete** | Secure storage, session fingerprint binding, suspicious peers, browser token TTL |
 | 16 Remote control / headless mode | optional | Decide scope; CLI/admin API/daemon if wanted |
 | 17 Chat and LAN presence | optional | Decide scope; D-LAN-style chat if wanted |
 | 18 Release engineering and distribution | pending | CI, packaging, migration fixtures, support bundle |
@@ -1400,6 +1400,8 @@ This phase must include a full walk through implemented backend capability and m
 - Private identity material is not stored as ordinary app settings when platform support exists.
 - Identity changes and suspicious transfer behavior are visible and actionable.
 - Security UX remains understandable for non-expert LAN users.
+
+**Status: complete (2026-07-02).** `flutter_secure_storage` with settings fallback; device keys + browser token migrated; session tokens bound to peer ID/fingerprint; suspicious peer state on repeated hash mismatch; re-auth/revoke session actions; optional browser token expiry. TLS deferred — friendly-LAN threat model documented in README.
 
 ## Phase 16: Remote Control / Headless Mode
 

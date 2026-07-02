@@ -44,16 +44,17 @@ class PeersPage extends ConsumerWidget {
             separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, index) {
               final peer = rows[index];
+              final warning = PeerIdentityStatus.isWarning(peer.identityStatus);
               return ListTile(
                 leading: Icon(
                   peer.identityStatus == PeerIdentityStatus.identityChanged
                       ? Icons.warning_amber
-                      : peer.manual
-                          ? Icons.link
-                          : Icons.wifi,
-                  color: peer.identityStatus == PeerIdentityStatus.identityChanged
-                      ? Colors.orange
-                      : null,
+                      : peer.identityStatus == PeerIdentityStatus.suspicious
+                          ? Icons.gpp_bad_outlined
+                          : peer.manual
+                              ? Icons.link
+                              : Icons.wifi,
+                  color: warning ? Colors.orange : null,
                 ),
                 title: Row(
                   children: [
@@ -61,6 +62,12 @@ class PeersPage extends ConsumerWidget {
                     if (peer.identityStatus == PeerIdentityStatus.identityChanged)
                       const Chip(
                         label: Text('Identity changed'),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    if (peer.identityStatus == PeerIdentityStatus.suspicious)
+                      const Chip(
+                        label: Text('Suspicious'),
                         visualDensity: VisualDensity.compact,
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
@@ -83,6 +90,10 @@ class PeersPage extends ConsumerWidget {
                             await service.trustPeer(peer.id);
                           case _PeerAction.forgetTrust:
                             await service.forgetPeerTrust(peer.id);
+                          case _PeerAction.reauthenticate:
+                            await service.reauthenticatePeer(peer.id);
+                          case _PeerAction.revokeSessions:
+                            await service.revokePeerSessions(peer.id);
                           case _PeerAction.remove:
                             await _confirmRemovePeer(context, ref, peer);
                         }
@@ -98,6 +109,14 @@ class PeersPage extends ConsumerWidget {
                             value: _PeerAction.forgetTrust,
                             child: Text('Forget trust'),
                           ),
+                        const PopupMenuItem(
+                          value: _PeerAction.reauthenticate,
+                          child: Text('Re-authenticate'),
+                        ),
+                        const PopupMenuItem(
+                          value: _PeerAction.revokeSessions,
+                          child: Text('Revoke sessions'),
+                        ),
                         const PopupMenuItem(
                           value: _PeerAction.remove,
                           child: Text('Remove'),
@@ -253,4 +272,10 @@ class PeersPage extends ConsumerWidget {
   }
 }
 
-enum _PeerAction { trust, forgetTrust, remove }
+enum _PeerAction {
+  trust,
+  forgetTrust,
+  reauthenticate,
+  revokeSessions,
+  remove,
+}

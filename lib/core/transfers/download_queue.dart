@@ -315,14 +315,14 @@ class DownloadQueue {
   }
 
   Future<String> _ensurePeerSession(Peer peer) async {
-    final existing = await _sessions.readValidToken(_db, peer.host, peer.port);
+    final existing = await _sessions.readValidToken(_db, peer);
     if (existing != null) {
       return existing;
     }
     final localPeerId = await _db.ensurePeerId();
     final baseUrl = 'http://${peer.host}:${peer.port}';
     final token = await _client.createSession(baseUrl, peerId: localPeerId);
-    await _sessions.saveToken(_db, peer.host, peer.port, token);
+    await _sessions.saveToken(_db, peer, token);
     return token;
   }
 

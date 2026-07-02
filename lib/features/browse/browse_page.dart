@@ -344,6 +344,32 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
     final fresh =
         await ref.read(databaseProvider).peerById(widget.peer.id) ?? widget.peer;
 
+    if (fresh.identityStatus == PeerIdentityStatus.suspicious) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Suspicious peer'),
+          content: Text(
+            '${fresh.nick} served chunks that failed hash verification. '
+            'Downloads may be unsafe until you trust this peer again.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Download anyway'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true) {
+        return false;
+      }
+    }
+
     if (fresh.identityStatus == PeerIdentityStatus.identityChanged) {
       final trust = await showDialog<bool>(
         context: context,

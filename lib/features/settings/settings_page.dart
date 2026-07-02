@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../core/platform/platform_capabilities.dart';
+import 'security_settings_section.dart';
 import 'platform_sections.dart';
 import '../browse/browse_page.dart';
 import '../../core/persistence/database.dart';
@@ -197,6 +198,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             loading: () => const ListTile(title: Text('Browser token')),
             error: (_, _) => const SizedBox.shrink(),
           ),
+          if (!kIsWeb) ...[
+            const Divider(height: 32),
+            const SecuritySettingsSection(),
+          ],
           if (!kIsWeb) ...[
             const Divider(height: 32),
             const DownloadsLocationSection(),

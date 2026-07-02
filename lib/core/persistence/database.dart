@@ -9,6 +9,7 @@ import '../protocol/download_states.dart';
 import '../protocol/models.dart';
 import '../protocol/transfer_states.dart';
 import '../security/peer_identity.dart';
+import '../security/peer_session_store.dart';
 import '../indexing/chunker.dart';
 import '../search/content_signature.dart';
 import '../search/search_tokenizer.dart';
@@ -232,10 +233,42 @@ class AppDatabase extends _$AppDatabase {
   Future<String> ensureBrowserToken() async {
     var token = await getSetting('browser_token');
     if (token.isEmpty) {
+      token = await getSetting('secret_browser_token');
+    }
+    if (token.isEmpty) {
       token = const Uuid().v4();
       await setSetting('browser_token', token);
     }
     return token;
+  }
+
+  static const suspiciousMismatchThreshold = 2;
+
+  Future<void> recordPeerHashMismatch(String peerId) async {
+    final key = 'peer_hash_mismatch_$peerId';
+    final count = (int.tryParse(await getSetting(key)) ?? 0) + 1;
+    await setSetting(key, '$count');
+    if (count >= suspiciousMismatchThreshold) {
+      await markPeerSuspicious(peerId);
+    }
+  }
+
+  Future<void> markPeerSuspicious(String peerId) async {
+    final peer = await peerById(peerId);
+    if (peer == null ||
+        peer.identityStatus == PeerIdentityStatus.identityChanged) {
+      return;
+    }
+    await (update(peers)..where((t) => t.id.equals(peerId))).write(
+      const PeersCompanion(
+        identityStatus: Value(PeerIdentityStatus.suspicious),
+        trusted: Value(false),
+      ),
+    );
+  }
+
+  Future<void> clearPeerSuspicion(String peerId) async {
+    await deleteSetting('peer_hash_mismatch_$peerId');
   }
 
   Stream<List<Share>> watchShares() => (select(
@@ -1222,6 +1255,7 @@ class AppDatabase extends _$AppDatabase {
         existing.fingerprint != hello.fingerprint) {
       identityStatus = PeerIdentityStatus.identityChanged;
       trusted = false;
+      await deleteSetting(PeerSessionStore.settingKey(host, port));
     }
 
     await into(peers).insertOnConflictUpdate(
@@ -1240,6 +1274,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> trustPeer(String peerId) async {
+    await clearPeerSuspicion(peerId);
     await (update(peers)..where((t) => t.id.equals(peerId))).write(
       const PeersCompanion(
         trusted: Value(true),
