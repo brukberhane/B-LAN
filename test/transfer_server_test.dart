@@ -192,4 +192,78 @@ void main() {
     );
     expect(response.statusCode, 400);
   });
+
+  test('files range returns partial content', () async {
+    final response = await http.get(
+      uri('/files/$fileId'),
+      headers: {
+        ...authHeaders(),
+        'Range': 'bytes=0-4',
+      },
+    );
+    expect(response.statusCode, 206);
+    expect(response.headers['content-range'], 'bytes 0-4/${await testFile.length()}');
+    expect(response.bodyBytes, 'hello'.codeUnits);
+  });
+
+  test('files invalid range returns 416', () async {
+    final response = await http.get(
+      uri('/files/$fileId'),
+      headers: {
+        ...authHeaders(),
+        'Range': 'bytes=not-a-range',
+      },
+    );
+    expect(response.statusCode, 416);
+  });
+
+  test('protected routes require auth', () async {
+    final shares = await http.get(uri('/shares'));
+    expect(shares.statusCode, 403);
+
+    final manifest = await http.get(uri('/manifest/files/$fileId'));
+    expect(manifest.statusCode, 403);
+  });
+
+  test('hello and session work without auth', () async {
+    final hello = await http.get(uri('/hello'));
+    expect(hello.statusCode, 200);
+
+    final session = await http.post(
+      uri('/session'),
+      headers: {'content-type': 'application/json'},
+      body: jsonEncode({'peerId': 'local-peer'}),
+    );
+    expect(session.statusCode, 200);
+  });
+
+  test('invalid browser token is rejected', () async {
+    final response = await http.get(
+      uri('/shares'),
+      headers: {'Authorization': 'Bearer wrong-token'},
+    );
+    expect(response.statusCode, 403);
+  });
+
+  test('cors headers are present on responses and preflight', () async {
+    final options = await http.Request('OPTIONS', uri('/shares'))
+      ..headers['Origin'] = 'http://example.com';
+    final preflight = await options.send();
+    expect(preflight.statusCode, 200);
+    expect(preflight.headers['access-control-allow-origin'], '*');
+    expect(
+      preflight.headers['access-control-allow-methods'],
+      contains('GET'),
+    );
+
+    final response = await http.get(
+      uri('/hello'),
+      headers: {'Origin': 'http://example.com'},
+    );
+    expect(response.headers['access-control-allow-origin'], '*');
+    expect(
+      response.headers['access-control-expose-headers'],
+      contains('Content-Range'),
+    );
+  });
 }

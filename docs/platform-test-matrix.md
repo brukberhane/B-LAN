@@ -1,64 +1,95 @@
 # B-LAN Platform Test Matrix
 
-Manual checklist for Phase 6 validation. Run on real devices where possible.
+Manual checklist for release validation. Pair with automated `flutter test` (see README).
+
+**Legend:** `auto` = covered by automated tests · `manual` = run on device before release
 
 ## All platforms
 
-- [ ] App launches and shows Peers, Downloads, Settings (and Shares on native)
-- [ ] Manual peer connect with host + port works
-- [ ] Browse remote shares and nested folders
-- [ ] Download single file; file appears under save location with correct relative path
-- [ ] Download folder; nested tree preserved
-- [ ] Downloads screen shows state, bytes, chunk count, target path
-- [ ] Settings shows nickname, port, browser token copy/rotate
-- [ ] README platform claims match observed behavior
+| Check | Type | Status |
+|-------|------|--------|
+| App launches; Peers, Downloads, Settings (+ Shares native) | auto + manual | manual pending |
+| Manual peer connect host + port | manual | pending |
+| Browse remote shares and nested folders | manual | pending |
+| Download file; correct relative path under save dir | auto + manual | manual pending |
+| Download folder; nested tree preserved | auto + manual | manual pending |
+| Downloads shows state, bytes, chunks, sources, target | auto + manual | manual pending |
+| Settings nickname, port, fingerprint, token copy/rotate/revoke | auto + manual | manual pending |
+| Peer trust / identity-changed UX | auto + manual | manual pending |
+| README claims match device | manual | pending |
 
 ## Linux
 
-- [ ] Avahi running: peer advertises and is discovered by another device
-- [ ] Avahi stopped: discovery fails gracefully; manual connect still works
-- [ ] Edit shared file: remote peer sees updated hash without manual rescan
-- [ ] Firewall blocked port: manual connect fails with visible error; Settings firewall note helpful
+| Check | Type | Status |
+|-------|------|--------|
+| Avahi on: advertise + discover | manual | pending |
+| Avahi off: graceful failure; manual connect works | manual | pending |
+| File watcher updates remote hash without rescan | manual | pending |
+| Firewall blocked port: visible error | manual | pending |
 
 ## macOS
 
-- [ ] Advertise + browse between two Mac instances
-- [ ] File watcher updates index after local edit
+| Check | Type | Status |
+|-------|------|--------|
+| Advertise + browse between two Macs | manual | pending |
+| Watcher updates index after local edit | manual | pending |
 
 ## Windows
 
-- [ ] Browse discovers Linux/macOS peer
-- [ ] Windows instance is **not** auto-discovered; manual connect from peer works
-- [ ] UI shows browse-only / manual-connect limitation
+| Check | Type | Status |
+|-------|------|--------|
+| Browse discovers Linux/macOS peer | manual | pending |
+| Windows not auto-discovered; manual connect in | manual | pending |
+| Browse-only limitation shown in UI | auto + manual | manual pending |
 
 ## Android
 
-- [ ] Android 10 / 13 / 14+ (as available)
-- [ ] Wi-Fi with multicast enabled: discovery works
-- [ ] Wi-Fi AP isolation / multicast off: manual connect works
-- [ ] SAF share: large nested folder scan
-- [ ] SAF: delete/rename file during scan — no crash; rescan recovers
-- [ ] SAF URI permission survives app restart
-- [ ] Foreground notification during scan/download
-- [ ] Notification permission denied: app still functions; notification may be missing
-- [ ] Download to app documents/B-LAN directory
+| Check | Type | Status |
+|-------|------|--------|
+| Android 10 / 13 / 14+ | manual | pending |
+| Multicast on: discovery | manual | pending |
+| AP isolation: manual connect | manual | pending |
+| SAF large nested folder scan | manual | pending |
+| SAF delete/rename during scan — no crash | manual | pending |
+| SAF URI survives restart | manual | pending |
+| Foreground notification scan/download | manual | pending |
+| Notification denied: app still works | manual | pending |
+| Download to app documents/B-LAN | manual | pending |
 
 ## Web
 
-- [ ] Settings web client: connect with host, port, browser token
-- [ ] Browse shares and entries
-- [ ] Download file via browser (no resume DB)
-- [ ] CORS: desktop peer reachable from browser origin
+| Check | Type | Status |
+|-------|------|--------|
+| Settings web client connect | manual | pending |
+| Browse shares and entries | manual | pending |
+| Download file in browser | manual | pending |
+| CORS from desktop peer | auto + manual | manual pending |
 
 ## Desktop UX
 
-- [ ] Settings shows HTTP port and copyable local URL
-- [ ] Shares page shows server/advertise status
-- [ ] Share enable toggle stops serving disabled share
-- [ ] Share remove asks confirmation
+| Check | Type | Status |
+|-------|------|--------|
+| Settings HTTP port + copy local URL | auto + manual | manual pending |
+| Shares server/advertise status | manual | pending |
+| Disable share stops serving | manual | pending |
+| Remove share confirmation | manual | pending |
+
+## Stress (manual / large hardware)
+
+| Fixture | Automated scale | Manual target |
+|---------|-----------------|---------------|
+| Many small files | 200 files (`stress_indexing_test`) | 50k tiny files |
+| Huge multi-chunk file | ~128 KiB + 64 KiB chunks | File larger than RAM |
+| Rename storm | 20 files incremental | Heavy rename churn |
+| Same-size mtime change | auto test | Same-size content swap |
+| Interrupted source peer | `multi_source_download_test` | Kill peer mid-download |
+| Slow network | — | Throttle or delayed server |
 
 ## Regression
 
-- [ ] `flutter test` passes
-- [ ] `flutter analyze` clean
-- [ ] No `bonsoir_linux_dbus` in README; Bonsoir 7 used without `configureBonsoirPlatform()`
+| Check | Type | Status |
+|-------|------|--------|
+| `flutter test` passes | auto | run in CI |
+| `flutter analyze` clean | auto | run in CI |
+| `dart run tool/db_benchmark.dart --quick` | auto | optional smoke |
+| Bonsoir 7, no `bonsoir_linux_dbus`, no `configureBonsoirPlatform()` | manual | verified in code |

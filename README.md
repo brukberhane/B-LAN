@@ -54,10 +54,31 @@ flutter run -d linux
 - `POST /session` — native client session token
 - `GET /shares`, `GET /entries`, `GET /manifest/files/<id>`, `GET /chunks?hash=`, `GET /files/<id>` with `Range`
 - Web clients use browser token from Settings; native clients use `/session`
+- Device Ed25519 identity in `/hello`; peer trust and `identity_changed` workflow
+- Multi-source downloads: matching manifests, per-chunk peer failover
+
+## Testing
+
+Automated MVP suite (`flutter test`):
+
+| Area | Tests |
+|------|-------|
+| Protocol DTOs + defaults | `protocol_test.dart` |
+| HTTP server auth, CORS, range, chunks | `transfer_server_test.dart` |
+| Verified resume, retry, cancel, multi-source | `transfer_client_test.dart`, `multi_source_download_test.dart` |
+| Indexing + incremental + stress fixtures | `share_incremental_test.dart`, `stress_indexing_test.dart` |
+| DB schema, indexes, queue states | `database_test.dart` |
+| Security trust/sessions | `security_test.dart` |
+| UI smoke + feature widgets | `widget_test.dart`, `widget_features_test.dart` |
+
+Optional DB benchmark: `dart run tool/db_benchmark.dart --quick` — see [docs/db-benchmark-decision.md](docs/db-benchmark-decision.md).
+
+Manual cross-platform matrix: [docs/platform-test-matrix.md](docs/platform-test-matrix.md).
 
 ## Dev
 
 ```bash
 flutter test
 flutter analyze
+dart run tool/db_benchmark.dart --quick   # optional persistence smoke
 ```

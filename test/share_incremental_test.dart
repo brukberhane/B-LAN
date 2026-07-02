@@ -55,6 +55,12 @@ void main() {
     final chunks = await db.chunksForEntry(entry.id);
     expect(chunks, isNotEmpty);
     expect(chunks.every((row) => row.status == 'ready'), isTrue);
+
+    final share = await (db.select(db.shares)..where((t) => t.id.equals(shareId)))
+        .getSingle();
+    expect(share.totalFiles, 1);
+    expect(share.hashedFiles, 1);
+    expect(share.totalHashBytes, greaterThan(0));
   });
 
   test('changed file updates chunks and mtime', () async {

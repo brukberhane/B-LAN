@@ -34,6 +34,10 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (migrator) async {
+          await migrator.createAll();
+          await _ensurePerformanceIndexes();
+        },
         onUpgrade: (migrator, from, to) async {
           if (from < 2) {
             await migrator.addColumn(shares, shares.storageType);
@@ -52,22 +56,26 @@ class AppDatabase extends _$AppDatabase {
             await migrator.addColumn(downloadChunks, downloadChunks.sourcePeerId);
           }
           if (from < 5) {
-            await customStatement(
-              'CREATE UNIQUE INDEX IF NOT EXISTS idx_entries_share_path '
-              'ON entries (share_id, relative_path)',
-            );
-            await customStatement(
-              'CREATE INDEX IF NOT EXISTS idx_chunks_entry_id ON chunks (entry_id)',
-            );
-            await customStatement(
-              'CREATE INDEX IF NOT EXISTS idx_chunks_hash ON chunks (hash)',
-            );
+            await _ensurePerformanceIndexes();
           }
           if (from < 6) {
             await migrator.addColumn(peers, peers.identityStatus);
           }
         },
       );
+
+  Future<void> _ensurePerformanceIndexes() async {
+    await customStatement(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_entries_share_path '
+      'ON entries (share_id, relative_path)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_chunks_entry_id ON chunks (entry_id)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS idx_chunks_hash ON chunks (hash)',
+    );
+  }
 
   static AppDatabase openForBenchmark({
     String? filePath,

@@ -146,6 +146,15 @@ void main() {
     expect(chunkRows.every((row) => row.state == DownloadChunkState.verified), isTrue);
   });
 
+  test('successful download renames partial file atomically', () async {
+    await download();
+
+    final target = File('${downloadDir.path}/data.bin');
+    final partial = File('${downloadDir.path}/data.bin.partial');
+    expect(await target.exists(), isTrue);
+    expect(await partial.exists(), isFalse);
+  });
+
   test('resume skips already verified chunks', () async {
     final manifest = await client.fetchFileManifest(
       'http://127.0.0.1:$port',

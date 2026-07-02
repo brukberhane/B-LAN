@@ -16,7 +16,7 @@ Last reviewed: 2026-07-01
 | 7 Security UX | **complete** | Ed25519 device identity, trust/identity_changed workflow, session expiry, token rotate/revoke |
 | 8 Multi-source downloads | **complete** | Manifest cache, chunk scheduler, per-chunk source failover, source count in UI |
 | 9 Persistence engine benchmark | **complete** | `tool/db_benchmark.dart`, SQLite baseline JSON, decision doc — keep SQLite |
-| 10 Tests / stress / release | pending | — |
+| 10 Tests / stress / release | **complete** | Expanded automated suite, stress fixtures, matrix + README |
 
 This document replaces the loose TBD list with an implementation order and detailed work plan. It assumes the current app state:
 

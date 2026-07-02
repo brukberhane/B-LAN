@@ -62,4 +62,34 @@ void main() {
     expect(decoded.entry.id, original.entry.id);
     expect(decoded.chunks.first.hash, original.chunks.first.hash);
   });
+
+  test('HelloResponse defaults protocolVersion and identityVersion', () {
+    final decoded = HelloResponse.fromJson({
+      'peerId': 'peer-1',
+      'nick': 'test',
+      'fingerprint': 'abcd',
+      'capabilities': ['browse'],
+    });
+    expect(decoded.protocolVersion, 1);
+    expect(decoded.identityVersion, 1);
+    expect(decoded.appVersion, '1.0.0');
+  });
+
+  test('HelloResponse rejects missing peerId', () {
+    expect(
+      () => HelloResponse.fromJson({
+        'nick': 'test',
+        'fingerprint': 'abcd',
+        'capabilities': [],
+      }),
+      throwsA(isA<TypeError>()),
+    );
+  });
+
+  test('SessionResponse roundtrip', () {
+    const original = SessionResponse(token: 'tok', expiresInSeconds: 3600);
+    final decoded = SessionResponse.fromJson(original.toJson());
+    expect(decoded.token, original.token);
+    expect(decoded.expiresInSeconds, original.expiresInSeconds);
+  });
 }
