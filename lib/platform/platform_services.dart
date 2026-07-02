@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import '../core/indexing/chunker.dart';
+
 abstract class PlatformServices {
   Future<void> initialize();
 
@@ -32,6 +36,21 @@ abstract class PlatformServices {
 
   /// OS device name for default nickname when none is stored yet.
   Future<String?> defaultDeviceName();
+}
+
+abstract class SafFileOperations {
+  Future<List<ChunkDescriptor>> hashSafFile({
+    required String uri,
+    required int chunkSize,
+  });
+
+  Future<Uint8List> readSafFileRange({
+    required String uri,
+    required int offset,
+    required int length,
+  });
+
+  Future<bool> safFileExists(String uri);
 }
 
 class SafFileEntry {

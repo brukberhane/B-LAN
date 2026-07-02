@@ -16,8 +16,8 @@ class ShareScanner {
     required this.chunkSize,
     required PlatformServices platformServices,
     HashWorkerPool? hashPool,
-  })  : _platform = platformServices,
-        _hashPool = hashPool ?? HashWorkerPool();
+  }) : _platform = platformServices,
+       _hashPool = hashPool ?? HashWorkerPool();
 
   final AppDatabase _db;
   final int chunkSize;
@@ -27,9 +27,9 @@ class ShareScanner {
   final Map<String, Future<void>> _shareLocks = {};
 
   Future<void> scanShare(String shareId) => _runExclusive(shareId, () async {
-    final share = await (_db.select(_db.shares)
-          ..where((t) => t.id.equals(shareId)))
-        .getSingleOrNull();
+    final share = await (_db.select(
+      _db.shares,
+    )..where((t) => t.id.equals(shareId))).getSingleOrNull();
     if (share == null) {
       return;
     }
@@ -66,12 +66,11 @@ class ShareScanner {
         await _scanDirectory(shareId, root, share.localPath);
       }
 
-      final files = await (_db.select(_db.entries)
-            ..where(
-              (t) =>
-                  t.shareId.equals(shareId) & t.isDirectory.equals(false),
-            ))
-          .get();
+      final files =
+          await (_db.select(_db.entries)..where(
+                (t) => t.shareId.equals(shareId) & t.isDirectory.equals(false),
+              ))
+              .get();
 
       final totalHashBytes = files.fold<int>(0, (sum, e) => sum + e.size);
       await _db.updateShareProgress(
@@ -109,9 +108,9 @@ class ShareScanner {
       return;
     }
 
-    final share = await (_db.select(_db.shares)
-          ..where((t) => t.id.equals(shareId)))
-        .getSingleOrNull();
+    final share = await (_db.select(
+      _db.shares,
+    )..where((t) => t.id.equals(shareId))).getSingleOrNull();
     if (share == null || share.storageType == 'saf') {
       return;
     }
@@ -182,9 +181,9 @@ class ShareScanner {
     required File file,
     required String relativePath,
   }) async {
-    final share = await (_db.select(_db.shares)
-          ..where((t) => t.id.equals(shareId)))
-        .getSingle();
+    final share = await (_db.select(
+      _db.shares,
+    )..where((t) => t.id.equals(shareId))).getSingle();
     await _ensureParentDirectories(
       shareId: shareId,
       relativePath: relativePath,
@@ -203,7 +202,9 @@ class ShareScanner {
 
     final entryId = existing?.id ?? _uuid.v4();
     if (existing == null) {
-      await _db.into(_db.entries).insert(
+      await _db
+          .into(_db.entries)
+          .insert(
             EntriesCompanion.insert(
               id: entryId,
               shareId: shareId,
@@ -218,21 +219,17 @@ class ShareScanner {
           );
     } else {
       await (_db.update(_db.entries)..where((t) => t.id.equals(entryId))).write(
-            EntriesCompanion(
-              name: Value(p.basename(file.path)),
-              size: Value(stat.size),
-              mtimeMs: Value(stat.modified.millisecondsSinceEpoch),
-              hashStatus: const Value('pending'),
-            ),
-          );
+        EntriesCompanion(
+          name: Value(p.basename(file.path)),
+          size: Value(stat.size),
+          mtimeMs: Value(stat.modified.millisecondsSinceEpoch),
+          hashStatus: const Value('pending'),
+        ),
+      );
     }
 
     await _db.rebuildSearchTokensForEntry(entryId);
-    await _hashEntry(
-      shareId: shareId,
-      entryId: entryId,
-      path: file.path,
-    );
+    await _hashEntry(shareId: shareId, entryId: entryId, path: file.path);
   }
 
   Future<void> _ensureDirectoryRow(
@@ -243,14 +240,17 @@ class ShareScanner {
     final existing = await _db.entryBySharePath(shareId, dirPath);
     final stat = await dir.stat();
     if (existing != null) {
-      await (_db.update(_db.entries)..where((t) => t.id.equals(existing.id)))
-          .write(
+      await (_db.update(
+        _db.entries,
+      )..where((t) => t.id.equals(existing.id))).write(
         EntriesCompanion(mtimeMs: Value(stat.modified.millisecondsSinceEpoch)),
       );
       return;
     }
 
-    await _db.into(_db.entries).insert(
+    await _db
+        .into(_db.entries)
+        .insert(
           EntriesCompanion.insert(
             id: _uuid.v4(),
             shareId: shareId,
@@ -324,18 +324,12 @@ class ShareScanner {
   }) async {
     await _db.updateShareProgress(shareId, currentFile: p.basename(path));
     try {
-      final chunks = await _hashPool.hashFile(
-        path: path,
-        chunkSize: chunkSize,
-      );
-      await _db.replaceEntryChunks(
-        entryId: entryId,
-        hashedChunks: chunks,
-      );
+      final chunks = await _hashPool.hashFile(path: path, chunkSize: chunkSize);
+      await _db.replaceEntryChunks(entryId: entryId, hashedChunks: chunks);
     } catch (_) {
       await (_db.update(_db.entries)..where((t) => t.id.equals(entryId))).write(
-            const EntriesCompanion(hashStatus: Value('error')),
-          );
+        const EntriesCompanion(hashStatus: Value('error')),
+      );
     }
   }
 
@@ -389,59 +383,58 @@ class ShareScanner {
     final progressThrottle = _ProgressThrottle();
     var completedFiles = 0;
 
-    final workers = List<Future<void>>.generate(
-      _hashPool.workerCount,
-      (_) async {
-        while (true) {
-          final entry = takeNext();
-          if (entry == null) {
-            break;
-          }
-          final path = _entryPath(share, entry);
-          if (path == null) {
-            continue;
-          }
-
-          await _db.updateShareProgress(shareId, currentFile: entry.name);
-          try {
-            final chunks = await _hashPool.hashFile(
-              path: path,
-              chunkSize: chunkSize,
-              onProgress: (hashed, total) {
-                progressThrottle.run(() {
-                  unawaited(_platform.updateForegroundTask(
-                    taskId: taskId,
-                    title: 'Hashing ${entry.name}',
-                    body:
-                        '${_formatBytes(hashed)} / ${_formatBytes(total)}',
-                  ));
-                });
-              },
-            );
-            await _db.replaceEntryChunks(
-              entryId: entry.id,
-              hashedChunks: chunks,
-            );
-            await _db.incrementShareHashProgress(
-              shareId,
-              fileSize: entry.size,
-            );
-            completedFiles++;
-            await _platform.updateForegroundTask(
-              taskId: taskId,
-              title: 'Hashing ${share.displayName}',
-              body: '$completedFiles / ${files.length} files',
-            );
-          } catch (_) {
-            await (_db.update(_db.entries)
-                  ..where((t) => t.id.equals(entry.id)))
-                .write(
-              const EntriesCompanion(hashStatus: Value('error')),
-            );
-          }
+    final workers = List<Future<void>>.generate(_hashPool.workerCount, (
+      _,
+    ) async {
+      while (true) {
+        final entry = takeNext();
+        if (entry == null) {
+          break;
         }
-      },
-    );
+        final path = _entryPath(share, entry);
+        if (path == null) {
+          await (_db.update(_db.entries)..where((t) => t.id.equals(entry.id)))
+              .write(const EntriesCompanion(hashStatus: Value('error')));
+          continue;
+        }
+
+        await _db.updateShareProgress(shareId, currentFile: entry.name);
+        try {
+          final safFiles = share.storageType == 'saf'
+              ? _platform as SafFileOperations
+              : null;
+          final chunks = share.storageType == 'saf'
+              ? await safFiles!.hashSafFile(uri: path, chunkSize: chunkSize)
+              : await _hashPool.hashFile(
+                  path: path,
+                  chunkSize: chunkSize,
+                  onProgress: (hashed, total) {
+                    progressThrottle.run(() {
+                      unawaited(
+                        _platform.updateForegroundTask(
+                          taskId: taskId,
+                          title: 'Hashing ${entry.name}',
+                          body:
+                              '${_formatBytes(hashed)} / ${_formatBytes(total)}',
+                        ),
+                      );
+                    });
+                  },
+                );
+          await _db.replaceEntryChunks(entryId: entry.id, hashedChunks: chunks);
+          await _db.incrementShareHashProgress(shareId, fileSize: entry.size);
+          completedFiles++;
+          await _platform.updateForegroundTask(
+            taskId: taskId,
+            title: 'Hashing ${share.displayName}',
+            body: '$completedFiles / ${files.length} files',
+          );
+        } catch (_) {
+          await (_db.update(_db.entries)..where((t) => t.id.equals(entry.id)))
+              .write(const EntriesCompanion(hashStatus: Value('error')));
+        }
+      }
+    });
     await Future.wait(workers);
   }
 
@@ -460,7 +453,9 @@ class ShareScanner {
     final entries = await _platform.listSafFiles(treeUri);
     for (final entry in entries) {
       if (entry.isDirectory) {
-        await _db.into(_db.entries).insertOnConflictUpdate(
+        await _db
+            .into(_db.entries)
+            .insertOnConflictUpdate(
               EntriesCompanion.insert(
                 id: _uuid.v4(),
                 shareId: shareId,
@@ -474,7 +469,9 @@ class ShareScanner {
               ),
             );
       } else {
-        await _db.into(_db.entries).insertOnConflictUpdate(
+        await _db
+            .into(_db.entries)
+            .insertOnConflictUpdate(
               EntriesCompanion.insert(
                 id: _uuid.v4(),
                 shareId: shareId,
@@ -501,10 +498,10 @@ class ShareScanner {
       final relativePath = p.relative(entity.path, from: shareRootPath);
       final normalized = relativePath.replaceAll('\\', '/');
       if (entity is Directory) {
-        final dirPath = normalized.endsWith('/')
-            ? normalized
-            : '$normalized/';
-        await _db.into(_db.entries).insertOnConflictUpdate(
+        final dirPath = normalized.endsWith('/') ? normalized : '$normalized/';
+        await _db
+            .into(_db.entries)
+            .insertOnConflictUpdate(
               EntriesCompanion.insert(
                 id: _uuid.v4(),
                 shareId: shareId,
@@ -522,7 +519,9 @@ class ShareScanner {
         await _scanDirectory(shareId, entity, shareRootPath);
       } else if (entity is File) {
         final stat = await entity.stat();
-        await _db.into(_db.entries).insertOnConflictUpdate(
+        await _db
+            .into(_db.entries)
+            .insertOnConflictUpdate(
               EntriesCompanion.insert(
                 id: _uuid.v4(),
                 shareId: shareId,

@@ -1,10 +1,11 @@
+import 'package:blan/core/indexing/chunker.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:saf/saf.dart';
 
 import '../platform_services.dart';
 
-class AndroidPlatformServices implements PlatformServices {
+class AndroidPlatformServices implements PlatformServices, SafFileOperations {
   static const _channel = MethodChannel('com.brukb.blan/platform');
 
   @override
@@ -56,9 +57,7 @@ class AndroidPlatformServices implements PlatformServices {
 
   @override
   Future<void> stopForegroundTask(String taskId) async {
-    await _channel.invokeMethod<void>('stopForeground', {
-      'taskId': taskId,
-    });
+    await _channel.invokeMethod<void>('stopForeground', {'taskId': taskId});
   }
 
   @override
@@ -100,82 +99,79 @@ class AndroidPlatformServices implements PlatformServices {
 
   @override
   Future<List<SafFileEntry>> listSafFiles(String treeUri) async {
-    final paths = await Saf.getFilesPathFor(treeUri, fileType: 'any');
-    if (paths == null || paths.isEmpty) {
+    final rows = await _channel.invokeListMethod<Map<dynamic, dynamic>>(
+      'listSafFiles',
+      {'treeUri': _treeUriForDirectory(treeUri)},
+    );
+    if (rows == null || rows.isEmpty) {
       return const [];
     }
 
-    final prefix = _commonPathPrefix(paths);
-    final entries = <SafFileEntry>[];
-    final seenDirs = <String>{};
-
-    for (final fullPath in paths) {
-      var relative = fullPath;
-      if (prefix.isNotEmpty && fullPath.startsWith(prefix)) {
-        relative = fullPath.substring(prefix.length);
-      }
-      relative = relative.replaceAll('\\', '/');
-      if (relative.startsWith('/')) {
-        relative = relative.substring(1);
-      }
-      if (relative.isEmpty) {
-        continue;
-      }
-
-      final parts = relative.split('/');
-      for (var i = 0; i < parts.length - 1; i++) {
-        final dirPath = '${parts.sublist(0, i + 1).join('/')}/';
-        if (seenDirs.add(dirPath)) {
-          entries.add(
-            SafFileEntry(
-              name: parts[i],
-              relativePath: dirPath,
-              isDirectory: true,
-              size: 0,
-              mtimeMs: 0,
-              readUri: treeUri,
-            ),
-          );
-        }
-      }
-
-      final name = parts.last;
-      final stat = await _channel.invokeMethod<Map<dynamic, dynamic>>(
-        'statSafFile',
-        {'path': fullPath},
-      );
-      entries.add(
-        SafFileEntry(
-          name: name,
-          relativePath: relative,
-          isDirectory: false,
-          size: stat?['size'] as int? ?? 0,
-          mtimeMs: stat?['mtimeMs'] as int? ?? 0,
-          readUri: fullPath,
-        ),
-      );
-    }
-
-    return entries;
+    return rows
+        .map(
+          (row) => SafFileEntry(
+            name: row['name'] as String,
+            relativePath: row['relativePath'] as String,
+            isDirectory: row['isDirectory'] as bool,
+            size: (row['size'] as num?)?.toInt() ?? 0,
+            mtimeMs: (row['mtimeMs'] as num?)?.toInt() ?? 0,
+            readUri: row['uri'] as String,
+          ),
+        )
+        .toList();
   }
 
-  String _commonPathPrefix(List<String> paths) {
-    if (paths.isEmpty) {
-      return '';
+  @override
+  Future<List<ChunkDescriptor>> hashSafFile({
+    required String uri,
+    required int chunkSize,
+  }) async {
+    final rows = await _channel.invokeListMethod<Map<dynamic, dynamic>>(
+      'hashSafFile',
+      {'uri': uri, 'chunkSize': chunkSize},
+    );
+    if (rows == null) {
+      return const [];
     }
-    final splitPaths = paths.map((p) => p.split('/')).toList();
-    final prefix = <String>[];
-    for (var i = 0; i < splitPaths.first.length; i++) {
-      final segment = splitPaths.first[i];
-      if (splitPaths.every((parts) => parts.length > i && parts[i] == segment)) {
-        prefix.add(segment);
-      } else {
-        break;
-      }
+    return rows
+        .map(
+          (row) => ChunkDescriptor(
+            index: (row['index'] as num).toInt(),
+            offset: (row['offset'] as num).toInt(),
+            length: (row['length'] as num).toInt(),
+            hash: row['hash'] as String,
+          ),
+        )
+        .toList();
+  }
+
+  @override
+  Future<Uint8List> readSafFileRange({
+    required String uri,
+    required int offset,
+    required int length,
+  }) async {
+    final bytes = await _channel.invokeMethod<Uint8List>('readSafFileRange', {
+      'uri': uri,
+      'offset': offset,
+      'length': length,
+    });
+    return bytes ?? Uint8List(0);
+  }
+
+  @override
+  Future<bool> safFileExists(String uri) async {
+    final exists = await _channel.invokeMethod<bool>('safFileExists', {
+      'uri': uri,
+    });
+    return exists ?? false;
+  }
+
+  String _treeUriForDirectory(String directory) {
+    if (directory.startsWith('content://')) {
+      return directory;
     }
-    if (prefix.isEmpty) {
-      return '';
-    }
-    return '${prefix.join('/')}/';
+    final encoded = Uri.encodeComponent(directory);
+    return 'content://com.android.externalstorage.documents/tree/primary%3A$encoded';
   }
 }

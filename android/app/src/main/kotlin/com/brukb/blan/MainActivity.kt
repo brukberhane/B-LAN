@@ -66,6 +66,52 @@ class MainActivity : FlutterActivity() {
                         result.success(stats)
                     }
 
+                    "listSafFiles" -> {
+                        val treeUri = call.argument<String>("treeUri") ?: ""
+                        try {
+                            result.success(SafFiles.list(applicationContext, treeUri))
+                        } catch (error: Exception) {
+                            result.error("saf_list_failed", error.message, null)
+                        }
+                    }
+
+                    "hashSafFile" -> {
+                        val uri = call.argument<String>("uri") ?: ""
+                        val chunkSize = call.argument<Int>("chunkSize") ?: 0
+                        try {
+                            result.success(SafFiles.hash(applicationContext, uri, chunkSize))
+                        } catch (error: Exception) {
+                            result.error("saf_hash_failed", error.message, null)
+                        }
+                    }
+
+                    "readSafFileRange" -> {
+                        val uri = call.argument<String>("uri") ?: ""
+                        val offset = (call.argument<Number>("offset") ?: 0).toLong()
+                        val length = (call.argument<Number>("length") ?: 0).toInt()
+                        try {
+                            result.success(
+                                SafFiles.readRange(
+                                    applicationContext,
+                                    uri,
+                                    offset,
+                                    length,
+                                ),
+                            )
+                        } catch (error: Exception) {
+                            result.error("saf_read_failed", error.message, null)
+                        }
+                    }
+
+                    "safFileExists" -> {
+                        val uri = call.argument<String>("uri") ?: ""
+                        try {
+                            result.success(SafFiles.exists(applicationContext, uri))
+                        } catch (error: Exception) {
+                            result.success(false)
+                        }
+                    }
+
                     "getDeviceName" -> {
                         result.success(resolveDeviceName(applicationContext))
                     }

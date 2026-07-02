@@ -9,11 +9,16 @@ import 'hash_messages.dart';
 int defaultHashWorkerCount() => Platform.isAndroid ? 1 : 2;
 
 /// Fixed pool of isolates that hash files off the UI thread.
+///
+/// On Android, hashing runs in-process because worker isolates cannot reliably
+/// open SAF-backed file paths.
 class HashWorkerPool {
-  HashWorkerPool({int? workerCount})
-      : _workerCount = workerCount ?? defaultHashWorkerCount();
+  HashWorkerPool({int? workerCount, bool? hashInProcess})
+      : _workerCount = workerCount ?? defaultHashWorkerCount(),
+        _hashInProcess = hashInProcess ?? Platform.isAndroid;
 
   final int _workerCount;
+  final bool _hashInProcess;
   final List<Isolate> _isolates = [];
   final List<SendPort> _workerPorts = [];
   var _nextWorker = 0;
@@ -24,6 +29,10 @@ class HashWorkerPool {
 
   Future<void> start() async {
     if (_started) {
+      return;
+    }
+    if (_hashInProcess) {
+      _started = true;
       return;
     }
     for (var i = 0; i < _workerCount; i++) {
@@ -41,7 +50,23 @@ class HashWorkerPool {
     required int chunkSize,
     void Function(int hashedBytes, int totalBytes)? onProgress,
   }) async {
-    if (!_started || _workerPorts.isEmpty) {
+    if (!_started) {
+      throw StateError('HashWorkerPool not started');
+    }
+
+    if (_hashInProcess) {
+      final file = File(path);
+      if (!await file.exists()) {
+        throw StateError('missing');
+      }
+      return hashFileChunks(
+        file: file,
+        chunkSize: chunkSize,
+        onProgress: onProgress,
+      );
+    }
+
+    if (_workerPorts.isEmpty) {
       throw StateError('HashWorkerPool not started');
     }
 

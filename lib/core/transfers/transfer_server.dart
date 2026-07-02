@@ -6,8 +6,8 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
 
-import '../indexing/chunker.dart';
 import '../persistence/database.dart';
+import '../../platform/platform_services.dart';
 import '../protocol/byte_range.dart';
 import '../protocol/constants.dart';
 import '../protocol/models.dart';
@@ -35,9 +35,12 @@ class _SessionInfo {
 }
 
 class TransferServer {
-  TransferServer(this._db) : _uploads = UploadManager(_db);
+  TransferServer(this._db, {SafFileOperations? safFiles})
+    : _safFiles = safFiles,
+      _uploads = UploadManager(_db);
 
   final AppDatabase _db;
+  final SafFileOperations? _safFiles;
   final UploadManager _uploads;
   HttpServer? _peerServer;
   HttpServer? _browserServer;
@@ -104,17 +107,17 @@ class TransferServer {
   }
 
   Router _buildRouter() => Router()
-      ..get('/hello', _hello)
-      ..post('/session', _session)
-      ..get('/shares', _shares)
-      ..get('/entries', _entries)
-      ..get('/search', _search)
-      ..get('/manifest/shares/<shareId>', _shareManifest)
-      ..get('/manifest/files/<fileId>', _manifestFile)
-      ..get('/files/<fileId>', _file)
-      ..get('/chunks', _chunkByQuery)
-      ..get('/chunks/<hash>', _chunk)
-      ..post('/chunks/availability', _chunkAvailability);
+    ..get('/hello', _hello)
+    ..post('/session', _session)
+    ..get('/shares', _shares)
+    ..get('/entries', _entries)
+    ..get('/search', _search)
+    ..get('/manifest/shares/<shareId>', _shareManifest)
+    ..get('/manifest/files/<fileId>', _manifestFile)
+    ..get('/files/<fileId>', _file)
+    ..get('/chunks', _chunkByQuery)
+    ..get('/chunks/<hash>', _chunk)
+    ..post('/chunks/availability', _chunkAvailability);
 
   Future<void> stop() async {
     await _peerServer?.close(force: true);
@@ -160,62 +163,64 @@ class TransferServer {
   }
 
   Middleware get _corsMiddleware => (Handler inner) {
-        return (Request request) async {
-          if (request.method == 'OPTIONS') {
-            return _cors(Response.ok(''));
-          }
-          final response = await inner(request);
-          return _cors(response);
-        };
-      };
+    return (Request request) async {
+      if (request.method == 'OPTIONS') {
+        return _cors(Response.ok(''));
+      }
+      final response = await inner(request);
+      return _cors(response);
+    };
+  };
 
   Response _cors(Response response) {
     final origin = _allowedOrigins.isEmpty ? '*' : _allowedOrigins.join(', ');
-    return response.change(headers: {
-      'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Headers': 'Authorization, Content-Type, Range',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Expose-Headers': 'Content-Length, Content-Range',
-    });
+    return response.change(
+      headers: {
+        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Headers': 'Authorization, Content-Type, Range',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Expose-Headers': 'Content-Length, Content-Range',
+      },
+    );
   }
 
   Middleware get _peerAuthMiddleware => (Handler inner) {
-        return (Request request) async {
-          if (request.url.path == 'hello' || request.url.path == 'session') {
-            return inner(request);
-          }
-          final auth = request.headers['authorization'];
-          if (auth == null) {
-            return Response.forbidden('Missing token');
-          }
-          final token = auth.replaceFirst('Bearer ', '');
-          if (isAuthorized(token)) {
-            return inner(request);
-          }
-          return Response.forbidden('Invalid token');
-        };
-      };
+    return (Request request) async {
+      if (request.url.path == 'hello' || request.url.path == 'session') {
+        return inner(request);
+      }
+      final auth = request.headers['authorization'];
+      if (auth == null) {
+        return Response.forbidden('Missing token');
+      }
+      final token = auth.replaceFirst('Bearer ', '');
+      if (isAuthorized(token)) {
+        return inner(request);
+      }
+      return Response.forbidden('Invalid token');
+    };
+  };
 
   Middleware get _browserAuthMiddleware => (Handler inner) {
-        return (Request request) async {
-          if (request.url.path == 'hello' || request.url.path == 'session') {
-            return Response(
-              403,
-              body: 'Peer API requires HTTPS',
-              headers: {'content-type': 'text/plain'},
-            );
-          }
-          final auth = request.headers['authorization'];
-          if (auth == null) {
-            return Response.forbidden('Missing browser token');
-          }
-          final token = auth.replaceFirst('Bearer ', '');
-          if (token == _browserToken && _browserTokenValid()) {
-            return inner(request);
-          }
-          return Response.forbidden('Invalid browser token');
-        };
-      };
+    return (Request request) async {
+      if (request.url.path == 'hello' || request.url.path == 'session') {
+        return Response(
+          403,
+          body: 'Peer API requires HTTPS',
+          headers: {'content-type': 'text/plain'},
+        );
+      }
+      final auth = request.headers['authorization'];
+      if (auth == null) {
+        return Response.forbidden('Missing browser token');
+      }
+      final token = auth.replaceFirst('Bearer ', '');
+      if (token == _browserToken && _browserTokenValid()) {
+        return inner(request);
+      }
+      return Response.forbidden('Invalid browser token');
+    };
+  };
 
   bool _browserTokenValid() {
     if (_browserTokenTtl != null &&
@@ -347,8 +352,10 @@ class TransferServer {
     final type = request.url.queryParameters['type'] ?? 'all';
     final minSize = int.tryParse(request.url.queryParameters['minSize'] ?? '');
     final maxSize = int.tryParse(request.url.queryParameters['maxSize'] ?? '');
-    final pageSize = int.tryParse(request.url.queryParameters['pageSize'] ?? '') ?? 50;
-    final offset = int.tryParse(request.url.queryParameters['pageToken'] ?? '') ?? 0;
+    final pageSize =
+        int.tryParse(request.url.queryParameters['pageSize'] ?? '') ?? 50;
+    final offset =
+        int.tryParse(request.url.queryParameters['pageToken'] ?? '') ?? 0;
 
     final localPeerId = await _db.ensurePeerId();
     final localNick = await _db.ensureNick();
@@ -364,9 +371,9 @@ class TransferServer {
     final page = hasMore ? rows.sublist(0, pageSize) : rows;
     final results = <SearchResultDto>[];
     for (final entry in page) {
-      final share = await (_db.select(_db.shares)
-            ..where((t) => t.id.equals(entry.shareId)))
-          .getSingleOrNull();
+      final share = await (_db.select(
+        _db.shares,
+      )..where((t) => t.id.equals(entry.shareId))).getSingleOrNull();
       if (share == null) {
         continue;
       }
@@ -410,9 +417,7 @@ class TransferServer {
     final body = ChunkAvailabilityRequestDto.fromJson(payload);
     if (body.hashes.isEmpty) {
       return Response.ok(
-        jsonEncode(
-          const ChunkAvailabilityResponseDto(available: []).toJson(),
-        ),
+        jsonEncode(const ChunkAvailabilityResponseDto(available: []).toJson()),
         headers: {'content-type': 'application/json'},
       );
     }
@@ -425,16 +430,16 @@ class TransferServer {
       maxResults: maxResults,
     );
     return Response.ok(
-      jsonEncode(
-        ChunkAvailabilityResponseDto(available: available).toJson(),
-      ),
+      jsonEncode(ChunkAvailabilityResponseDto(available: available).toJson()),
       headers: {'content-type': 'application/json'},
     );
   }
 
   Future<Response> _shareManifest(Request request, String shareId) async {
-    final pageSize = int.tryParse(request.url.queryParameters['pageSize'] ?? '') ?? 100;
-    final offset = int.tryParse(request.url.queryParameters['pageToken'] ?? '') ?? 0;
+    final pageSize =
+        int.tryParse(request.url.queryParameters['pageSize'] ?? '') ?? 100;
+    final offset =
+        int.tryParse(request.url.queryParameters['pageToken'] ?? '') ?? 0;
     final page = await _db.shareManifestPage(
       shareId,
       pageSize: pageSize,
@@ -467,10 +472,7 @@ class TransferServer {
         (manifest.entry.localUri?.isNotEmpty ?? false)) {
       return Response.internalServerError(body: 'Manifest leaked local path');
     }
-    return Response.ok(
-      encoded,
-      headers: {'content-type': 'application/json'},
-    );
+    return Response.ok(encoded, headers: {'content-type': 'application/json'});
   }
 
   Future<Response> _file(Request request, String fileId) async {
@@ -478,15 +480,14 @@ class TransferServer {
     if (entry == null || entry.isDirectory) {
       return Response.notFound('File not found');
     }
-    final share = await (_db.select(_db.shares)
-          ..where((t) => t.id.equals(entry.shareId)))
-        .getSingleOrNull();
+    final share = await (_db.select(
+      _db.shares,
+    )..where((t) => t.id.equals(entry.shareId))).getSingleOrNull();
     if (share == null || !share.enabled) {
       return Response.notFound('Share not found');
     }
 
-    final file = _entryFile(entry, share);
-    if (!await file.exists()) {
+    if (!await _entryFileExists(entry, share)) {
       return Response.notFound('Missing file');
     }
 
@@ -503,17 +504,14 @@ class TransferServer {
     final peerId = token == null
         ? null
         : _uploads.peerIdFromToken(auth, _browserToken) ??
-            peerIdForToken(token);
+              peerIdForToken(token);
     final remote = _uploads.remoteAddress(request);
     final bandwidth = await _db.uploadBandwidthBps();
 
     final parsed = parseByteRange(request.headers['range'], entry.size);
     if (parsed.invalid) {
       _uploads.releaseSlot();
-      return Response(
-        416,
-        headers: {'content-range': 'bytes */${entry.size}'},
-      );
+      return Response(416, headers: {'content-range': 'bytes */${entry.size}'});
     }
     final range = parsed.range!;
     final transferId = await _uploads.startUpload(
@@ -534,7 +532,7 @@ class TransferServer {
     }
 
     return _uploads.streamResponse(
-      body: file.openRead(range.start, range.end + 1),
+      body: _entryFileStream(entry, share, range.start, range.length),
       transferId: transferId,
       bytesTotal: range.length,
       bandwidthBps: bandwidth,
@@ -555,9 +553,9 @@ class TransferServer {
       _serveChunk(hash, request);
 
   Future<Response> _serveChunk(String hash, Request request) async {
-    final chunk = await (_db.select(_db.chunks)
-          ..where((t) => t.hash.equals(hash)))
-        .getSingleOrNull();
+    final chunk = await (_db.select(
+      _db.chunks,
+    )..where((t) => t.hash.equals(hash))).getSingleOrNull();
     if (chunk == null || chunk.status != 'ready') {
       return Response.notFound('Chunk not found');
     }
@@ -565,14 +563,13 @@ class TransferServer {
     if (entry == null || entry.hashStatus != 'ready') {
       return Response.notFound('Entry not found');
     }
-    final share = await (_db.select(_db.shares)
-          ..where((t) => t.id.equals(entry.shareId)))
-        .getSingleOrNull();
+    final share = await (_db.select(
+      _db.shares,
+    )..where((t) => t.id.equals(entry.shareId))).getSingleOrNull();
     if (share == null || !share.enabled) {
       return Response.notFound('Share not found');
     }
-    final file = _entryFile(entry, share);
-    if (!await file.exists()) {
+    if (!await _entryFileExists(entry, share)) {
       return Response.notFound('Missing file');
     }
 
@@ -589,7 +586,7 @@ class TransferServer {
     final peerId = token == null
         ? null
         : _uploads.peerIdFromToken(auth, _browserToken) ??
-            peerIdForToken(token);
+              peerIdForToken(token);
     final remote = _uploads.remoteAddress(request);
     final bandwidth = await _db.uploadBandwidthBps();
     final transferId = await _uploads.startUpload(
@@ -601,7 +598,7 @@ class TransferServer {
     );
 
     return _uploads.streamResponse(
-      body: file.openRead(chunk.offset, chunk.offset + chunk.length),
+      body: _entryFileStream(entry, share, chunk.offset, chunk.length),
       transferId: transferId,
       bytesTotal: chunk.length,
       bandwidthBps: bandwidth,
@@ -612,10 +609,38 @@ class TransferServer {
     );
   }
 
-  File _entryFile(Entry entry, Share share) => File(
-        entry.localUri ?? p.join(share.localPath, entry.relativePath),
-      );
+  File _entryFile(Entry entry, Share share) =>
+      File(entry.localUri ?? p.join(share.localPath, entry.relativePath));
 
-  Future<bool> _entryFileExists(Entry entry, Share share) =>
-      _entryFile(entry, share).exists();
+  bool _isSafEntry(Entry entry, Share share) =>
+      share.storageType == 'saf' && (entry.localUri?.isNotEmpty ?? false);
+
+  Stream<List<int>> _entryFileStream(
+    Entry entry,
+    Share share,
+    int offset,
+    int length,
+  ) {
+    if (_isSafEntry(entry, share)) {
+      final safFiles = _safFiles;
+      if (safFiles == null) {
+        return Stream.error(StateError('SAF file operations unavailable'));
+      }
+      return Stream.fromFuture(
+        safFiles.readSafFileRange(
+          uri: entry.localUri!,
+          offset: offset,
+          length: length,
+        ),
+      );
+    }
+    return _entryFile(entry, share).openRead(offset, offset + length);
+  }
+
+  Future<bool> _entryFileExists(Entry entry, Share share) {
+    if (_isSafEntry(entry, share)) {
+      return _safFiles?.safFileExists(entry.localUri!) ?? Future.value(false);
+    }
+    return _entryFile(entry, share).exists();
+  }
 }

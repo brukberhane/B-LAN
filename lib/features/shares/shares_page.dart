@@ -82,6 +82,11 @@ class SharesPage extends ConsumerWidget {
   }
 
   Future<void> _addFilesystemShare(BuildContext context, WidgetRef ref) async {
+    // FilePicker returns a translated path without persistable SAF permission.
+    if (Platform.isAndroid) {
+      await _addSafShare(context, ref);
+      return;
+    }
     final result = await FilePicker.getDirectoryPath();
     if (result == null) {
       return;

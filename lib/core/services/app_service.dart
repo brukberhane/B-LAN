@@ -48,7 +48,12 @@ class AppService {
         chunkSize: defaultChunkSizeForPlatform(isAndroid: Platform.isAndroid),
         platformServices: platform,
       ),
-      server = TransferServer(db),
+      server = TransferServer(
+        db,
+        safFiles: platform is SafFileOperations
+            ? platform as SafFileOperations
+            : null,
+      ),
       client = TransferClient(db),
       discovery = MdnsDiscovery() {
     downloadQueue = DownloadQueue(
@@ -163,7 +168,10 @@ class AppService {
       searchIndexStatus.value = const SearchIndexState();
       return;
     }
-    searchIndexStatus.value = SearchIndexState(building: true, remaining: remaining);
+    searchIndexStatus.value = SearchIndexState(
+      building: true,
+      remaining: remaining,
+    );
     try {
       await db.ensureSearchIndex(
         onProgress: (indexed, total) {
@@ -261,9 +269,7 @@ class AppService {
 
   Future<String> rotateBrowserToken() async {
     final store = _browserTokens;
-    final token = store == null
-        ? const Uuid().v4()
-        : await store.rotate();
+    final token = store == null ? const Uuid().v4() : await store.rotate();
     if (store == null) {
       await db.setSetting('browser_token', token);
     }
@@ -382,10 +388,7 @@ class AppService {
     Iterable<String> ghostPeerIds = const [],
   }) async {
     final baseUrl = peerHttpsUrl(host, port);
-    final hello = await client.helloAndRegisterPin(
-      baseUrl,
-      secrets: _secrets,
-    );
+    final hello = await client.helloAndRegisterPin(baseUrl, secrets: _secrets);
     final tlsFp = hello.tlsCertSha256!;
 
     final localPeerId = await db.ensurePeerId();
@@ -394,10 +397,7 @@ class AppService {
     }
 
     final session = await client.createSession(baseUrl, peerId: localPeerId);
-    for (final ghostId in {
-      ...ghostPeerIds,
-      '$host:$port',
-    }) {
+    for (final ghostId in {...ghostPeerIds, '$host:$port'}) {
       if (ghostId != hello.peerId) {
         await (db.delete(db.peers)..where((t) => t.id.equals(ghostId))).go();
       }
@@ -500,7 +500,9 @@ class AppService {
         ghostPeerIds: {peer.peerId},
       );
       final saved = await db.peerByEndpoint(host: peer.host, port: peer.port);
-      _log.info('Discovered peer ${saved?.nick ?? peer.nick} at ${peer.host}:${peer.port}');
+      _log.info(
+        'Discovered peer ${saved?.nick ?? peer.nick} at ${peer.host}:${peer.port}',
+      );
     } catch (error, stack) {
       _log.warning(
         'mDNS peer handshake failed for ${peer.host}:${peer.port}: $error',
