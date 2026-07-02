@@ -20,7 +20,7 @@ void main() {
   });
 
   test('opens at current schema version', () {
-    expect(db.schemaVersion, 6);
+    expect(db.schemaVersion, 7);
   });
 
   test('chunk hash index exists', () async {
@@ -105,6 +105,65 @@ void main() {
         .getSingle();
     expect(download.state, DownloadState.complete);
     expect(download.downloadedBytes, 256);
+  });
+
+  test('enqueue and nextQueuedDownload respect priority', () async {
+    await db.into(db.peers).insert(
+          PeersCompanion.insert(
+            id: 'peer-1',
+            nick: 'peer',
+            host: '127.0.0.1',
+            port: 1,
+          ),
+        );
+
+    await db.enqueueDownload(
+      peerId: 'peer-1',
+      shareId: 'share-1',
+      entryId: 'low',
+      relativePath: 'low.bin',
+      targetPath: '/tmp/low.bin',
+      totalBytes: 1,
+      priority: 0,
+    );
+    final highId = await db.enqueueDownload(
+      peerId: 'peer-1',
+      shareId: 'share-1',
+      entryId: 'high',
+      relativePath: 'high.bin',
+      targetPath: '/tmp/high.bin',
+      totalBytes: 1,
+      priority: 5,
+    );
+
+    final next = await db.nextQueuedDownload();
+    expect(next?.id, highId);
+  });
+
+  test('recoverInterruptedDownloads resets downloading rows', () async {
+    await db.into(db.peers).insert(
+          PeersCompanion.insert(
+            id: 'peer-1',
+            nick: 'peer',
+            host: '127.0.0.1',
+            port: 1,
+          ),
+        );
+    await db.into(db.downloads).insert(
+          DownloadsCompanion.insert(
+            id: 'dl-1',
+            peerId: 'peer-1',
+            shareId: 'share-1',
+            entryId: 'entry-1',
+            relativePath: 'file.bin',
+            targetPath: '/tmp/file.bin',
+            state: const Value(DownloadState.downloading),
+          ),
+        );
+
+    await db.recoverInterruptedDownloads();
+    final row = await db.downloadById('dl-1');
+    expect(row?.state, DownloadState.queued);
   });
 
   test('database reopens with persisted settings on disk', () async {

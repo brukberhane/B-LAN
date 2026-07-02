@@ -113,27 +113,31 @@ The next work should focus on turning the transfer MVP into a usable product rat
    - Highest priority because it fixes the largest UX correctness gap: downloads currently block the UI-triggered call path and cannot be managed after enqueue.
    - Unlocks better Android foreground behavior, desktop tray/background mode, and reliable restart recovery.
 
-2. **Phase 12: Global search and remote index discovery**
+2. **Phase 11.5: In-flight chunk progress**
+   - Shows real progress while a chunk is streaming instead of waiting for verified chunk completion.
+   - Do before Phase 12 because it improves current download UX without expanding discovery scope.
+
+3. **Phase 12: Global search and remote index discovery**
    - Core D-LAN identity feature.
    - Makes multi-source more useful because identical files can be found by hash/signature even when peers store them under different paths.
 
-3. **Phase 12.5: Chunk-level swarm scheduling**
+4. **Phase 12.5: Chunk-level swarm scheduling**
    - Turns multi-source from file-level failover into torrent-like chunk sourcing.
    - Do after Phase 12 so the app has a broad source/signature cache to build availability maps from.
 
-4. **Phase 14: Platform proof and native UX**
+5. **Phase 14: Platform proof and native UX**
    - Do before public claims or release artifacts.
    - The matrix must move from "pending" to real pass/fail notes.
 
-5. **Phase 18: Release engineering and distribution**
+6. **Phase 18: Release engineering and distribution**
    - Required before calling B-LAN release-ready.
    - CI, packaging, migration fixtures, and support bundles reduce regression risk.
 
-6. **Phase 13 and Phase 15**
+7. **Phase 13 and Phase 15**
    - Do before broad LAN-party usage.
    - Upload visibility, throttling, secure storage, and suspicious-peer handling improve trust and operability.
 
-7. **Phase 16 and Phase 17**
+8. **Phase 16 and Phase 17**
    - Optional product-scope decisions.
    - Headless remote control and chat are part of original D-LAN's broader feature set, but not required for a file-transfer MVP.
 
@@ -887,6 +891,65 @@ This phase must include a full walk through implemented backend capability and m
 - Downloads can continue/recover without blocking the UI call path.
 - User can manage downloads from Downloads page without going back to Browse.
 - Killing and restarting the app leaves resumable tasks in a sensible state.
+
+## Phase 11.5: In-Flight Chunk Progress
+
+### Goals
+
+- Show byte progress while an individual chunk is still downloading.
+- Keep verified/resumable progress separate from transient in-flight progress.
+- Make active downloads feel responsive for large chunks or slow peers.
+
+### Current State
+
+- `TransferClient._fetchChunkBytes()` uses `http.Client.get()`, which buffers the whole response before the client sees bytes.
+- `downloads.downloadedBytes` only updates after a chunk is fully fetched, hash-verified, and marked `verified`.
+- The Downloads page and foreground notification can appear stalled between chunk completions.
+- Parallel chunk downloads make naive "current chunk bytes" reporting inaccurate unless in-flight bytes are aggregated per download.
+
+### Implementation
+
+1. Schema v8:
+   - Add transient `inFlightBytes` to `downloads`, default `0`.
+   - Keep `downloadedBytes` as verified bytes only.
+   - Reset `inFlightBytes` to `0` on startup recovery, pause, cancel, error, complete, and retry.
+
+2. Streaming client:
+   - Replace chunk body fetches in `TransferClient` with `http.Client.send()` and stream reads.
+   - Count bytes as response chunks arrive for both `/chunks?hash=` and `Range` fallback.
+   - Preserve current semantics: write to partial file and mark verified only after full chunk bytes pass length and hash checks.
+   - Throw `DownloadCancelled` promptly during stream reads when the row is paused/cancelled.
+
+3. Progress aggregation:
+   - Track in-flight bytes per active chunk worker in memory, keyed by `downloadId` and `chunkIndex`.
+   - Persist the aggregate to `downloads.inFlightBytes` on a throttle, roughly every 100-250 ms.
+   - Report UI/notification progress as `downloadedBytes + inFlightBytes` out of `totalBytes`.
+   - Clamp display progress to `totalBytes`; never let in-flight bytes imply completion.
+
+4. Queue integration:
+   - `DownloadQueue` foreground notification should use aggregate progress, not only verified bytes.
+   - Pause/cancel should clear in-flight bytes before or immediately after stopping workers.
+   - Retry should reuse verified chunks but start with zero in-flight bytes.
+
+5. UI:
+   - Downloads page progress indicator should advance during active chunk streaming.
+   - Details text can show `Verified X / Y` and `Receiving Z` if useful.
+   - Folder group progress should include child `inFlightBytes` in displayed bytes while preserving completed-file counts.
+
+### Tests
+
+- Slow streaming chunk increments displayed/persisted progress before verification.
+- `downloadedBytes` remains verified-only while `inFlightBytes` carries temporary bytes.
+- Pause/cancel clears `inFlightBytes` and leaves verified chunks resumable.
+- Retry starts with `inFlightBytes == 0` and keeps verified chunk progress.
+- Parallel chunk workers aggregate in-flight bytes without double-counting.
+- Foreground notification callback receives intermediate progress.
+
+### Acceptance
+
+- Large/slow chunks show smooth progress before chunk verification completes.
+- Restart/recovery never treats in-flight bytes as durable downloaded data.
+- Existing resume, hash verification, multi-source, pause/cancel/retry tests still pass.
 
 ## Phase 12: Global Search And Remote Index Discovery
 

@@ -1,9 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:drift/drift.dart';
 import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as p;
 
 import '../indexing/chunker.dart';
 import '../persistence/database.dart';
@@ -20,21 +19,34 @@ class TransferClient {
     this._db, {
     http.Client? httpClient,
     int? maxConcurrentChunkDownloads,
-  })  : _httpClient = httpClient ?? http.Client(),
-        _maxConcurrentChunkDownloads =
-            maxConcurrentChunkDownloads ?? maxConcurrentDownloads,
-        _manifestCache = RemoteManifestCache(_db);
+  }) : _httpClient = httpClient ?? http.Client(),
+       _maxConcurrentChunkDownloads =
+           maxConcurrentChunkDownloads ?? maxConcurrentDownloads,
+       _manifestCache = RemoteManifestCache(_db);
 
   final AppDatabase _db;
   final http.Client _httpClient;
   final int _maxConcurrentChunkDownloads;
   final PeerSessionStore _sessions = PeerSessionStore();
   final RemoteManifestCache _manifestCache;
-  static const _requestTimeout = Duration(seconds: 10);
+  static const _metadataTimeout = Duration(seconds: 10);
+  static const _chunkRequestTimeout = Duration(minutes: 2);
   static const _chunkFetchMaxAttempts = 3;
 
-  bool _downloadCancelled = false;
+  final Set<String> _cancelledDownloads = {};
   String? _activeDownloadId;
+
+  void cancelDownload(String downloadId) => _cancelledDownloads.add(downloadId);
+
+  void cancelActiveDownload() {
+    final id = _activeDownloadId;
+    if (id != null) {
+      cancelDownload(id);
+    }
+  }
+
+  bool _isCancelled(String downloadId) =>
+      _cancelledDownloads.contains(downloadId);
 
   Future<HelloResponse> hello(String baseUrl, {String? token}) async {
     final response = await _get('$baseUrl/hello', token: token);
@@ -50,7 +62,11 @@ class TransferClient {
           headers: {'content-type': 'application/json'},
           body: jsonEncode({'peerId': peerId}),
         )
-        .timeout(_requestTimeout);
+        .timeout(
+          _metadataTimeout,
+          onTimeout: () =>
+              throw TimeoutException('POST $baseUrl/session timed out'),
+        );
     if (response.statusCode >= 400) {
       throw HttpException('Session failed: ${response.statusCode}');
     }
@@ -60,10 +76,7 @@ class TransferClient {
     return session.token;
   }
 
-  Future<List<ShareSummary>> listShares(
-    String baseUrl, {
-    String? token,
-  }) async {
+  Future<List<ShareSummary>> listShares(String baseUrl, {String? token}) async {
     final response = await _get('$baseUrl/shares', token: token);
     final list = jsonDecode(response.body) as List<dynamic>;
     return list
@@ -78,10 +91,7 @@ class TransferClient {
     String? token,
   }) async {
     final uri = Uri.parse('$baseUrl/entries').replace(
-      queryParameters: {
-        'shareId': shareId,
-        if (path.isNotEmpty) 'path': path,
-      },
+      queryParameters: {'shareId': shareId, if (path.isNotEmpty) 'path': path},
     );
     final response = await _get(uri.toString(), token: token);
     final list = jsonDecode(response.body) as List<dynamic>;
@@ -188,16 +198,15 @@ class TransferClient {
     required EntryDto entry,
     required String targetDirectory,
     String? token,
+    String? existingDownloadId,
     FileManifestDto? manifestOverride,
+    bool queueManaged = false,
     Future<void> Function(int downloaded, int total)? onProgress,
   }) async {
     final baseUrl = _peerBaseUrl(peer);
-    final manifest = manifestOverride ??
-        await fetchFileManifest(
-          baseUrl,
-          fileId: entry.id,
-          token: token,
-        );
+    final manifest =
+        manifestOverride ??
+        await fetchFileManifest(baseUrl, fileId: entry.id, token: token);
     if (!manifest.entry.hashReady) {
       throw HttpException('Remote file hashing not complete');
     }
@@ -225,28 +234,32 @@ class TransferClient {
 
     if (await finalFile.exists() &&
         await _fileMatchesManifest(finalFile, manifest)) {
-      final downloadId = await _db.createOrResumeDownload(
-        peerId: peer.id,
-        shareId: shareId,
-        entryId: entry.id,
-        relativePath: relativePath,
-        targetPath: targetPath,
-        totalBytes: manifest.totalBytes,
-      );
+      final downloadId =
+          existingDownloadId ??
+          await _db.createOrResumeDownload(
+            peerId: peer.id,
+            shareId: shareId,
+            entryId: entry.id,
+            relativePath: relativePath,
+            targetPath: targetPath,
+            totalBytes: manifest.totalBytes,
+          );
       await _db.upsertDownloadChunks(downloadId, manifest.chunks);
       await _db.completeDownload(downloadId, manifest.totalBytes);
       await onProgress?.call(manifest.totalBytes, manifest.totalBytes);
       return;
     }
 
-    final downloadId = await _db.createOrResumeDownload(
-      peerId: peer.id,
-      shareId: shareId,
-      entryId: entry.id,
-      relativePath: relativePath,
-      targetPath: targetPath,
-      totalBytes: manifest.totalBytes,
-    );
+    final downloadId =
+        existingDownloadId ??
+        await _db.createOrResumeDownload(
+          peerId: peer.id,
+          shareId: shareId,
+          entryId: entry.id,
+          relativePath: relativePath,
+          targetPath: targetPath,
+          totalBytes: manifest.totalBytes,
+        );
     await _db.upsertDownloadChunks(downloadId, manifest.chunks);
 
     if (manifest.totalBytes == 0) {
@@ -265,8 +278,8 @@ class TransferClient {
     );
 
     _activeDownloadId = downloadId;
+    _cancelledDownloads.remove(downloadId);
     try {
-      _downloadCancelled = false;
       await _downloadPendingChunks(
         downloadId: downloadId,
         partialFile: partialFile,
@@ -286,18 +299,19 @@ class TransferClient {
       }
       await _db.completeDownload(downloadId, manifest.totalBytes);
     } catch (error) {
-      if (error is _DownloadCancelled) {
-        await _db.cancelDownload(downloadId);
-      } else {
-        await _db.failDownload(downloadId, '$error');
+      if (!queueManaged) {
+        if (error is DownloadCancelled) {
+          await _db.cancelDownload(downloadId);
+        } else {
+          await _db.failDownload(downloadId, '$error');
+        }
       }
       rethrow;
     } finally {
       _activeDownloadId = null;
+      _cancelledDownloads.remove(downloadId);
     }
   }
-
-  void cancelActiveDownload() => _downloadCancelled = true;
 
   Future<void> _downloadPendingChunks({
     required String downloadId,
@@ -311,7 +325,7 @@ class TransferClient {
   }) async {
     final writeLock = _AsyncSerialLock();
 
-    while (!_downloadCancelled) {
+    while (!_isCancelled(downloadId)) {
       final pending = await _db.pendingDownloadChunks(downloadId);
       if (pending.isEmpty) {
         return;
@@ -324,7 +338,7 @@ class TransferClient {
       Object? firstError;
 
       Future<void> worker() async {
-        while (!_downloadCancelled) {
+        while (!_isCancelled(downloadId)) {
           final row = await queue.take();
           if (row == null) {
             return;
@@ -349,8 +363,8 @@ class TransferClient {
       }
 
       await Future.wait(List.generate(workerCount, (_) => worker()));
-      if (_downloadCancelled) {
-        throw const _DownloadCancelled();
+      if (_isCancelled(downloadId)) {
+        throw const DownloadCancelled();
       }
       if (firstError != null) {
         throw firstError!;
@@ -370,15 +384,13 @@ class TransferClient {
     required String downloadId,
     Future<void> Function(int downloaded, int total)? onProgress,
   }) async {
-    final chunk = manifest.chunks.firstWhere(
-      (c) => c.index == row.chunkIndex,
-    );
+    final chunk = manifest.chunks.firstWhere((c) => c.index == row.chunkIndex);
     await _db.markDownloadChunkWriting(row.id);
 
     Object? lastError;
     for (final peer in scheduler.rankedPeers()) {
-      if (_downloadCancelled) {
-        throw const _DownloadCancelled();
+      if (_isCancelled(downloadId)) {
+        throw const DownloadCancelled();
       }
 
       final token = await _tokenForPeer(peer, primaryToken: primaryToken);
@@ -420,7 +432,7 @@ class TransferClient {
         return;
       } catch (error) {
         lastError = error;
-        if (error is! _DownloadCancelled) {
+        if (error is! DownloadCancelled) {
           scheduler.recordFailure(peer.id);
         } else {
           rethrow;
@@ -490,10 +502,7 @@ class TransferClient {
     }
   }
 
-  Future<bool> _fileMatchesManifest(
-    File file,
-    FileManifestDto manifest,
-  ) async {
+  Future<bool> _fileMatchesManifest(File file, FileManifestDto manifest) async {
     if (await file.length() != manifest.totalBytes) {
       return false;
     }
@@ -549,22 +558,20 @@ class TransferClient {
     String? token,
     bool chunkRouteOnly = false,
   }) async {
-    final chunkUri = Uri.parse('$baseUrl/chunks').replace(
-      queryParameters: {'hash': chunk.hash},
-    );
+    final chunkUri = Uri.parse(
+      '$baseUrl/chunks',
+    ).replace(queryParameters: {'hash': chunk.hash});
     final chunkResponse = await _httpClient
-        .get(
-          chunkUri,
-          headers: _authHeaders(token),
-        )
-        .timeout(_requestTimeout);
+        .get(chunkUri, headers: _authHeaders(token))
+        .timeout(
+          _chunkRequestTimeout,
+          onTimeout: () => throw TimeoutException('GET $chunkUri timed out'),
+        );
     if (chunkResponse.statusCode == 200) {
       return chunkResponse.bodyBytes;
     }
     if (chunkRouteOnly) {
-      throw HttpException(
-        'Chunk download failed: ${chunkResponse.statusCode}',
-      );
+      throw HttpException('Chunk download failed: ${chunkResponse.statusCode}');
     }
 
     final end = chunk.offset + chunk.length - 1;
@@ -577,29 +584,32 @@ class TransferClient {
             'Range': 'bytes=${chunk.offset}-$end',
           },
         )
-        .timeout(_requestTimeout);
+        .timeout(
+          _chunkRequestTimeout,
+          onTimeout: () => throw TimeoutException(
+            'GET $fileUri bytes=${chunk.offset}-$end timed out',
+          ),
+        );
     if (rangeResponse.statusCode != 206 && rangeResponse.statusCode != 200) {
-      throw HttpException(
-        'Chunk download failed: ${rangeResponse.statusCode}',
-      );
+      throw HttpException('Chunk download failed: ${rangeResponse.statusCode}');
     }
     return rangeResponse.bodyBytes;
   }
 
   Future<int> _downloadProgress(String downloadId) async {
-    final download = await (_db.select(_db.downloads)
-          ..where((t) => t.id.equals(downloadId)))
-        .getSingle();
+    final download = await (_db.select(
+      _db.downloads,
+    )..where((t) => t.id.equals(downloadId))).getSingle();
     return download.downloadedBytes;
   }
 
   Future<http.Response> _get(String url, {String? token}) async {
     final response = await _httpClient
-        .get(
-          Uri.parse(url),
-          headers: _authHeaders(token),
-        )
-        .timeout(_requestTimeout);
+        .get(Uri.parse(url), headers: _authHeaders(token))
+        .timeout(
+          _metadataTimeout,
+          onTimeout: () => throw TimeoutException('GET $url timed out'),
+        );
     if (response.statusCode >= 400) {
       throw HttpException('GET $url failed: ${response.statusCode}');
     }
@@ -611,8 +621,8 @@ class TransferClient {
   String _peerBaseUrl(Peer peer) => 'http://${peer.host}:${peer.port}';
 
   Map<String, String> _authHeaders(String? token) => {
-        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
-      };
+    if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+  };
 
   String _browsePath(String path) {
     if (path.isEmpty) {
@@ -629,8 +639,8 @@ class TransferClient {
   }
 }
 
-class _DownloadCancelled implements Exception {
-  const _DownloadCancelled();
+class DownloadCancelled implements Exception {
+  const DownloadCancelled();
 
   @override
   String toString() => 'Download cancelled';
@@ -654,9 +664,9 @@ class _ChunkWorkQueue {
   final _lock = _AsyncSerialLock();
 
   Future<DownloadChunk?> take() => _lock.run(() async {
-        if (_next >= _rows.length) {
-          return null;
-        }
-        return _rows[_next++];
-      });
+    if (_next >= _rows.length) {
+      return null;
+    }
+    return _rows[_next++];
+  });
 }

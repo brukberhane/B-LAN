@@ -28,6 +28,11 @@ final downloadsProvider = StreamProvider((ref) {
   return db.watchDownloads();
 });
 
+final downloadGroupsProvider = StreamProvider((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.watchDownloadGroups();
+});
+
 final browserTokenProvider = FutureProvider<String>((ref) async {
   final db = ref.watch(databaseProvider);
   return db.ensureBrowserToken();

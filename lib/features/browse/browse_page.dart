@@ -315,7 +315,7 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
     }
 
     try {
-      final count = await ref.read(appServiceProvider).queueDownload(
+      final result = await ref.read(appServiceProvider).queueDownload(
             peer: widget.peer,
             shareId: share.id,
             entry: entry,
@@ -323,10 +323,10 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
           );
       if (mounted) {
         final message = entry.isDirectory
-            ? count == 0
-                ? 'Saved empty folder ${entry.name}'
-                : 'Saved $count file${count == 1 ? '' : 's'} from ${entry.name}'
-            : 'Saved ${entry.name}';
+            ? result.fileCount == 0
+                ? 'Queued empty folder ${entry.name}'
+                : 'Queued ${result.fileCount} file${result.fileCount == 1 ? '' : 's'} from ${entry.name}'
+            : 'Queued ${entry.name}';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message)),
         );

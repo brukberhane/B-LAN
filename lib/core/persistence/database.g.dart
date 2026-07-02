@@ -2347,7 +2347,7 @@ class Peer extends DataClass implements Insertable<Peer> {
     required this.port,
     this.fingerprint,
     required this.trusted,
-    this.identityStatus = 'normal',
+    required this.identityStatus,
     this.lastSeen,
     required this.manual,
   });
@@ -3058,6 +3058,614 @@ class RemoteEntriesCacheCompanion
   }
 }
 
+class $DownloadGroupsTable extends DownloadGroups
+    with TableInfo<$DownloadGroupsTable, DownloadGroup> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DownloadGroupsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _labelMeta = const VerificationMeta('label');
+  @override
+  late final GeneratedColumn<String> label = GeneratedColumn<String>(
+    'label',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _rootPathMeta = const VerificationMeta(
+    'rootPath',
+  );
+  @override
+  late final GeneratedColumn<String> rootPath = GeneratedColumn<String>(
+    'root_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _targetPathMeta = const VerificationMeta(
+    'targetPath',
+  );
+  @override
+  late final GeneratedColumn<String> targetPath = GeneratedColumn<String>(
+    'target_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _stateMeta = const VerificationMeta('state');
+  @override
+  late final GeneratedColumn<String> state = GeneratedColumn<String>(
+    'state',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('queued'),
+  );
+  static const VerificationMeta _totalFilesMeta = const VerificationMeta(
+    'totalFiles',
+  );
+  @override
+  late final GeneratedColumn<int> totalFiles = GeneratedColumn<int>(
+    'total_files',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _completedFilesMeta = const VerificationMeta(
+    'completedFiles',
+  );
+  @override
+  late final GeneratedColumn<int> completedFiles = GeneratedColumn<int>(
+    'completed_files',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _totalBytesMeta = const VerificationMeta(
+    'totalBytes',
+  );
+  @override
+  late final GeneratedColumn<int> totalBytes = GeneratedColumn<int>(
+    'total_bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _downloadedBytesMeta = const VerificationMeta(
+    'downloadedBytes',
+  );
+  @override
+  late final GeneratedColumn<int> downloadedBytes = GeneratedColumn<int>(
+    'downloaded_bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    label,
+    rootPath,
+    targetPath,
+    state,
+    totalFiles,
+    completedFiles,
+    totalBytes,
+    downloadedBytes,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'download_groups';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DownloadGroup> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('label')) {
+      context.handle(
+        _labelMeta,
+        label.isAcceptableOrUnknown(data['label']!, _labelMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_labelMeta);
+    }
+    if (data.containsKey('root_path')) {
+      context.handle(
+        _rootPathMeta,
+        rootPath.isAcceptableOrUnknown(data['root_path']!, _rootPathMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_rootPathMeta);
+    }
+    if (data.containsKey('target_path')) {
+      context.handle(
+        _targetPathMeta,
+        targetPath.isAcceptableOrUnknown(data['target_path']!, _targetPathMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_targetPathMeta);
+    }
+    if (data.containsKey('state')) {
+      context.handle(
+        _stateMeta,
+        state.isAcceptableOrUnknown(data['state']!, _stateMeta),
+      );
+    }
+    if (data.containsKey('total_files')) {
+      context.handle(
+        _totalFilesMeta,
+        totalFiles.isAcceptableOrUnknown(data['total_files']!, _totalFilesMeta),
+      );
+    }
+    if (data.containsKey('completed_files')) {
+      context.handle(
+        _completedFilesMeta,
+        completedFiles.isAcceptableOrUnknown(
+          data['completed_files']!,
+          _completedFilesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('total_bytes')) {
+      context.handle(
+        _totalBytesMeta,
+        totalBytes.isAcceptableOrUnknown(data['total_bytes']!, _totalBytesMeta),
+      );
+    }
+    if (data.containsKey('downloaded_bytes')) {
+      context.handle(
+        _downloadedBytesMeta,
+        downloadedBytes.isAcceptableOrUnknown(
+          data['downloaded_bytes']!,
+          _downloadedBytesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DownloadGroup map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DownloadGroup(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      label: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}label'],
+      )!,
+      rootPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}root_path'],
+      )!,
+      targetPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}target_path'],
+      )!,
+      state: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}state'],
+      )!,
+      totalFiles: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}total_files'],
+      )!,
+      completedFiles: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}completed_files'],
+      )!,
+      totalBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}total_bytes'],
+      )!,
+      downloadedBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}downloaded_bytes'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DownloadGroupsTable createAlias(String alias) {
+    return $DownloadGroupsTable(attachedDatabase, alias);
+  }
+}
+
+class DownloadGroup extends DataClass implements Insertable<DownloadGroup> {
+  final String id;
+  final String label;
+  final String rootPath;
+  final String targetPath;
+  final String state;
+  final int totalFiles;
+  final int completedFiles;
+  final int totalBytes;
+  final int downloadedBytes;
+  final DateTime createdAt;
+  const DownloadGroup({
+    required this.id,
+    required this.label,
+    required this.rootPath,
+    required this.targetPath,
+    required this.state,
+    required this.totalFiles,
+    required this.completedFiles,
+    required this.totalBytes,
+    required this.downloadedBytes,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['label'] = Variable<String>(label);
+    map['root_path'] = Variable<String>(rootPath);
+    map['target_path'] = Variable<String>(targetPath);
+    map['state'] = Variable<String>(state);
+    map['total_files'] = Variable<int>(totalFiles);
+    map['completed_files'] = Variable<int>(completedFiles);
+    map['total_bytes'] = Variable<int>(totalBytes);
+    map['downloaded_bytes'] = Variable<int>(downloadedBytes);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  DownloadGroupsCompanion toCompanion(bool nullToAbsent) {
+    return DownloadGroupsCompanion(
+      id: Value(id),
+      label: Value(label),
+      rootPath: Value(rootPath),
+      targetPath: Value(targetPath),
+      state: Value(state),
+      totalFiles: Value(totalFiles),
+      completedFiles: Value(completedFiles),
+      totalBytes: Value(totalBytes),
+      downloadedBytes: Value(downloadedBytes),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory DownloadGroup.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DownloadGroup(
+      id: serializer.fromJson<String>(json['id']),
+      label: serializer.fromJson<String>(json['label']),
+      rootPath: serializer.fromJson<String>(json['rootPath']),
+      targetPath: serializer.fromJson<String>(json['targetPath']),
+      state: serializer.fromJson<String>(json['state']),
+      totalFiles: serializer.fromJson<int>(json['totalFiles']),
+      completedFiles: serializer.fromJson<int>(json['completedFiles']),
+      totalBytes: serializer.fromJson<int>(json['totalBytes']),
+      downloadedBytes: serializer.fromJson<int>(json['downloadedBytes']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'label': serializer.toJson<String>(label),
+      'rootPath': serializer.toJson<String>(rootPath),
+      'targetPath': serializer.toJson<String>(targetPath),
+      'state': serializer.toJson<String>(state),
+      'totalFiles': serializer.toJson<int>(totalFiles),
+      'completedFiles': serializer.toJson<int>(completedFiles),
+      'totalBytes': serializer.toJson<int>(totalBytes),
+      'downloadedBytes': serializer.toJson<int>(downloadedBytes),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  DownloadGroup copyWith({
+    String? id,
+    String? label,
+    String? rootPath,
+    String? targetPath,
+    String? state,
+    int? totalFiles,
+    int? completedFiles,
+    int? totalBytes,
+    int? downloadedBytes,
+    DateTime? createdAt,
+  }) => DownloadGroup(
+    id: id ?? this.id,
+    label: label ?? this.label,
+    rootPath: rootPath ?? this.rootPath,
+    targetPath: targetPath ?? this.targetPath,
+    state: state ?? this.state,
+    totalFiles: totalFiles ?? this.totalFiles,
+    completedFiles: completedFiles ?? this.completedFiles,
+    totalBytes: totalBytes ?? this.totalBytes,
+    downloadedBytes: downloadedBytes ?? this.downloadedBytes,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  DownloadGroup copyWithCompanion(DownloadGroupsCompanion data) {
+    return DownloadGroup(
+      id: data.id.present ? data.id.value : this.id,
+      label: data.label.present ? data.label.value : this.label,
+      rootPath: data.rootPath.present ? data.rootPath.value : this.rootPath,
+      targetPath: data.targetPath.present
+          ? data.targetPath.value
+          : this.targetPath,
+      state: data.state.present ? data.state.value : this.state,
+      totalFiles: data.totalFiles.present
+          ? data.totalFiles.value
+          : this.totalFiles,
+      completedFiles: data.completedFiles.present
+          ? data.completedFiles.value
+          : this.completedFiles,
+      totalBytes: data.totalBytes.present
+          ? data.totalBytes.value
+          : this.totalBytes,
+      downloadedBytes: data.downloadedBytes.present
+          ? data.downloadedBytes.value
+          : this.downloadedBytes,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DownloadGroup(')
+          ..write('id: $id, ')
+          ..write('label: $label, ')
+          ..write('rootPath: $rootPath, ')
+          ..write('targetPath: $targetPath, ')
+          ..write('state: $state, ')
+          ..write('totalFiles: $totalFiles, ')
+          ..write('completedFiles: $completedFiles, ')
+          ..write('totalBytes: $totalBytes, ')
+          ..write('downloadedBytes: $downloadedBytes, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    label,
+    rootPath,
+    targetPath,
+    state,
+    totalFiles,
+    completedFiles,
+    totalBytes,
+    downloadedBytes,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DownloadGroup &&
+          other.id == this.id &&
+          other.label == this.label &&
+          other.rootPath == this.rootPath &&
+          other.targetPath == this.targetPath &&
+          other.state == this.state &&
+          other.totalFiles == this.totalFiles &&
+          other.completedFiles == this.completedFiles &&
+          other.totalBytes == this.totalBytes &&
+          other.downloadedBytes == this.downloadedBytes &&
+          other.createdAt == this.createdAt);
+}
+
+class DownloadGroupsCompanion extends UpdateCompanion<DownloadGroup> {
+  final Value<String> id;
+  final Value<String> label;
+  final Value<String> rootPath;
+  final Value<String> targetPath;
+  final Value<String> state;
+  final Value<int> totalFiles;
+  final Value<int> completedFiles;
+  final Value<int> totalBytes;
+  final Value<int> downloadedBytes;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const DownloadGroupsCompanion({
+    this.id = const Value.absent(),
+    this.label = const Value.absent(),
+    this.rootPath = const Value.absent(),
+    this.targetPath = const Value.absent(),
+    this.state = const Value.absent(),
+    this.totalFiles = const Value.absent(),
+    this.completedFiles = const Value.absent(),
+    this.totalBytes = const Value.absent(),
+    this.downloadedBytes = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DownloadGroupsCompanion.insert({
+    required String id,
+    required String label,
+    required String rootPath,
+    required String targetPath,
+    this.state = const Value.absent(),
+    this.totalFiles = const Value.absent(),
+    this.completedFiles = const Value.absent(),
+    this.totalBytes = const Value.absent(),
+    this.downloadedBytes = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       label = Value(label),
+       rootPath = Value(rootPath),
+       targetPath = Value(targetPath);
+  static Insertable<DownloadGroup> custom({
+    Expression<String>? id,
+    Expression<String>? label,
+    Expression<String>? rootPath,
+    Expression<String>? targetPath,
+    Expression<String>? state,
+    Expression<int>? totalFiles,
+    Expression<int>? completedFiles,
+    Expression<int>? totalBytes,
+    Expression<int>? downloadedBytes,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (label != null) 'label': label,
+      if (rootPath != null) 'root_path': rootPath,
+      if (targetPath != null) 'target_path': targetPath,
+      if (state != null) 'state': state,
+      if (totalFiles != null) 'total_files': totalFiles,
+      if (completedFiles != null) 'completed_files': completedFiles,
+      if (totalBytes != null) 'total_bytes': totalBytes,
+      if (downloadedBytes != null) 'downloaded_bytes': downloadedBytes,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DownloadGroupsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? label,
+    Value<String>? rootPath,
+    Value<String>? targetPath,
+    Value<String>? state,
+    Value<int>? totalFiles,
+    Value<int>? completedFiles,
+    Value<int>? totalBytes,
+    Value<int>? downloadedBytes,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return DownloadGroupsCompanion(
+      id: id ?? this.id,
+      label: label ?? this.label,
+      rootPath: rootPath ?? this.rootPath,
+      targetPath: targetPath ?? this.targetPath,
+      state: state ?? this.state,
+      totalFiles: totalFiles ?? this.totalFiles,
+      completedFiles: completedFiles ?? this.completedFiles,
+      totalBytes: totalBytes ?? this.totalBytes,
+      downloadedBytes: downloadedBytes ?? this.downloadedBytes,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (label.present) {
+      map['label'] = Variable<String>(label.value);
+    }
+    if (rootPath.present) {
+      map['root_path'] = Variable<String>(rootPath.value);
+    }
+    if (targetPath.present) {
+      map['target_path'] = Variable<String>(targetPath.value);
+    }
+    if (state.present) {
+      map['state'] = Variable<String>(state.value);
+    }
+    if (totalFiles.present) {
+      map['total_files'] = Variable<int>(totalFiles.value);
+    }
+    if (completedFiles.present) {
+      map['completed_files'] = Variable<int>(completedFiles.value);
+    }
+    if (totalBytes.present) {
+      map['total_bytes'] = Variable<int>(totalBytes.value);
+    }
+    if (downloadedBytes.present) {
+      map['downloaded_bytes'] = Variable<int>(downloadedBytes.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DownloadGroupsCompanion(')
+          ..write('id: $id, ')
+          ..write('label: $label, ')
+          ..write('rootPath: $rootPath, ')
+          ..write('targetPath: $targetPath, ')
+          ..write('state: $state, ')
+          ..write('totalFiles: $totalFiles, ')
+          ..write('completedFiles: $completedFiles, ')
+          ..write('totalBytes: $totalBytes, ')
+          ..write('downloadedBytes: $downloadedBytes, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $DownloadsTable extends Downloads
     with TableInfo<$DownloadsTable, Download> {
   @override
@@ -3139,6 +3747,45 @@ class $DownloadsTable extends Downloads
     requiredDuringInsert: false,
     defaultValue: const Constant('queued'),
   );
+  static const VerificationMeta _groupIdMeta = const VerificationMeta(
+    'groupId',
+  );
+  @override
+  late final GeneratedColumn<String> groupId = GeneratedColumn<String>(
+    'group_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES download_groups (id)',
+    ),
+  );
+  static const VerificationMeta _priorityMeta = const VerificationMeta(
+    'priority',
+  );
+  @override
+  late final GeneratedColumn<int> priority = GeneratedColumn<int>(
+    'priority',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _pausedMeta = const VerificationMeta('paused');
+  @override
+  late final GeneratedColumn<bool> paused = GeneratedColumn<bool>(
+    'paused',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("paused" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _totalBytesMeta = const VerificationMeta(
     'totalBytes',
   );
@@ -3186,6 +3833,29 @@ class $DownloadsTable extends Downloads
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _completedAtMeta = const VerificationMeta(
+    'completedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> completedAt = GeneratedColumn<DateTime>(
+    'completed_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -3195,10 +3865,15 @@ class $DownloadsTable extends Downloads
     relativePath,
     targetPath,
     state,
+    groupId,
+    priority,
+    paused,
     totalBytes,
     downloadedBytes,
     errorMessage,
     createdAt,
+    updatedAt,
+    completedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3266,6 +3941,24 @@ class $DownloadsTable extends Downloads
         state.isAcceptableOrUnknown(data['state']!, _stateMeta),
       );
     }
+    if (data.containsKey('group_id')) {
+      context.handle(
+        _groupIdMeta,
+        groupId.isAcceptableOrUnknown(data['group_id']!, _groupIdMeta),
+      );
+    }
+    if (data.containsKey('priority')) {
+      context.handle(
+        _priorityMeta,
+        priority.isAcceptableOrUnknown(data['priority']!, _priorityMeta),
+      );
+    }
+    if (data.containsKey('paused')) {
+      context.handle(
+        _pausedMeta,
+        paused.isAcceptableOrUnknown(data['paused']!, _pausedMeta),
+      );
+    }
     if (data.containsKey('total_bytes')) {
       context.handle(
         _totalBytesMeta,
@@ -3294,6 +3987,21 @@ class $DownloadsTable extends Downloads
       context.handle(
         _createdAtMeta,
         createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('completed_at')) {
+      context.handle(
+        _completedAtMeta,
+        completedAt.isAcceptableOrUnknown(
+          data['completed_at']!,
+          _completedAtMeta,
+        ),
       );
     }
     return context;
@@ -3333,6 +4041,18 @@ class $DownloadsTable extends Downloads
         DriftSqlType.string,
         data['${effectivePrefix}state'],
       )!,
+      groupId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_id'],
+      ),
+      priority: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}priority'],
+      )!,
+      paused: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}paused'],
+      )!,
       totalBytes: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}total_bytes'],
@@ -3349,6 +4069,14 @@ class $DownloadsTable extends Downloads
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      completedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}completed_at'],
+      ),
     );
   }
 
@@ -3366,10 +4094,15 @@ class Download extends DataClass implements Insertable<Download> {
   final String relativePath;
   final String targetPath;
   final String state;
+  final String? groupId;
+  final int priority;
+  final bool paused;
   final int totalBytes;
   final int downloadedBytes;
   final String? errorMessage;
   final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? completedAt;
   const Download({
     required this.id,
     required this.peerId,
@@ -3378,10 +4111,15 @@ class Download extends DataClass implements Insertable<Download> {
     required this.relativePath,
     required this.targetPath,
     required this.state,
+    this.groupId,
+    required this.priority,
+    required this.paused,
     required this.totalBytes,
     required this.downloadedBytes,
     this.errorMessage,
     required this.createdAt,
+    required this.updatedAt,
+    this.completedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3393,12 +4131,21 @@ class Download extends DataClass implements Insertable<Download> {
     map['relative_path'] = Variable<String>(relativePath);
     map['target_path'] = Variable<String>(targetPath);
     map['state'] = Variable<String>(state);
+    if (!nullToAbsent || groupId != null) {
+      map['group_id'] = Variable<String>(groupId);
+    }
+    map['priority'] = Variable<int>(priority);
+    map['paused'] = Variable<bool>(paused);
     map['total_bytes'] = Variable<int>(totalBytes);
     map['downloaded_bytes'] = Variable<int>(downloadedBytes);
     if (!nullToAbsent || errorMessage != null) {
       map['error_message'] = Variable<String>(errorMessage);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || completedAt != null) {
+      map['completed_at'] = Variable<DateTime>(completedAt);
+    }
     return map;
   }
 
@@ -3411,12 +4158,21 @@ class Download extends DataClass implements Insertable<Download> {
       relativePath: Value(relativePath),
       targetPath: Value(targetPath),
       state: Value(state),
+      groupId: groupId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(groupId),
+      priority: Value(priority),
+      paused: Value(paused),
       totalBytes: Value(totalBytes),
       downloadedBytes: Value(downloadedBytes),
       errorMessage: errorMessage == null && nullToAbsent
           ? const Value.absent()
           : Value(errorMessage),
       createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      completedAt: completedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(completedAt),
     );
   }
 
@@ -3433,10 +4189,15 @@ class Download extends DataClass implements Insertable<Download> {
       relativePath: serializer.fromJson<String>(json['relativePath']),
       targetPath: serializer.fromJson<String>(json['targetPath']),
       state: serializer.fromJson<String>(json['state']),
+      groupId: serializer.fromJson<String?>(json['groupId']),
+      priority: serializer.fromJson<int>(json['priority']),
+      paused: serializer.fromJson<bool>(json['paused']),
       totalBytes: serializer.fromJson<int>(json['totalBytes']),
       downloadedBytes: serializer.fromJson<int>(json['downloadedBytes']),
       errorMessage: serializer.fromJson<String?>(json['errorMessage']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      completedAt: serializer.fromJson<DateTime?>(json['completedAt']),
     );
   }
   @override
@@ -3450,10 +4211,15 @@ class Download extends DataClass implements Insertable<Download> {
       'relativePath': serializer.toJson<String>(relativePath),
       'targetPath': serializer.toJson<String>(targetPath),
       'state': serializer.toJson<String>(state),
+      'groupId': serializer.toJson<String?>(groupId),
+      'priority': serializer.toJson<int>(priority),
+      'paused': serializer.toJson<bool>(paused),
       'totalBytes': serializer.toJson<int>(totalBytes),
       'downloadedBytes': serializer.toJson<int>(downloadedBytes),
       'errorMessage': serializer.toJson<String?>(errorMessage),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'completedAt': serializer.toJson<DateTime?>(completedAt),
     };
   }
 
@@ -3465,10 +4231,15 @@ class Download extends DataClass implements Insertable<Download> {
     String? relativePath,
     String? targetPath,
     String? state,
+    Value<String?> groupId = const Value.absent(),
+    int? priority,
+    bool? paused,
     int? totalBytes,
     int? downloadedBytes,
     Value<String?> errorMessage = const Value.absent(),
     DateTime? createdAt,
+    DateTime? updatedAt,
+    Value<DateTime?> completedAt = const Value.absent(),
   }) => Download(
     id: id ?? this.id,
     peerId: peerId ?? this.peerId,
@@ -3477,10 +4248,15 @@ class Download extends DataClass implements Insertable<Download> {
     relativePath: relativePath ?? this.relativePath,
     targetPath: targetPath ?? this.targetPath,
     state: state ?? this.state,
+    groupId: groupId.present ? groupId.value : this.groupId,
+    priority: priority ?? this.priority,
+    paused: paused ?? this.paused,
     totalBytes: totalBytes ?? this.totalBytes,
     downloadedBytes: downloadedBytes ?? this.downloadedBytes,
     errorMessage: errorMessage.present ? errorMessage.value : this.errorMessage,
     createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    completedAt: completedAt.present ? completedAt.value : this.completedAt,
   );
   Download copyWithCompanion(DownloadsCompanion data) {
     return Download(
@@ -3495,6 +4271,9 @@ class Download extends DataClass implements Insertable<Download> {
           ? data.targetPath.value
           : this.targetPath,
       state: data.state.present ? data.state.value : this.state,
+      groupId: data.groupId.present ? data.groupId.value : this.groupId,
+      priority: data.priority.present ? data.priority.value : this.priority,
+      paused: data.paused.present ? data.paused.value : this.paused,
       totalBytes: data.totalBytes.present
           ? data.totalBytes.value
           : this.totalBytes,
@@ -3505,6 +4284,10 @@ class Download extends DataClass implements Insertable<Download> {
           ? data.errorMessage.value
           : this.errorMessage,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      completedAt: data.completedAt.present
+          ? data.completedAt.value
+          : this.completedAt,
     );
   }
 
@@ -3518,10 +4301,15 @@ class Download extends DataClass implements Insertable<Download> {
           ..write('relativePath: $relativePath, ')
           ..write('targetPath: $targetPath, ')
           ..write('state: $state, ')
+          ..write('groupId: $groupId, ')
+          ..write('priority: $priority, ')
+          ..write('paused: $paused, ')
           ..write('totalBytes: $totalBytes, ')
           ..write('downloadedBytes: $downloadedBytes, ')
           ..write('errorMessage: $errorMessage, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('completedAt: $completedAt')
           ..write(')'))
         .toString();
   }
@@ -3535,10 +4323,15 @@ class Download extends DataClass implements Insertable<Download> {
     relativePath,
     targetPath,
     state,
+    groupId,
+    priority,
+    paused,
     totalBytes,
     downloadedBytes,
     errorMessage,
     createdAt,
+    updatedAt,
+    completedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -3551,10 +4344,15 @@ class Download extends DataClass implements Insertable<Download> {
           other.relativePath == this.relativePath &&
           other.targetPath == this.targetPath &&
           other.state == this.state &&
+          other.groupId == this.groupId &&
+          other.priority == this.priority &&
+          other.paused == this.paused &&
           other.totalBytes == this.totalBytes &&
           other.downloadedBytes == this.downloadedBytes &&
           other.errorMessage == this.errorMessage &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.completedAt == this.completedAt);
 }
 
 class DownloadsCompanion extends UpdateCompanion<Download> {
@@ -3565,10 +4363,15 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
   final Value<String> relativePath;
   final Value<String> targetPath;
   final Value<String> state;
+  final Value<String?> groupId;
+  final Value<int> priority;
+  final Value<bool> paused;
   final Value<int> totalBytes;
   final Value<int> downloadedBytes;
   final Value<String?> errorMessage;
   final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> completedAt;
   final Value<int> rowid;
   const DownloadsCompanion({
     this.id = const Value.absent(),
@@ -3578,10 +4381,15 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     this.relativePath = const Value.absent(),
     this.targetPath = const Value.absent(),
     this.state = const Value.absent(),
+    this.groupId = const Value.absent(),
+    this.priority = const Value.absent(),
+    this.paused = const Value.absent(),
     this.totalBytes = const Value.absent(),
     this.downloadedBytes = const Value.absent(),
     this.errorMessage = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.completedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DownloadsCompanion.insert({
@@ -3592,10 +4400,15 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     required String relativePath,
     required String targetPath,
     this.state = const Value.absent(),
+    this.groupId = const Value.absent(),
+    this.priority = const Value.absent(),
+    this.paused = const Value.absent(),
     this.totalBytes = const Value.absent(),
     this.downloadedBytes = const Value.absent(),
     this.errorMessage = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.completedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        peerId = Value(peerId),
@@ -3611,10 +4424,15 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     Expression<String>? relativePath,
     Expression<String>? targetPath,
     Expression<String>? state,
+    Expression<String>? groupId,
+    Expression<int>? priority,
+    Expression<bool>? paused,
     Expression<int>? totalBytes,
     Expression<int>? downloadedBytes,
     Expression<String>? errorMessage,
     Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? completedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3625,10 +4443,15 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
       if (relativePath != null) 'relative_path': relativePath,
       if (targetPath != null) 'target_path': targetPath,
       if (state != null) 'state': state,
+      if (groupId != null) 'group_id': groupId,
+      if (priority != null) 'priority': priority,
+      if (paused != null) 'paused': paused,
       if (totalBytes != null) 'total_bytes': totalBytes,
       if (downloadedBytes != null) 'downloaded_bytes': downloadedBytes,
       if (errorMessage != null) 'error_message': errorMessage,
       if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (completedAt != null) 'completed_at': completedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3641,10 +4464,15 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     Value<String>? relativePath,
     Value<String>? targetPath,
     Value<String>? state,
+    Value<String?>? groupId,
+    Value<int>? priority,
+    Value<bool>? paused,
     Value<int>? totalBytes,
     Value<int>? downloadedBytes,
     Value<String?>? errorMessage,
     Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<DateTime?>? completedAt,
     Value<int>? rowid,
   }) {
     return DownloadsCompanion(
@@ -3655,10 +4483,15 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
       relativePath: relativePath ?? this.relativePath,
       targetPath: targetPath ?? this.targetPath,
       state: state ?? this.state,
+      groupId: groupId ?? this.groupId,
+      priority: priority ?? this.priority,
+      paused: paused ?? this.paused,
       totalBytes: totalBytes ?? this.totalBytes,
       downloadedBytes: downloadedBytes ?? this.downloadedBytes,
       errorMessage: errorMessage ?? this.errorMessage,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      completedAt: completedAt ?? this.completedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3687,6 +4520,15 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     if (state.present) {
       map['state'] = Variable<String>(state.value);
     }
+    if (groupId.present) {
+      map['group_id'] = Variable<String>(groupId.value);
+    }
+    if (priority.present) {
+      map['priority'] = Variable<int>(priority.value);
+    }
+    if (paused.present) {
+      map['paused'] = Variable<bool>(paused.value);
+    }
     if (totalBytes.present) {
       map['total_bytes'] = Variable<int>(totalBytes.value);
     }
@@ -3698,6 +4540,12 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
     }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (completedAt.present) {
+      map['completed_at'] = Variable<DateTime>(completedAt.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -3715,10 +4563,15 @@ class DownloadsCompanion extends UpdateCompanion<Download> {
           ..write('relativePath: $relativePath, ')
           ..write('targetPath: $targetPath, ')
           ..write('state: $state, ')
+          ..write('groupId: $groupId, ')
+          ..write('priority: $priority, ')
+          ..write('paused: $paused, ')
           ..write('totalBytes: $totalBytes, ')
           ..write('downloadedBytes: $downloadedBytes, ')
           ..write('errorMessage: $errorMessage, ')
           ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('completedAt: $completedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4745,6 +5598,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PeersTable peers = $PeersTable(this);
   late final $RemoteEntriesCacheTable remoteEntriesCache =
       $RemoteEntriesCacheTable(this);
+  late final $DownloadGroupsTable downloadGroups = $DownloadGroupsTable(this);
   late final $DownloadsTable downloads = $DownloadsTable(this);
   late final $DownloadChunksTable downloadChunks = $DownloadChunksTable(this);
   late final $TransfersTable transfers = $TransfersTable(this);
@@ -4759,6 +5613,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     chunks,
     peers,
     remoteEntriesCache,
+    downloadGroups,
     downloads,
     downloadChunks,
     transfers,
@@ -7046,6 +7901,418 @@ typedef $$RemoteEntriesCacheTableProcessedTableManager =
       RemoteEntriesCacheData,
       PrefetchHooks Function({bool peerId})
     >;
+typedef $$DownloadGroupsTableCreateCompanionBuilder =
+    DownloadGroupsCompanion Function({
+      required String id,
+      required String label,
+      required String rootPath,
+      required String targetPath,
+      Value<String> state,
+      Value<int> totalFiles,
+      Value<int> completedFiles,
+      Value<int> totalBytes,
+      Value<int> downloadedBytes,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+typedef $$DownloadGroupsTableUpdateCompanionBuilder =
+    DownloadGroupsCompanion Function({
+      Value<String> id,
+      Value<String> label,
+      Value<String> rootPath,
+      Value<String> targetPath,
+      Value<String> state,
+      Value<int> totalFiles,
+      Value<int> completedFiles,
+      Value<int> totalBytes,
+      Value<int> downloadedBytes,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+final class $$DownloadGroupsTableReferences
+    extends BaseReferences<_$AppDatabase, $DownloadGroupsTable, DownloadGroup> {
+  $$DownloadGroupsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static MultiTypedResultKey<$DownloadsTable, List<Download>>
+  _downloadsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.downloads,
+    aliasName: 'download_groups__id__downloads__group_id',
+  );
+
+  $$DownloadsTableProcessedTableManager get downloadsRefs {
+    final manager = $$DownloadsTableTableManager(
+      $_db,
+      $_db.downloads,
+    ).filter((f) => f.groupId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_downloadsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$DownloadGroupsTableFilterComposer
+    extends Composer<_$AppDatabase, $DownloadGroupsTable> {
+  $$DownloadGroupsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rootPath => $composableBuilder(
+    column: $table.rootPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get targetPath => $composableBuilder(
+    column: $table.targetPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get state => $composableBuilder(
+    column: $table.state,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get totalFiles => $composableBuilder(
+    column: $table.totalFiles,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get completedFiles => $composableBuilder(
+    column: $table.completedFiles,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get totalBytes => $composableBuilder(
+    column: $table.totalBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get downloadedBytes => $composableBuilder(
+    column: $table.downloadedBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> downloadsRefs(
+    Expression<bool> Function($$DownloadsTableFilterComposer f) f,
+  ) {
+    final $$DownloadsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.downloads,
+      getReferencedColumn: (t) => t.groupId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DownloadsTableFilterComposer(
+            $db: $db,
+            $table: $db.downloads,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$DownloadGroupsTableOrderingComposer
+    extends Composer<_$AppDatabase, $DownloadGroupsTable> {
+  $$DownloadGroupsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get label => $composableBuilder(
+    column: $table.label,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get rootPath => $composableBuilder(
+    column: $table.rootPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get targetPath => $composableBuilder(
+    column: $table.targetPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get state => $composableBuilder(
+    column: $table.state,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get totalFiles => $composableBuilder(
+    column: $table.totalFiles,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get completedFiles => $composableBuilder(
+    column: $table.completedFiles,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get totalBytes => $composableBuilder(
+    column: $table.totalBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get downloadedBytes => $composableBuilder(
+    column: $table.downloadedBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DownloadGroupsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DownloadGroupsTable> {
+  $$DownloadGroupsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get label =>
+      $composableBuilder(column: $table.label, builder: (column) => column);
+
+  GeneratedColumn<String> get rootPath =>
+      $composableBuilder(column: $table.rootPath, builder: (column) => column);
+
+  GeneratedColumn<String> get targetPath => $composableBuilder(
+    column: $table.targetPath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get state =>
+      $composableBuilder(column: $table.state, builder: (column) => column);
+
+  GeneratedColumn<int> get totalFiles => $composableBuilder(
+    column: $table.totalFiles,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get completedFiles => $composableBuilder(
+    column: $table.completedFiles,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get totalBytes => $composableBuilder(
+    column: $table.totalBytes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get downloadedBytes => $composableBuilder(
+    column: $table.downloadedBytes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  Expression<T> downloadsRefs<T extends Object>(
+    Expression<T> Function($$DownloadsTableAnnotationComposer a) f,
+  ) {
+    final $$DownloadsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.downloads,
+      getReferencedColumn: (t) => t.groupId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DownloadsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.downloads,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$DownloadGroupsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DownloadGroupsTable,
+          DownloadGroup,
+          $$DownloadGroupsTableFilterComposer,
+          $$DownloadGroupsTableOrderingComposer,
+          $$DownloadGroupsTableAnnotationComposer,
+          $$DownloadGroupsTableCreateCompanionBuilder,
+          $$DownloadGroupsTableUpdateCompanionBuilder,
+          (DownloadGroup, $$DownloadGroupsTableReferences),
+          DownloadGroup,
+          PrefetchHooks Function({bool downloadsRefs})
+        > {
+  $$DownloadGroupsTableTableManager(
+    _$AppDatabase db,
+    $DownloadGroupsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DownloadGroupsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DownloadGroupsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DownloadGroupsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> label = const Value.absent(),
+                Value<String> rootPath = const Value.absent(),
+                Value<String> targetPath = const Value.absent(),
+                Value<String> state = const Value.absent(),
+                Value<int> totalFiles = const Value.absent(),
+                Value<int> completedFiles = const Value.absent(),
+                Value<int> totalBytes = const Value.absent(),
+                Value<int> downloadedBytes = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DownloadGroupsCompanion(
+                id: id,
+                label: label,
+                rootPath: rootPath,
+                targetPath: targetPath,
+                state: state,
+                totalFiles: totalFiles,
+                completedFiles: completedFiles,
+                totalBytes: totalBytes,
+                downloadedBytes: downloadedBytes,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String label,
+                required String rootPath,
+                required String targetPath,
+                Value<String> state = const Value.absent(),
+                Value<int> totalFiles = const Value.absent(),
+                Value<int> completedFiles = const Value.absent(),
+                Value<int> totalBytes = const Value.absent(),
+                Value<int> downloadedBytes = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DownloadGroupsCompanion.insert(
+                id: id,
+                label: label,
+                rootPath: rootPath,
+                targetPath: targetPath,
+                state: state,
+                totalFiles: totalFiles,
+                completedFiles: completedFiles,
+                totalBytes: totalBytes,
+                downloadedBytes: downloadedBytes,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$DownloadGroupsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({downloadsRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [if (downloadsRefs) db.downloads],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (downloadsRefs)
+                    await $_getPrefetchedData<
+                      DownloadGroup,
+                      $DownloadGroupsTable,
+                      Download
+                    >(
+                      currentTable: table,
+                      referencedTable: $$DownloadGroupsTableReferences
+                          ._downloadsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$DownloadGroupsTableReferences(
+                            db,
+                            table,
+                            p0,
+                          ).downloadsRefs,
+                      referencedItemsForCurrentItem: (item, referencedItems) =>
+                          referencedItems.where((e) => e.groupId == item.id),
+                      typedResults: items,
+                    ),
+                ];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DownloadGroupsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DownloadGroupsTable,
+      DownloadGroup,
+      $$DownloadGroupsTableFilterComposer,
+      $$DownloadGroupsTableOrderingComposer,
+      $$DownloadGroupsTableAnnotationComposer,
+      $$DownloadGroupsTableCreateCompanionBuilder,
+      $$DownloadGroupsTableUpdateCompanionBuilder,
+      (DownloadGroup, $$DownloadGroupsTableReferences),
+      DownloadGroup,
+      PrefetchHooks Function({bool downloadsRefs})
+    >;
 typedef $$DownloadsTableCreateCompanionBuilder =
     DownloadsCompanion Function({
       required String id,
@@ -7055,10 +8322,15 @@ typedef $$DownloadsTableCreateCompanionBuilder =
       required String relativePath,
       required String targetPath,
       Value<String> state,
+      Value<String?> groupId,
+      Value<int> priority,
+      Value<bool> paused,
       Value<int> totalBytes,
       Value<int> downloadedBytes,
       Value<String?> errorMessage,
       Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<DateTime?> completedAt,
       Value<int> rowid,
     });
 typedef $$DownloadsTableUpdateCompanionBuilder =
@@ -7070,10 +8342,15 @@ typedef $$DownloadsTableUpdateCompanionBuilder =
       Value<String> relativePath,
       Value<String> targetPath,
       Value<String> state,
+      Value<String?> groupId,
+      Value<int> priority,
+      Value<bool> paused,
       Value<int> totalBytes,
       Value<int> downloadedBytes,
       Value<String?> errorMessage,
       Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<DateTime?> completedAt,
       Value<int> rowid,
     });
 
@@ -7092,6 +8369,23 @@ final class $$DownloadsTableReferences
       $_db.peers,
     ).filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_peerIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $DownloadGroupsTable _groupIdTable(_$AppDatabase db) =>
+      db.downloadGroups.createAlias('downloads__group_id__download_groups__id');
+
+  $$DownloadGroupsTableProcessedTableManager? get groupId {
+    final $_column = $_itemColumn<String>('group_id');
+    if ($_column == null) return null;
+    final manager = $$DownloadGroupsTableTableManager(
+      $_db,
+      $_db.downloadGroups,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_groupIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: [item]),
@@ -7156,6 +8450,16 @@ class $$DownloadsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get paused => $composableBuilder(
+    column: $table.paused,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<int> get totalBytes => $composableBuilder(
     column: $table.totalBytes,
     builder: (column) => ColumnFilters(column),
@@ -7176,6 +8480,16 @@ class $$DownloadsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get completedAt => $composableBuilder(
+    column: $table.completedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$PeersTableFilterComposer get peerId {
     final $$PeersTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -7190,6 +8504,29 @@ class $$DownloadsTableFilterComposer
           }) => $$PeersTableFilterComposer(
             $db: $db,
             $table: $db.peers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$DownloadGroupsTableFilterComposer get groupId {
+    final $$DownloadGroupsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.groupId,
+      referencedTable: $db.downloadGroups,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DownloadGroupsTableFilterComposer(
+            $db: $db,
+            $table: $db.downloadGroups,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -7264,6 +8601,16 @@ class $$DownloadsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get paused => $composableBuilder(
+    column: $table.paused,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get totalBytes => $composableBuilder(
     column: $table.totalBytes,
     builder: (column) => ColumnOrderings(column),
@@ -7284,6 +8631,16 @@ class $$DownloadsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get completedAt => $composableBuilder(
+    column: $table.completedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$PeersTableOrderingComposer get peerId {
     final $$PeersTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -7298,6 +8655,29 @@ class $$DownloadsTableOrderingComposer
           }) => $$PeersTableOrderingComposer(
             $db: $db,
             $table: $db.peers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$DownloadGroupsTableOrderingComposer get groupId {
+    final $$DownloadGroupsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.groupId,
+      referencedTable: $db.downloadGroups,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DownloadGroupsTableOrderingComposer(
+            $db: $db,
+            $table: $db.downloadGroups,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -7339,6 +8719,12 @@ class $$DownloadsTableAnnotationComposer
   GeneratedColumn<String> get state =>
       $composableBuilder(column: $table.state, builder: (column) => column);
 
+  GeneratedColumn<int> get priority =>
+      $composableBuilder(column: $table.priority, builder: (column) => column);
+
+  GeneratedColumn<bool> get paused =>
+      $composableBuilder(column: $table.paused, builder: (column) => column);
+
   GeneratedColumn<int> get totalBytes => $composableBuilder(
     column: $table.totalBytes,
     builder: (column) => column,
@@ -7357,6 +8743,14 @@ class $$DownloadsTableAnnotationComposer
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get completedAt => $composableBuilder(
+    column: $table.completedAt,
+    builder: (column) => column,
+  );
+
   $$PeersTableAnnotationComposer get peerId {
     final $$PeersTableAnnotationComposer composer = $composerBuilder(
       composer: this,
@@ -7371,6 +8765,29 @@ class $$DownloadsTableAnnotationComposer
           }) => $$PeersTableAnnotationComposer(
             $db: $db,
             $table: $db.peers,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$DownloadGroupsTableAnnotationComposer get groupId {
+    final $$DownloadGroupsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.groupId,
+      referencedTable: $db.downloadGroups,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DownloadGroupsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.downloadGroups,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -7419,7 +8836,11 @@ class $$DownloadsTableTableManager
           $$DownloadsTableUpdateCompanionBuilder,
           (Download, $$DownloadsTableReferences),
           Download,
-          PrefetchHooks Function({bool peerId, bool downloadChunksRefs})
+          PrefetchHooks Function({
+            bool peerId,
+            bool groupId,
+            bool downloadChunksRefs,
+          })
         > {
   $$DownloadsTableTableManager(_$AppDatabase db, $DownloadsTable table)
     : super(
@@ -7441,10 +8862,15 @@ class $$DownloadsTableTableManager
                 Value<String> relativePath = const Value.absent(),
                 Value<String> targetPath = const Value.absent(),
                 Value<String> state = const Value.absent(),
+                Value<String?> groupId = const Value.absent(),
+                Value<int> priority = const Value.absent(),
+                Value<bool> paused = const Value.absent(),
                 Value<int> totalBytes = const Value.absent(),
                 Value<int> downloadedBytes = const Value.absent(),
                 Value<String?> errorMessage = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> completedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DownloadsCompanion(
                 id: id,
@@ -7454,10 +8880,15 @@ class $$DownloadsTableTableManager
                 relativePath: relativePath,
                 targetPath: targetPath,
                 state: state,
+                groupId: groupId,
+                priority: priority,
+                paused: paused,
                 totalBytes: totalBytes,
                 downloadedBytes: downloadedBytes,
                 errorMessage: errorMessage,
                 createdAt: createdAt,
+                updatedAt: updatedAt,
+                completedAt: completedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -7469,10 +8900,15 @@ class $$DownloadsTableTableManager
                 required String relativePath,
                 required String targetPath,
                 Value<String> state = const Value.absent(),
+                Value<String?> groupId = const Value.absent(),
+                Value<int> priority = const Value.absent(),
+                Value<bool> paused = const Value.absent(),
                 Value<int> totalBytes = const Value.absent(),
                 Value<int> downloadedBytes = const Value.absent(),
                 Value<String?> errorMessage = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> completedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DownloadsCompanion.insert(
                 id: id,
@@ -7482,10 +8918,15 @@ class $$DownloadsTableTableManager
                 relativePath: relativePath,
                 targetPath: targetPath,
                 state: state,
+                groupId: groupId,
+                priority: priority,
+                paused: paused,
                 totalBytes: totalBytes,
                 downloadedBytes: downloadedBytes,
                 errorMessage: errorMessage,
                 createdAt: createdAt,
+                updatedAt: updatedAt,
+                completedAt: completedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -7497,7 +8938,7 @@ class $$DownloadsTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({peerId = false, downloadChunksRefs = false}) {
+              ({peerId = false, groupId = false, downloadChunksRefs = false}) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
@@ -7528,6 +8969,19 @@ class $$DownloadsTableTableManager
                                         ._peerIdTable(db),
                                     referencedColumn: $$DownloadsTableReferences
                                         ._peerIdTable(db)
+                                        .id,
+                                  )
+                                  as T;
+                        }
+                        if (groupId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.groupId,
+                                    referencedTable: $$DownloadsTableReferences
+                                        ._groupIdTable(db),
+                                    referencedColumn: $$DownloadsTableReferences
+                                        ._groupIdTable(db)
                                         .id,
                                   )
                                   as T;
@@ -7578,7 +9032,11 @@ typedef $$DownloadsTableProcessedTableManager =
       $$DownloadsTableUpdateCompanionBuilder,
       (Download, $$DownloadsTableReferences),
       Download,
-      PrefetchHooks Function({bool peerId, bool downloadChunksRefs})
+      PrefetchHooks Function({
+        bool peerId,
+        bool groupId,
+        bool downloadChunksRefs,
+      })
     >;
 typedef $$DownloadChunksTableCreateCompanionBuilder =
     DownloadChunksCompanion Function({
@@ -8224,6 +9682,8 @@ class $AppDatabaseManager {
       $$PeersTableTableManager(_db, _db.peers);
   $$RemoteEntriesCacheTableTableManager get remoteEntriesCache =>
       $$RemoteEntriesCacheTableTableManager(_db, _db.remoteEntriesCache);
+  $$DownloadGroupsTableTableManager get downloadGroups =>
+      $$DownloadGroupsTableTableManager(_db, _db.downloadGroups);
   $$DownloadsTableTableManager get downloads =>
       $$DownloadsTableTableManager(_db, _db.downloads);
   $$DownloadChunksTableTableManager get downloadChunks =>

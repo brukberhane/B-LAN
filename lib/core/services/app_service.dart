@@ -16,23 +16,27 @@ import '../protocol/constants.dart';
 import '../protocol/models.dart';
 import '../security/device_identity.dart';
 import '../security/peer_session_store.dart';
+import '../transfers/download_queue.dart';
 import '../transfers/transfer_client.dart';
 import '../transfers/transfer_server.dart';
 
 class AppService {
-  AppService._(
-    this.db,
-    this.platform,
-  )   : scanner = ShareScanner(
-          db,
-          chunkSize: defaultChunkSizeForPlatform(
-            isAndroid: Platform.isAndroid,
-          ),
-          platformServices: platform,
-        ),
-        server = TransferServer(db),
-        client = TransferClient(db),
-        discovery = MdnsDiscovery();
+  AppService._(this.db, this.platform)
+    : scanner = ShareScanner(
+        db,
+        chunkSize: defaultChunkSizeForPlatform(isAndroid: Platform.isAndroid),
+        platformServices: platform,
+      ),
+      server = TransferServer(db),
+      client = TransferClient(db),
+      discovery = MdnsDiscovery() {
+    downloadQueue = DownloadQueue(
+      db,
+      client,
+      platform: platform,
+      downloadsDirectory: () => downloadsDirectory(),
+    );
+  }
 
   factory AppService(AppDatabase db, {PlatformServices? platform}) {
     final resolved = platform ?? createPlatformServices();
@@ -45,6 +49,7 @@ class AppService {
   final TransferServer server;
   final TransferClient client;
   final MdnsDiscovery discovery;
+  late final DownloadQueue downloadQueue;
   final _log = Logger('AppService');
   final _uuid = const Uuid();
   final _sessions = PeerSessionStore();
@@ -87,10 +92,12 @@ class AppService {
         (_) => unawaited(_reconcileFilesystemShares()),
       );
     }
+    await downloadQueue.start();
     _log.info('Core services started on port $boundPort');
   }
 
   Future<void> dispose() async {
+    await downloadQueue.stop();
     _reconcileTimer?.cancel();
     _reconcileTimer = null;
     _shareWatcher?.dispose();
@@ -112,7 +119,9 @@ class AppService {
   }) async {
     final id = _uuid.v4();
     final name = displayName ?? path.split(Platform.pathSeparator).last;
-    await db.into(db.shares).insert(
+    await db
+        .into(db.shares)
+        .insert(
           SharesCompanion.insert(
             id: id,
             displayName: name,
@@ -120,8 +129,9 @@ class AppService {
             storageType: Value(storageType),
           ),
         );
-    final share = await (db.select(db.shares)..where((t) => t.id.equals(id)))
-        .getSingle();
+    final share = await (db.select(
+      db.shares,
+    )..where((t) => t.id.equals(id))).getSingle();
     if (ShareWatcher.isSupported && storageType != 'saf') {
       _startWatchingShare(share);
     }
@@ -163,10 +173,7 @@ class AppService {
     final baseUrl = 'http://$host:$port';
     final hello = await client.hello(baseUrl);
     final localPeerId = await db.ensurePeerId();
-    final session = await client.createSession(
-      baseUrl,
-      peerId: localPeerId,
-    );
+    final session = await client.createSession(baseUrl, peerId: localPeerId);
     await _sessions.saveToken(db, host, port, session);
     final ghostId = '$host:$port';
     if (ghostId != hello.peerId) {
@@ -181,8 +188,9 @@ class AppService {
   }
 
   Future<void> removePeer(String peerId) async {
-    final peer = await (db.select(db.peers)..where((t) => t.id.equals(peerId)))
-        .getSingleOrNull();
+    final peer = await (db.select(
+      db.peers,
+    )..where((t) => t.id.equals(peerId))).getSingleOrNull();
     if (peer == null) {
       return;
     }
@@ -192,7 +200,8 @@ class AppService {
   }
 
   Future<String> downloadsDirectory() async {
-    final dir = await getDownloadsDirectory() ??
+    final dir =
+        await getDownloadsDirectory() ??
         await getApplicationDocumentsDirectory();
     final downloads = Directory('${dir.path}${Platform.pathSeparator}B-LAN');
     if (!await downloads.exists()) {
@@ -222,62 +231,18 @@ class AppService {
     return session;
   }
 
-  /// Downloads a remote file or folder into the local downloads directory.
-  ///
-  /// TODO: still blocks until the transfer finishes; background queue deferred.
-  ///
-  /// Returns number of files saved (1 for single file, 0 for empty folder).
-  Future<int> queueDownload({
+  /// Enqueues a remote file or folder; returns immediately.
+  Future<EnqueueResult> queueDownload({
     required Peer peer,
     required String shareId,
     required EntryDto entry,
     String? token,
-  }) async {
-    final authToken = token ?? await ensurePeerSession(peer);
-    final targetDir = await downloadsDirectory();
-    const taskId = 'download';
-    await platform.startForegroundTask(
-      taskId: taskId,
-      title: 'Downloading ${entry.name}',
-      body: 'From ${peer.nick}',
-    );
-    try {
-      if (entry.isDirectory) {
-        return await client.downloadFolder(
-          peer: peer,
-          shareId: shareId,
-          folder: entry,
-          targetDirectory: targetDir,
-          token: authToken,
-          onFileProgress: (completed, total) async {
-            await platform.updateForegroundTask(
-              taskId: taskId,
-              title: 'Downloading ${entry.name}',
-              body: '$completed / $total files',
-            );
-          },
-        );
-      }
-
-      await client.downloadEntry(
-        peer: peer,
-        shareId: shareId,
-        entry: entry,
-        targetDirectory: targetDir,
-        token: authToken,
-        onProgress: (downloaded, total) async {
-          await platform.updateForegroundTask(
-            taskId: taskId,
-            title: 'Downloading ${entry.name}',
-            body: '$downloaded / $total bytes',
-          );
-        },
-      );
-      return 1;
-    } finally {
-      await platform.stopForegroundTask(taskId);
-    }
-  }
+  }) => downloadQueue.enqueue(
+    peer: peer,
+    shareId: shareId,
+    entry: entry,
+    token: token,
+  );
 
   Future<void> _onDiscoveredPeer(DiscoveredPeer peer) async {
     if (peer.manual) {
@@ -296,10 +261,7 @@ class AppService {
         return;
       }
 
-      final session = await client.createSession(
-        baseUrl,
-        peerId: localPeerId,
-      );
+      final session = await client.createSession(baseUrl, peerId: localPeerId);
       await _sessions.saveToken(db, peer.host, peer.port, session);
 
       for (final ghostId in {peer.peerId, '${peer.host}:${peer.port}'}) {
@@ -319,7 +281,7 @@ class AppService {
       _log.warning(
         'mDNS peer handshake failed for ${peer.host}:${peer.port}: $error',
       );
-      await _upsertDiscoveredPeer(peer);
+      await _removePeerIfHostMatches(peer);
     }
   }
 
@@ -332,17 +294,16 @@ class AppService {
     discovery.removePeer(peer.peerId);
   }
 
-  Future<void> _upsertDiscoveredPeer(DiscoveredPeer peer) async {
-    await db.into(db.peers).insertOnConflictUpdate(
-          PeersCompanion.insert(
-            id: peer.peerId,
-            nick: peer.nick,
-            host: peer.host,
-            port: peer.port,
-            manual: Value(peer.manual),
-            lastSeen: Value(peer.lastSeen ?? DateTime.now()),
-          ),
-        );
+  Future<void> _removePeerIfHostMatches(DiscoveredPeer peer) async {
+    final existing = await db.peerById(peer.peerId);
+    if (existing == null ||
+        existing.host != peer.host ||
+        existing.port != peer.port) {
+      return;
+    }
+    await (db.delete(db.peers)..where((t) => t.id.equals(peer.peerId))).go();
+    await db.deleteSetting('session_${peer.host}:${peer.port}');
+    discovery.removePeer(peer.peerId);
   }
 
   void _startWatchingShare(Share share) {

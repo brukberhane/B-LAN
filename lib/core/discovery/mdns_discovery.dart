@@ -30,8 +30,7 @@ class MdnsDiscovery {
   bool get isAdvertising =>
       _broadcast != null && !(_broadcast?.isStopped ?? true);
 
-  bool get supportsAdvertising =>
-      !kIsWeb && !Platform.isWindows;
+  bool get supportsAdvertising => !kIsWeb && !Platform.isWindows;
 
   void removePeer(String peerId) => _peers.remove(peerId);
 
@@ -116,25 +115,28 @@ class MdnsDiscovery {
       return;
     }
 
-    final host = service.hostAddress;
-    if (host == null || host.isEmpty) {
+    final hosts = _candidateHosts(service);
+    if (hosts.isEmpty) {
       return;
     }
 
-    final peer = DiscoveredPeer(
-      peerId: advertisedPeerId ?? '$host:${service.port}',
-      nick: attrs['nick'] ?? service.name,
-      host: host,
-      port: service.port,
-      lastSeen: DateTime.now(),
-    );
-    _registerPeer(peer);
+    for (final host in hosts) {
+      final peer = DiscoveredPeer(
+        peerId: advertisedPeerId ?? '$host:${service.port}',
+        nick: attrs['nick'] ?? service.name,
+        host: host,
+        port: service.port,
+        lastSeen: DateTime.now(),
+      );
+      _registerPeer(peer);
+    }
   }
 
   void _handleLostService(BonsoirService service) {
     final attrs = service.attributes;
     final host = service.hostAddress;
-    final peerId = attrs['peerId'] ??
+    final peerId =
+        attrs['peerId'] ??
         (host == null ? service.name : '$host:${service.port}');
     final removed = _peers.remove(peerId);
     if (host != null) {
@@ -151,6 +153,25 @@ class MdnsDiscovery {
     }
     _peers[peer.peerId] = peer;
     onPeerFound?.call(peer);
+  }
+
+  List<String> _candidateHosts(BonsoirService service) {
+    final hosts = service.hostAddresses
+        .where((host) => host.isNotEmpty)
+        .where((host) => !host.startsWith('fe80:'))
+        .toSet()
+        .toList();
+    hosts.sort((a, b) {
+      final aIpv4 =
+          InternetAddress.tryParse(a)?.type == InternetAddressType.IPv4;
+      final bIpv4 =
+          InternetAddress.tryParse(b)?.type == InternetAddressType.IPv4;
+      if (aIpv4 == bIpv4) {
+        return 0;
+      }
+      return aIpv4 ? -1 : 1;
+    });
+    return hosts;
   }
 
   void addManualPeer({

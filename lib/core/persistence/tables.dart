@@ -84,6 +84,25 @@ class RemoteEntriesCache extends Table {
       dateTime().withDefault(currentDateAndTime)();
 }
 
+class DownloadGroups extends Table {
+  TextColumn get id => text()();
+  TextColumn get label => text()();
+  TextColumn get rootPath => text()();
+  TextColumn get targetPath => text()();
+  TextColumn get state =>
+      text().withDefault(const Constant('queued'))();
+  IntColumn get totalFiles => integer().withDefault(const Constant(0))();
+  IntColumn get completedFiles => integer().withDefault(const Constant(0))();
+  IntColumn get totalBytes => integer().withDefault(const Constant(0))();
+  IntColumn get downloadedBytes =>
+      integer().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 class Downloads extends Table {
   TextColumn get id => text()();
   TextColumn get peerId => text().references(Peers, #id)();
@@ -93,12 +112,18 @@ class Downloads extends Table {
   TextColumn get targetPath => text()();
   TextColumn get state =>
       text().withDefault(const Constant('queued'))();
+  TextColumn get groupId => text().nullable().references(DownloadGroups, #id)();
+  IntColumn get priority => integer().withDefault(const Constant(0))();
+  BoolColumn get paused => boolean().withDefault(const Constant(false))();
   IntColumn get totalBytes => integer().withDefault(const Constant(0))();
   IntColumn get downloadedBytes =>
       integer().withDefault(const Constant(0))();
   TextColumn get errorMessage => text().nullable()();
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get completedAt => dateTime().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {id};
