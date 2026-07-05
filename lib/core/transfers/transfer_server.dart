@@ -468,8 +468,11 @@ class TransferServer {
     }
     final dto = manifest.toDto();
     final encoded = jsonEncode(dto.toJson());
+    final localUri = manifest.entry.localUri;
     if (encoded.contains(manifest.share.localPath) ||
-        (manifest.entry.localUri?.isNotEmpty ?? false)) {
+        (localUri != null &&
+            localUri.isNotEmpty &&
+            encoded.contains(localUri))) {
       return Response.internalServerError(body: 'Manifest leaked local path');
     }
     return Response.ok(encoded, headers: {'content-type': 'application/json'});

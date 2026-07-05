@@ -130,6 +130,123 @@ class RemoteManifestCache {
     }
   }
 
+  /// Best cached manifest for [shareId] + [relativePath], if any peer indexed it.
+  Future<({FileManifestDto manifest, String peerId})?> getCachedManifest({
+    required String shareId,
+    required String relativePath,
+  }) async {
+    final normalizedPath = _normalizePath(relativePath);
+    final cacheRows = await (_db.select(_db.remoteEntriesCache)
+          ..where(
+            (t) =>
+                t.shareId.equals(shareId) &
+                t.relativePath.equals(normalizedPath),
+          )
+          ..orderBy([(t) => OrderingTerm.desc(t.cachedAt)]))
+        .get();
+    for (final row in cacheRows) {
+      final decoded = _decodeManifest(row.payloadJson);
+      if (decoded != null) {
+        return (manifest: decoded, peerId: row.peerId);
+      }
+    }
+
+    final fileRows = await (_db.select(_db.remoteFiles)
+          ..where(
+            (t) =>
+                t.shareId.equals(shareId) &
+                t.relativePath.equals(normalizedPath),
+          )
+          ..orderBy([(t) => OrderingTerm.desc(t.cachedAt)]))
+        .get();
+    for (final row in fileRows) {
+      final payload = row.manifestJson;
+      if (payload == null) {
+        continue;
+      }
+      final decoded = _decodeManifest(payload);
+      if (decoded != null) {
+        return (manifest: decoded, peerId: row.peerId);
+      }
+    }
+    return null;
+  }
+
+  /// Peers with a cached manifest for this path, preferred peer first when known.
+  Future<List<Peer>> cachedPeersForPath({
+    required String shareId,
+    required String relativePath,
+    String? preferredPeerId,
+  }) async {
+    final normalizedPath = _normalizePath(relativePath);
+    final peerIds = <String>{};
+    if (preferredPeerId != null) {
+      peerIds.add(preferredPeerId);
+    }
+
+    final cacheRows = await (_db.select(_db.remoteEntriesCache)
+          ..where(
+            (t) =>
+                t.shareId.equals(shareId) &
+                t.relativePath.equals(normalizedPath),
+          ))
+        .get();
+    for (final row in cacheRows) {
+      peerIds.add(row.peerId);
+    }
+
+    final fileRows = await (_db.select(_db.remoteFiles)
+          ..where(
+            (t) =>
+                t.shareId.equals(shareId) &
+                t.relativePath.equals(normalizedPath),
+          ))
+        .get();
+    for (final row in fileRows) {
+      peerIds.add(row.peerId);
+    }
+
+    if (peerIds.isEmpty) {
+      return const [];
+    }
+
+    final peers = await (_db.select(_db.peers)
+          ..where((t) => t.id.isIn(peerIds.toList())))
+        .get();
+    peers.sort((a, b) {
+      if (preferredPeerId != null) {
+        if (a.id == preferredPeerId) {
+          return -1;
+        }
+        if (b.id == preferredPeerId) {
+          return 1;
+        }
+      }
+      final aSeen = a.lastSeen ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bSeen = b.lastSeen ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bSeen.compareTo(aSeen);
+    });
+    return peers;
+  }
+
+  /// Peers that have indexed the same content (any share/path).
+  Future<List<Peer>> peersForContentSignature(String signature) async {
+    final files = await _db.remoteFilesBySignature(signature);
+    if (files.isEmpty) {
+      return const [];
+    }
+    final peerIds = files.map((row) => row.peerId).toSet().toList();
+    final peers = await (_db.select(_db.peers)
+          ..where((t) => t.id.isIn(peerIds)))
+        .get();
+    peers.sort((a, b) {
+      final aSeen = a.lastSeen ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final bSeen = b.lastSeen ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return bSeen.compareTo(aSeen);
+    });
+    return peers;
+  }
+
   List<String> _chunkHashes(FileManifestDto manifest) =>
       manifest.chunks.map((chunk) => chunk.hash).toList();
 

@@ -3,6 +3,8 @@ package com.brukb.blan
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -10,10 +12,21 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channelName = "com.brukb.blan/platform"
+    private val sharingChannelName = "com.brukb.blan/sharing"
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var sharingChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        sharingChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            sharingChannelName,
+        )
+        BlanForegroundService.setStopSharingListener {
+            Handler(Looper.getMainLooper()).post {
+                sharingChannel?.invokeMethod("stopSharing", null)
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -109,6 +122,43 @@ class MainActivity : FlutterActivity() {
                             result.success(SafFiles.exists(applicationContext, uri))
                         } catch (error: Exception) {
                             result.success(false)
+                        }
+                    }
+
+                    "defaultDownloadsDirectory" -> {
+                        result.success(DownloadsPublisher.defaultDownloadsDir())
+                    }
+
+                    "downloadStagingDirectory" -> {
+                        result.success(DownloadsPublisher.stagingDir(applicationContext))
+                    }
+
+                    "requiresDownloadStaging" -> {
+                        val targetPath = call.argument<String>("targetPath") ?: ""
+                        result.success(
+                            DownloadsPublisher.requiresStaging(
+                                targetPath,
+                                applicationContext,
+                            ),
+                        )
+                    }
+
+                    "publishDownloadFile" -> {
+                        val stagingPath = call.argument<String>("stagingPath") ?: ""
+                        val targetPath = call.argument<String>("targetPath") ?: ""
+                        val safTreePath = call.argument<String>("safTreePath")
+                        val downloadsRoot = call.argument<String>("downloadsRoot")
+                        try {
+                            DownloadsPublisher.publishFile(
+                                applicationContext,
+                                stagingPath,
+                                targetPath,
+                                safTreePath,
+                                downloadsRoot,
+                            )
+                            result.success(null)
+                        } catch (error: Exception) {
+                            result.error("publish_download_failed", error.message, null)
                         }
                     }
 

@@ -26,6 +26,9 @@ class DownloadQueue {
     PeerSessionStore? sessions,
     DownloadQueueProgressCallback? onForegroundProgress,
   }) : _platform = platform,
+       _downloadPaths = platform is DownloadPathServices
+           ? platform as DownloadPathServices
+           : DefaultDownloadPathServices(),
        _downloadsDirectory = downloadsDirectory,
        _sessions = sessions ?? PeerSessionStore(),
        _onForegroundProgress = onForegroundProgress;
@@ -33,6 +36,7 @@ class DownloadQueue {
   final AppDatabase _db;
   final TransferClient _client;
   final PlatformServices _platform;
+  final DownloadPathServices _downloadPaths;
   final Future<String> Function() _downloadsDirectory;
   final PeerSessionStore _sessions;
   final DownloadQueueProgressCallback? _onForegroundProgress;
@@ -92,6 +96,12 @@ class DownloadQueue {
       fileId: entry.id,
       token: authToken,
     );
+    await _client.cacheRemoteManifest(
+      peerId: peer.id,
+      shareId: shareId,
+      relativePath: relativePath,
+      manifest: manifest,
+    );
     final downloadId = await _db.enqueueDownload(
       peerId: peer.id,
       shareId: shareId,
@@ -138,7 +148,8 @@ class DownloadQueue {
       return;
     }
     if (deletePartial) {
-      final partial = File('${row.targetPath}.partial');
+      final partialPath = await _client.resolvePartialPath(row.targetPath);
+      final partial = File(partialPath);
       if (await partial.exists()) {
         await partial.delete();
       }
@@ -191,7 +202,9 @@ class DownloadQueue {
       targetDirectory,
       normalizeRemoteEntryPath(folder.path),
     );
-    await Directory(folderLocalPath).create(recursive: true);
+    if (!await _downloadPaths.requiresDownloadStaging(folderLocalPath)) {
+      await Directory(folderLocalPath).create(recursive: true);
+    }
 
     final groupId = await _db.createDownloadGroup(
       label: folder.name,
@@ -251,13 +264,29 @@ class DownloadQueue {
   }
 
   Future<void> _runDownload(Download row) async {
-    final peer = await _db.peerById(row.peerId);
-    if (peer == null) {
-      await _db.failDownload(row.id, 'Peer not found');
-      return;
+    var peer = await _db.peerById(row.peerId);
+    String? token;
+    if (peer != null) {
+      token = await _tryEnsurePeerSession(peer);
     }
 
-    final token = await _ensurePeerSession(peer);
+    if (peer == null || token == null) {
+      final alternate = await _client.resolvePeerForDownload(
+        shareId: row.shareId,
+        relativePath: row.relativePath,
+        preferredPeerId: row.peerId,
+        downloadId: row.id,
+      );
+      if (alternate != null) {
+        peer = alternate;
+        token ??= await _tryEnsurePeerSession(peer);
+      }
+    }
+
+    if (peer == null) {
+      await _db.failDownload(row.id, 'No peer available for download');
+      return;
+    }
     _activeDownloadId = row.id;
     await _db.markDownloadDownloading(row.id);
 
@@ -312,6 +341,14 @@ class DownloadQueue {
       }
     } finally {
       await _platform.stopForegroundTask(_foregroundTaskId);
+    }
+  }
+
+  Future<String?> _tryEnsurePeerSession(Peer peer) async {
+    try {
+      return await _ensurePeerSession(peer);
+    } catch (_) {
+      return null;
     }
   }
 

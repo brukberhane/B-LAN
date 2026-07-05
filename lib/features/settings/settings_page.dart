@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../core/platform/platform_capabilities.dart';
 import 'security_settings_section.dart';
+import 'downloads_location_section.dart';
 import 'platform_sections.dart';
 import '../browse/browse_page.dart';
 import '../../core/persistence/database.dart';
@@ -48,10 +49,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(
-            'This device',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text('This device', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           nick.when(
             data: (value) => ListTile(
@@ -145,23 +143,25 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             title: const Text('Service status'),
             subtitle: Text(
               [
-                serverRunning ? 'Transfer servers running' : 'Transfer servers stopped',
+                serverRunning
+                    ? 'Transfer servers running'
+                    : 'Transfer servers stopped',
                 if (!kIsWeb)
-                  advertising
-                      ? 'Advertising on LAN'
-                      : 'Not advertising on LAN',
+                  advertising ? 'Advertising on LAN' : 'Not advertising on LAN',
               ].join(' · '),
             ),
           ),
-          ref.watch(httpsPortProvider).when(
-            data: (value) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Peer HTTPS port'),
-              subtitle: Text('$value (mDNS + peer transfers)'),
-            ),
-            loading: () => const ListTile(title: Text('Peer HTTPS port')),
-            error: (_, _) => const SizedBox.shrink(),
-          ),
+          ref
+              .watch(httpsPortProvider)
+              .when(
+                data: (value) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Peer HTTPS port'),
+                  subtitle: Text('$value (mDNS + peer transfers)'),
+                ),
+                loading: () => const ListTile(title: Text('Peer HTTPS port')),
+                error: (_, _) => const SizedBox.shrink(),
+              ),
           token.when(
             data: (value) => ListTile(
               title: const Text('Browser token'),
@@ -281,9 +281,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ],
           if (!kIsWeb &&
-              (Platform.isLinux ||
-                  Platform.isWindows ||
-                  Platform.isMacOS)) ...[
+              (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) ...[
             const Divider(height: 32),
             Text(
               'Firewall / manual connect',
@@ -343,9 +341,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   void _copyText(BuildContext context, String text, String message) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _editNickname(BuildContext context, String current) async {
@@ -377,7 +375,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ),
     );
     controller.dispose();
-    if (!context.mounted || saved == null || saved.isEmpty || saved == current) {
+    if (!context.mounted ||
+        saved == null ||
+        saved.isEmpty ||
+        saved == current) {
       return;
     }
     try {
@@ -386,9 +387,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Nickname updated to $saved')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Nickname updated to $saved')));
     } catch (error) {
       if (!context.mounted) {
         return;
@@ -440,7 +441,8 @@ class _TransferLimitsSection extends ConsumerStatefulWidget {
       _TransferLimitsSectionState();
 }
 
-class _TransferLimitsSectionState extends ConsumerState<_TransferLimitsSection> {
+class _TransferLimitsSectionState
+    extends ConsumerState<_TransferLimitsSection> {
   var _loaded = false;
   double _maxUploadChunks = 4;
   double _maxDownloadChunks = 3;
@@ -475,9 +477,9 @@ class _TransferLimitsSectionState extends ConsumerState<_TransferLimitsSection> 
     final bps = (_uploadBandwidthMbps * 1024 * 1024).round();
     await db.setUploadBandwidthBps(bps);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Transfer limits saved')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Transfer limits saved')));
     }
   }
 
@@ -489,10 +491,7 @@ class _TransferLimitsSectionState extends ConsumerState<_TransferLimitsSection> 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Transfer limits',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
+        Text('Transfer limits', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),
         Text(
           'Upload concurrency caps simultaneous outgoing chunk/file responses. '

@@ -12,7 +12,8 @@ class SecuritySettingsSection extends ConsumerStatefulWidget {
       _SecuritySettingsSectionState();
 }
 
-class _SecuritySettingsSectionState extends ConsumerState<SecuritySettingsSection> {
+class _SecuritySettingsSectionState
+    extends ConsumerState<SecuritySettingsSection> {
   var _loaded = false;
   double _tokenTtlDays = 0;
 

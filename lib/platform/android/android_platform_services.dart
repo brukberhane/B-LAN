@@ -5,18 +5,56 @@ import 'package:saf/saf.dart';
 
 import '../platform_services.dart';
 
-class AndroidPlatformServices implements PlatformServices, SafFileOperations {
+class AndroidPlatformServices
+    implements
+        PlatformServices,
+        BackgroundSharingSupport,
+        SafFileOperations,
+        DownloadPathServices {
   static const _channel = MethodChannel('com.brukb.blan/platform');
+  static const _sharingChannel = MethodChannel('com.brukb.blan/sharing');
+  static const sharingTaskId = 'transfer-server';
+
+  Future<void> Function()? _sharingStopHandler;
 
   @override
   Future<void> initialize() async {
+    _sharingChannel.setMethodCallHandler((call) async {
+      if (call.method == 'stopSharing') {
+        await _sharingStopHandler?.call();
+      }
+    });
     await requestNotificationPermission();
   }
 
   @override
-  Future<void> dispose() async {
-    await releaseMulticastLock();
+  void setSharingStopHandler(Future<void> Function()? handler) {
+    _sharingStopHandler = handler;
   }
+
+  @override
+  Future<void> startSharingForeground({
+    required String title,
+    required String body,
+  }) async {
+    await startForegroundTask(taskId: sharingTaskId, title: title, body: body);
+  }
+
+  @override
+  Future<void> updateSharingForeground({
+    required String title,
+    required String body,
+  }) async {
+    await updateForegroundTask(taskId: sharingTaskId, title: title, body: body);
+  }
+
+  @override
+  Future<void> stopSharingForeground() async {
+    await stopForegroundTask(sharingTaskId);
+  }
+
+  @override
+  Future<void> dispose() async {}
 
   @override
   Future<bool> acquireMulticastLock() async {
@@ -95,6 +133,68 @@ class AndroidPlatformServices implements PlatformServices, SafFileOperations {
       return null;
     }
     return trimmed;
+  }
+
+  @override
+  Future<String?> defaultDownloadsDirectory() async {
+    final path = await _channel.invokeMethod<String>(
+      'defaultDownloadsDirectory',
+    );
+    final trimmed = path?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed;
+  }
+
+  @override
+  Future<String?> pickDownloadsDirectory() async {
+    final granted = await Saf.getDynamicDirectoryPermission(
+      grantWritePermission: true,
+    );
+    if (granted != true) {
+      return null;
+    }
+    final directories = await Saf.getPersistedPermissionDirectories();
+    if (directories == null || directories.isEmpty) {
+      return null;
+    }
+    return directories.last;
+  }
+
+  @override
+  Future<String> downloadStagingDirectory() async {
+    final path = await _channel.invokeMethod<String>(
+      'downloadStagingDirectory',
+    );
+    if (path == null || path.isEmpty) {
+      throw StateError('Missing Android download staging directory');
+    }
+    return path;
+  }
+
+  @override
+  Future<bool> requiresDownloadStaging(String targetPath) async {
+    final staged = await _channel.invokeMethod<bool>(
+      'requiresDownloadStaging',
+      {'targetPath': targetPath},
+    );
+    return staged ?? true;
+  }
+
+  @override
+  Future<void> finalizeDownload({
+    required String stagingPath,
+    required String targetPath,
+    String? safTreePath,
+    String? downloadsRoot,
+  }) async {
+    await _channel.invokeMethod<void>('publishDownloadFile', {
+      'stagingPath': stagingPath,
+      'targetPath': targetPath,
+      if (safTreePath != null) 'safTreePath': safTreePath,
+      if (downloadsRoot != null) 'downloadsRoot': downloadsRoot,
+    });
   }
 
   @override

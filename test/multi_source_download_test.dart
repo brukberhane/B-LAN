@@ -270,6 +270,235 @@ void main() {
       }
     });
 
+    test('retry completes from alternate peer when primary is offline', () async {
+      final bytes = List<int>.generate(10, (i) => i);
+      final serverA = await _startIndexedServer(
+        bytes: bytes,
+        chunkSize: chunkSize,
+        browserToken: browserToken,
+        shareId: shareId,
+        fileId: fileId,
+      );
+      final serverB = await _startIndexedServer(
+        bytes: bytes,
+        chunkSize: chunkSize,
+        browserToken: browserToken,
+        shareId: shareId,
+        fileId: fileId,
+      );
+
+      client.registerTlsPin('127.0.0.1', serverA.port, serverA.tlsFingerprint);
+      client.registerTlsPin('127.0.0.1', serverB.port, serverB.tlsFingerprint);
+
+      final manifestA = await client.fetchFileManifest(
+        serverA.peerBaseUrl,
+        fileId: fileId,
+        token: browserToken,
+      );
+      final manifestB = await client.fetchFileManifest(
+        serverB.peerBaseUrl,
+        fileId: fileId,
+        token: browserToken,
+      );
+
+      await db.into(db.peers).insert(
+            PeersCompanion.insert(
+              id: serverA.peerId,
+              nick: 'peer-a',
+              host: '127.0.0.1',
+              port: serverA.port,
+              tlsCertFingerprint: Value(serverA.tlsFingerprint),
+            ),
+          );
+      await db.into(db.peers).insert(
+            PeersCompanion.insert(
+              id: serverB.peerId,
+              nick: 'peer-b',
+              host: '127.0.0.1',
+              port: serverB.port,
+              tlsCertFingerprint: Value(serverB.tlsFingerprint),
+            ),
+          );
+
+      await client.cacheRemoteManifest(
+        peerId: serverA.peerId,
+        shareId: shareId,
+        relativePath: 'data.bin',
+        manifest: manifestA,
+      );
+      await client.cacheRemoteManifest(
+        peerId: serverB.peerId,
+        shareId: shareId,
+        relativePath: 'data.bin',
+        manifest: manifestB,
+      );
+
+      final peerA = Peer(
+        id: serverA.peerId,
+        nick: 'peer-a',
+        host: '127.0.0.1',
+        port: serverA.port,
+        scheme: peerSchemeHttps,
+        fingerprint: null,
+        tlsCertFingerprint: serverA.tlsFingerprint,
+        trusted: false,
+        identityStatus: PeerIdentityStatus.normal,
+        lastSeen: DateTime.now(),
+        manual: true,
+      );
+
+      final downloadId = await db.enqueueDownload(
+        peerId: serverA.peerId,
+        shareId: shareId,
+        entryId: fileId,
+        relativePath: 'data.bin',
+        targetPath: '${downloadDir.path}/data.bin',
+        totalBytes: bytes.length,
+      );
+      await db.upsertDownloadChunks(downloadId, manifestA.chunks);
+      await db.failDownload(downloadId, 'primary offline');
+
+      await serverA.stop();
+
+      await client.downloadEntry(
+        peer: peerA,
+        shareId: shareId,
+        entry: manifestA.entry,
+        targetDirectory: downloadDir.path,
+        existingDownloadId: downloadId,
+      );
+
+      expect(
+        await File('${downloadDir.path}/data.bin').readAsBytes(),
+        bytes,
+      );
+      final chunkRows = await db.downloadChunksForDownload(downloadId);
+      expect(chunkRows.every((row) => row.sourcePeerId == serverB.peerId), isTrue);
+
+      await serverB.stop();
+      await serverA.db.close();
+      await serverB.db.close();
+      if (await serverA.tempDir.exists()) {
+        await serverA.tempDir.delete(recursive: true);
+      }
+      if (await serverB.tempDir.exists()) {
+        await serverB.tempDir.delete(recursive: true);
+      }
+    });
+
+    test(
+      'retry discovers alternate peer on different share without search cache',
+      () async {
+        final bytes = List<int>.generate(10, (i) => i);
+        const shareA = 'share-a';
+        const shareB = 'share-b';
+        final serverA = await _startIndexedServer(
+          bytes: bytes,
+          chunkSize: chunkSize,
+          browserToken: browserToken,
+          shareId: shareA,
+          fileId: fileId,
+        );
+        final serverB = await _startIndexedServer(
+          bytes: bytes,
+          chunkSize: chunkSize,
+          browserToken: browserToken,
+          shareId: shareB,
+          fileId: fileId,
+        );
+
+        client.registerTlsPin('127.0.0.1', serverA.port, serverA.tlsFingerprint);
+        client.registerTlsPin('127.0.0.1', serverB.port, serverB.tlsFingerprint);
+
+        final manifestA = await client.fetchFileManifest(
+          serverA.peerBaseUrl,
+          fileId: fileId,
+          token: browserToken,
+        );
+
+        await db.into(db.peers).insert(
+              PeersCompanion.insert(
+                id: serverA.peerId,
+                nick: 'peer-a',
+                host: '127.0.0.1',
+                port: serverA.port,
+                tlsCertFingerprint: Value(serverA.tlsFingerprint),
+              ),
+            );
+        await db.into(db.peers).insert(
+              PeersCompanion.insert(
+                id: serverB.peerId,
+                nick: 'peer-b',
+                host: '127.0.0.1',
+                port: serverB.port,
+                tlsCertFingerprint: Value(serverB.tlsFingerprint),
+              ),
+            );
+
+        await client.cacheRemoteManifest(
+          peerId: serverA.peerId,
+          shareId: shareA,
+          relativePath: 'data.bin',
+          manifest: manifestA,
+        );
+
+        final peerA = Peer(
+          id: serverA.peerId,
+          nick: 'peer-a',
+          host: '127.0.0.1',
+          port: serverA.port,
+          scheme: peerSchemeHttps,
+          fingerprint: null,
+          tlsCertFingerprint: serverA.tlsFingerprint,
+          trusted: false,
+          identityStatus: PeerIdentityStatus.normal,
+          lastSeen: DateTime.now(),
+          manual: true,
+        );
+
+        final downloadId = await db.enqueueDownload(
+          peerId: serverA.peerId,
+          shareId: shareA,
+          entryId: fileId,
+          relativePath: 'data.bin',
+          targetPath: '${downloadDir.path}/data.bin',
+          totalBytes: bytes.length,
+        );
+        await db.upsertDownloadChunks(downloadId, manifestA.chunks);
+        await db.failDownload(downloadId, 'primary offline');
+
+        await serverA.stop();
+
+        await client.downloadEntry(
+          peer: peerA,
+          shareId: shareA,
+          entry: manifestA.entry,
+          targetDirectory: downloadDir.path,
+          existingDownloadId: downloadId,
+        );
+
+        expect(
+          await File('${downloadDir.path}/data.bin').readAsBytes(),
+          bytes,
+        );
+        final chunkRows = await db.downloadChunksForDownload(downloadId);
+        expect(
+          chunkRows.every((row) => row.sourcePeerId == serverB.peerId),
+          isTrue,
+        );
+
+        await serverB.stop();
+        await serverA.db.close();
+        await serverB.db.close();
+        if (await serverA.tempDir.exists()) {
+          await serverA.tempDir.delete(recursive: true);
+        }
+        if (await serverB.tempDir.exists()) {
+          await serverB.tempDir.delete(recursive: true);
+        }
+      },
+    );
+
     test('hash mismatch from all sources never completes download', () async {
       final bytes = List<int>.generate(10, (i) => i);
       final server = await _startIndexedServer(

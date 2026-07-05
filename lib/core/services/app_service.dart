@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
@@ -54,13 +55,18 @@ class AppService {
             ? platform as SafFileOperations
             : null,
       ),
-      client = TransferClient(db),
       discovery = MdnsDiscovery() {
+    client = TransferClient(
+      db,
+      platform: platform,
+      downloadsSafTreePath: downloadsSafTreePath,
+      downloadsDirectory: downloadsDirectory,
+    );
     downloadQueue = DownloadQueue(
       db,
       client,
       platform: platform,
-      downloadsDirectory: () => downloadsDirectory(),
+      downloadsDirectory: downloadsDirectory,
     );
     searchService = SearchService(db, client, sessions: _sessions);
   }
@@ -74,7 +80,7 @@ class AppService {
   final PlatformServices platform;
   final ShareScanner scanner;
   final TransferServer server;
-  final TransferClient client;
+  late final TransferClient client;
   final MdnsDiscovery discovery;
   late final DownloadQueue downloadQueue;
   late final SearchService searchService;
@@ -89,13 +95,20 @@ class AppService {
   Timer? _reconcileTimer;
   static const _reconcileInterval = Duration(minutes: 30);
   final _peerHandshakesInFlight = <String, Future<void>>{};
+  final sharingActive = ValueNotifier(true);
 
   SecretStore? get secrets => _secrets;
 
   bool get usesSecureStorage => _secrets?.usesSecureStorage ?? false;
 
+  BackgroundSharingSupport? get _backgroundSharing =>
+      platform is BackgroundSharingSupport
+      ? platform as BackgroundSharingSupport
+      : null;
+
   Future<void> initialize() async {
     await platform.initialize();
+    _backgroundSharing?.setSharingStopHandler(shutdownSharing);
     _secrets = await CompositeSecretStore.open(db);
     _browserTokens = BrowserTokenStore(_secrets!, db);
     server.attachSecrets(_secrets!);
@@ -153,9 +166,89 @@ class AppService {
     await db.purgeStaleTransfers();
     unawaited(_warmSearchIndex());
     unawaited(client.warmSwarmCache());
+    if (Platform.isAndroid) {
+      await _startSharingForeground(ports.httpsPort, ports.browserPort);
+    }
     _log.info(
       'Core services started on HTTPS :${ports.httpsPort}, browser HTTP :${ports.browserPort}',
     );
+  }
+
+  Future<void> _startSharingForeground(int httpsPort, int browserPort) async {
+    final sharing = _backgroundSharing;
+    if (sharing == null) {
+      return;
+    }
+    final addresses = await lanIpv4Addresses();
+    final host = addresses.isEmpty ? 'LAN' : addresses.first;
+    await sharing.startSharingForeground(
+      title: 'B-LAN sharing active',
+      body: 'HTTPS $host:$httpsPort · HTTP :$browserPort',
+    );
+    sharingActive.value = true;
+  }
+
+  Future<void> _refreshSharingForeground() async {
+    if (!server.isRunning || !Platform.isAndroid) {
+      return;
+    }
+    final httpsPort = server.boundHttpsPort;
+    final browserPort = server.boundBrowserPort;
+    if (httpsPort == null || browserPort == null) {
+      return;
+    }
+    await _startSharingForeground(httpsPort, browserPort);
+  }
+
+  /// Stops the LAN server and advertising; keeps the app usable as a client.
+  Future<void> shutdownSharing() async {
+    if (!server.isRunning) {
+      return;
+    }
+    _log.info('Stopping LAN sharing');
+    await discovery.stop();
+    if (Platform.isAndroid) {
+      await platform.releaseMulticastLock();
+      await _backgroundSharing?.stopSharingForeground();
+    }
+    await server.stop();
+    sharingActive.value = false;
+  }
+
+  Future<void> restartSharing() async {
+    if (server.isRunning) {
+      return;
+    }
+    final browserPort = await db.ensureHttpPort();
+    final httpsPort = await db.ensureHttpsPort();
+    final token = await browserToken();
+    final peerId = await db.ensurePeerId();
+    final nick = await db.ensureNick();
+    final tls = await TlsIdentity(_secrets!).ensureIdentity(commonName: nick);
+    final tlsContext = TlsIdentity(_secrets!).createServerContext(tls);
+    final ports = await server.start(
+      tlsContext: tlsContext,
+      httpsPort: httpsPort,
+      browserHttpPort: browserPort,
+      browserToken: token,
+    );
+    if (Platform.isAndroid) {
+      await platform.acquireMulticastLock();
+    }
+    await discovery.start(
+      peerId: peerId,
+      nick: nick,
+      port: ports.httpsPort,
+      browserHttpPort: ports.browserPort,
+    );
+    if (Platform.isAndroid) {
+      await _startSharingForeground(ports.httpsPort, ports.browserPort);
+    }
+    sharingActive.value = true;
+  }
+
+  void onAppResumed() {
+    unawaited(_refreshSharingForeground());
   }
 
   Future<void> _warmSearchIndex() {
@@ -197,11 +290,18 @@ class AppService {
     _reconcileTimer = null;
     _shareWatcher?.dispose();
     _shareWatcher = null;
+    _backgroundSharing?.setSharingStopHandler(null);
+    sharingActive.value = false;
     await discovery.stop();
+    if (Platform.isAndroid) {
+      await _backgroundSharing?.stopSharingForeground();
+    }
+    if (server.isRunning) {
+      await server.stop();
+    }
     if (Platform.isAndroid) {
       await platform.releaseMulticastLock();
     }
-    await server.stop();
     await scanner.dispose();
     await platform.dispose();
     await db.close();
@@ -243,6 +343,18 @@ class AppService {
 
   Future<void> setShareEnabled(String shareId, bool enabled) =>
       db.setShareEnabled(shareId, enabled);
+
+  Future<void> renameShare(String shareId, String displayName) =>
+      db.setShareDisplayName(shareId, displayName.trim());
+
+  Future<String?> pickSafTree() => platform.pickSafTreeUri();
+
+  Future<void> addSafShareFromUri(String uri, {String? displayName}) =>
+      addShare(
+        uri,
+        displayName: displayName ?? _safDisplayNameFromPath(uri),
+        storageType: 'saf',
+      );
 
   Future<String> browserToken() async {
     final store = _browserTokens;
@@ -330,6 +442,15 @@ class AppService {
 
   Future<void> setDownloadsDirectory(String path) =>
       db.setSetting('downloads_path', path);
+
+  Future<void> resetDownloadsDirectory() => db.deleteSetting('downloads_path');
+
+  Future<String?> pickDownloadsDirectory() {
+    if (platform is DownloadPathServices) {
+      return (platform as DownloadPathServices).pickDownloadsDirectory();
+    }
+    return Future.value(null);
+  }
 
   Future<void> setNick(String nick) async {
     await db.updateNick(nick);
@@ -431,15 +552,20 @@ class AppService {
   Future<String> downloadsDirectory() async {
     final custom = await db.getSetting('downloads_path');
     if (custom != null && custom.isNotEmpty) {
-      final dir = Directory(custom);
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-      return custom;
+      return _resolveDownloadsRoot(custom);
+    }
+    final platformDefault = platform is DownloadPathServices
+        ? await (platform as DownloadPathServices).defaultDownloadsDirectory()
+        : null;
+    if (platformDefault != null) {
+      return platformDefault;
     }
     final dir =
         await getDownloadsDirectory() ??
         await getApplicationDocumentsDirectory();
+    if (Platform.isAndroid || Platform.isIOS) {
+      return dir.path;
+    }
     final downloads = Directory('${dir.path}${Platform.pathSeparator}B-LAN');
     if (!await downloads.exists()) {
       await downloads.create(recursive: true);
@@ -447,13 +573,54 @@ class AppService {
     return downloads.path;
   }
 
+  /// SAF-relative path when user picked a custom Android downloads folder.
+  Future<String?> downloadsSafTreePath() async {
+    final custom = await db.getSetting('downloads_path');
+    if (custom == null || custom.isEmpty || custom.startsWith('/')) {
+      return null;
+    }
+    return custom;
+  }
+
+  Future<String> _resolveDownloadsRoot(String custom) async {
+    if (custom.startsWith('/')) {
+      final dir = Directory(custom);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      return custom;
+    }
+    if (Platform.isAndroid && platform is DownloadPathServices) {
+      final public = await (platform as DownloadPathServices)
+          .defaultDownloadsDirectory();
+      if (public != null) {
+        // SAF paths are relative to primary storage, not nested under Download.
+        return p.join(p.dirname(public), custom);
+      }
+    }
+    return custom;
+  }
+
   Future<void> addSafShare({String? displayName}) async {
-    final uri = await platform.pickSafTreeUri();
+    final uri = await pickSafTree();
     if (uri == null) {
       return;
     }
-    final name = displayName ?? 'SAF folder';
-    await addShare(uri, displayName: name, storageType: 'saf');
+    await addSafShareFromUri(uri, displayName: displayName);
+  }
+
+  static String safDisplayNameFromPath(String path) =>
+      _safDisplayNameFromPath(path);
+
+  static String _safDisplayNameFromPath(String path) {
+    final normalized = path.replaceAll('\\', '/');
+    final segments = normalized
+        .split('/')
+        .where((segment) => segment.isNotEmpty);
+    if (segments.isEmpty) {
+      return 'SAF folder';
+    }
+    return segments.last;
   }
 
   Future<String> ensurePeerSession(Peer peer) async {

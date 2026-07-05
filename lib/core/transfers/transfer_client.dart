@@ -2,7 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
+
+import '../../platform/platform_services.dart';
 
 import '../indexing/chunker.dart';
 import '../persistence/database.dart';
@@ -25,9 +28,17 @@ import 'swarm_scheduler.dart';
 class TransferClient {
   TransferClient(
     this._db, {
+    PlatformServices? platform,
+    Future<String?> Function()? downloadsSafTreePath,
+    Future<String> Function()? downloadsDirectory,
     http.Client? httpClient,
     int? maxConcurrentChunkDownloads,
-  }) : _httpClient = httpClient ?? http.Client(),
+  }) : _downloadPaths = platform is DownloadPathServices
+           ? platform as DownloadPathServices
+           : null,
+       _downloadsSafTreePath = downloadsSafTreePath,
+       _downloadsDirectory = downloadsDirectory,
+       _httpClient = httpClient ?? http.Client(),
        _usePinnedClients = httpClient == null,
        _maxConcurrentChunkDownloads =
            maxConcurrentChunkDownloads ?? maxConcurrentDownloads,
@@ -35,6 +46,9 @@ class TransferClient {
        _swarmStore = SwarmAvailabilityStore(_db);
 
   final AppDatabase _db;
+  final DownloadPathServices? _downloadPaths;
+  final Future<String?> Function()? _downloadsSafTreePath;
+  final Future<String> Function()? _downloadsDirectory;
   final http.Client _httpClient;
   final bool _usePinnedClients;
   final int _maxConcurrentChunkDownloads;
@@ -98,7 +112,9 @@ class TransferClient {
         jsonDecode(response.body) as Map<String, dynamic>,
       );
       if (!await verifyHello(hello, secrets: secrets)) {
-        throw HttpException('Invalid hello signature for ${uri.host}:${uri.port}');
+        throw HttpException(
+          'Invalid hello signature for ${uri.host}:${uri.port}',
+        );
       }
       final tlsFp = hello.tlsCertSha256;
       if (tlsFp == null || tlsFp.isEmpty) {
@@ -236,8 +252,9 @@ class TransferClient {
       'pageSize': '$pageSize',
       if (pageToken != null) 'pageToken': pageToken,
     };
-    final uri = Uri.parse('$baseUrl/manifest/shares/$shareId')
-        .replace(queryParameters: params);
+    final uri = Uri.parse(
+      '$baseUrl/manifest/shares/$shareId',
+    ).replace(queryParameters: params);
     final response = await _get(uri.toString(), token: token);
     return ShareManifestPageDto.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
@@ -281,6 +298,243 @@ class TransferClient {
     }
   }
 
+  /// Pick a reachable peer for [relativePath], including cross-peer matches.
+  Future<Peer?> resolvePeerForDownload({
+    required String shareId,
+    required String relativePath,
+    String? preferredPeerId,
+    String? downloadId,
+  }) async {
+    final normalizedPath = normalizeRemoteEntryPath(relativePath);
+    final pathPeers = await _manifestCache.cachedPeersForPath(
+      shareId: shareId,
+      relativePath: normalizedPath,
+      preferredPeerId: preferredPeerId,
+    );
+    final reachable = await _firstReachablePeer(pathPeers);
+    if (reachable != null) {
+      return reachable;
+    }
+
+    String? signature;
+    if (downloadId != null) {
+      final rebuilt = await _manifestFromDownloadChunks(
+        downloadId,
+        relativePath: normalizedPath,
+      );
+      if (rebuilt != null) {
+        signature = contentSignatureFromManifest(rebuilt);
+      }
+    }
+    if (signature != null) {
+      final signaturePeers = await _manifestCache.peersForContentSignature(
+        signature,
+      );
+      final reachableBySignature = await _firstReachablePeer(signaturePeers);
+      if (reachableBySignature != null) {
+        return reachableBySignature;
+      }
+    }
+
+    if (downloadId != null) {
+      final localPeerId = await _db.ensurePeerId();
+      final allPeers = await _db.select(_db.peers).get();
+      final others = allPeers.where(
+        (peer) => peer.id != localPeerId && peer.id != preferredPeerId,
+      );
+      final reachableAny = await _firstReachablePeer(others);
+      if (reachableAny != null) {
+        return reachableAny;
+      }
+    }
+
+    if (preferredPeerId == null) {
+      return null;
+    }
+    return _db.peerById(preferredPeerId);
+  }
+
+  Future<Peer?> _firstReachablePeer(Iterable<Peer> peers) async {
+    for (final peer in peers) {
+      if (await ensurePeerToken(peer) != null) {
+        return peer;
+      }
+    }
+    return null;
+  }
+
+  Future<String?> ensurePeerToken(Peer peer) async {
+    final stored = await _sessions.readValidToken(_db, peer);
+    if (stored != null) {
+      registerTlsPinForPeer(peer);
+      return stored;
+    }
+    registerTlsPinForPeer(peer);
+    try {
+      final localPeerId = await _db.ensurePeerId();
+      final token = await createSession(_peerBaseUrl(peer), peerId: localPeerId);
+      await _sessions.saveToken(_db, peer, token);
+      return token;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<FileManifestDto> _resolveManifestForDownload({
+    required Peer peer,
+    required String shareId,
+    required String relativePath,
+    required String entryId,
+    String? token,
+    String? downloadId,
+  }) async {
+    final normalizedPath = normalizeRemoteEntryPath(relativePath);
+    final liveToken = token ?? await ensurePeerToken(peer);
+    if (liveToken != null) {
+      try {
+        return await fetchFileManifest(
+          _peerBaseUrl(peer),
+          fileId: entryId,
+          token: liveToken,
+        );
+      } catch (_) {
+        // fall through to cache / alternate peers
+      }
+    }
+
+    final cached = await _manifestCache.getCachedManifest(
+      shareId: shareId,
+      relativePath: normalizedPath,
+    );
+    if (cached != null) {
+      return cached.manifest;
+    }
+
+    if (downloadId != null) {
+      final rebuilt = await _manifestFromDownloadChunks(
+        downloadId,
+        entryId: entryId,
+        relativePath: normalizedPath,
+      );
+      if (rebuilt != null) {
+        return rebuilt;
+      }
+    }
+
+    final signaturePeers = await _peersForManifestAlternates(
+      shareId: shareId,
+      relativePath: normalizedPath,
+      entryId: entryId,
+      downloadId: downloadId,
+      excludePeerId: peer.id,
+    );
+    for (final altPeer in signaturePeers) {
+      try {
+        final altToken = await ensurePeerToken(altPeer);
+        if (altToken == null) {
+          continue;
+        }
+        final remoteFile = await _db.remoteFileForPeerPathAnyShare(
+          peerId: altPeer.id,
+          relativePath: normalizedPath,
+        );
+        final fileId = remoteFile?.entryId ?? entryId;
+        return await fetchFileManifest(
+          _peerBaseUrl(altPeer),
+          fileId: fileId,
+          token: altToken,
+        );
+      } catch (_) {
+        // try next peer
+      }
+    }
+
+    throw HttpException('Could not load manifest from any available peer');
+  }
+
+  Future<List<Peer>> _peersForManifestAlternates({
+    required String shareId,
+    required String relativePath,
+    required String entryId,
+    required String excludePeerId,
+    String? downloadId,
+  }) async {
+    final peers = <Peer>[];
+    final seen = <String>{excludePeerId};
+
+    void addPeers(Iterable<Peer> rows) {
+      for (final candidate in rows) {
+        if (seen.add(candidate.id)) {
+          peers.add(candidate);
+        }
+      }
+    }
+
+    addPeers(
+      await _manifestCache.cachedPeersForPath(
+        shareId: shareId,
+        relativePath: relativePath,
+      ),
+    );
+
+    if (downloadId != null) {
+      final rebuilt = await _manifestFromDownloadChunks(
+        downloadId,
+        entryId: entryId,
+        relativePath: relativePath,
+      );
+      if (rebuilt != null) {
+        final signature = contentSignatureFromManifest(rebuilt);
+        addPeers(
+          await _manifestCache.peersForContentSignature(signature),
+        );
+      }
+    }
+
+    return peers;
+  }
+
+  Future<FileManifestDto?> _manifestFromDownloadChunks(
+    String downloadId, {
+    String? entryId,
+    required String relativePath,
+  }) async {
+    final download = await _db.downloadById(downloadId);
+    if (download == null) {
+      return null;
+    }
+    final rows = await _db.downloadChunksForDownload(downloadId);
+    if (rows.isEmpty) {
+      return null;
+    }
+    final sorted = [...rows]..sort((a, b) => a.chunkIndex.compareTo(b.chunkIndex));
+    return FileManifestDto(
+      protocolVersion: 1,
+      entry: EntryDto(
+        id: entryId ?? download.entryId,
+        name: relativePath.split('/').last,
+        path: relativePath,
+        isDirectory: false,
+        size: download.totalBytes,
+        mtimeMs: 0,
+        hashReady: true,
+      ),
+      chunkSize: sorted.first.length,
+      totalBytes: download.totalBytes,
+      chunks: sorted
+          .map(
+            (row) => ChunkDto(
+              index: row.chunkIndex,
+              offset: row.offset,
+              length: row.length,
+              hash: row.hash,
+              hashAlgorithm: 'sha256',
+            ),
+          )
+          .toList(),
+    );
+  }
+
   Future<ChunkAvailabilityResponseDto> probeChunkAvailability(
     String baseUrl, {
     required List<String> hashes,
@@ -290,10 +544,7 @@ class TransferClient {
     final response = await _clientFor(baseUrl)
         .post(
           Uri.parse('$baseUrl/chunks/availability'),
-          headers: {
-            'content-type': 'application/json',
-            ..._authHeaders(token),
-          },
+          headers: {'content-type': 'application/json', ..._authHeaders(token)},
           body: jsonEncode(
             ChunkAvailabilityRequestDto(
               hashes: hashes,
@@ -303,13 +554,12 @@ class TransferClient {
         )
         .timeout(
           _metadataTimeout,
-          onTimeout: () =>
-              throw TimeoutException('POST $baseUrl/chunks/availability timed out'),
+          onTimeout: () => throw TimeoutException(
+            'POST $baseUrl/chunks/availability timed out',
+          ),
         );
     if (response.statusCode >= 400) {
-      throw HttpException(
-        'Chunk availability failed: ${response.statusCode}',
-      );
+      throw HttpException('Chunk availability failed: ${response.statusCode}');
     }
     return ChunkAvailabilityResponseDto.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
@@ -405,15 +655,21 @@ class TransferClient {
     bool queueManaged = false,
     Future<void> Function(int downloaded, int total)? onProgress,
   }) async {
-    final baseUrl = _peerBaseUrl(peer);
+    final relativePath = normalizeRemoteEntryPath(entry.path);
     final manifest =
         manifestOverride ??
-        await fetchFileManifest(baseUrl, fileId: entry.id, token: token);
+        await _resolveManifestForDownload(
+          peer: peer,
+          shareId: shareId,
+          relativePath: relativePath,
+          entryId: entry.id,
+          token: token,
+          downloadId: existingDownloadId,
+        );
     if (!manifest.entry.hashReady) {
       throw HttpException('Remote file hashing not complete');
     }
 
-    final relativePath = normalizeRemoteEntryPath(entry.path);
     await cacheRemoteManifest(
       peerId: peer.id,
       shareId: shareId,
@@ -421,11 +677,7 @@ class TransferClient {
       manifest: manifest,
     );
     await _swarmStore.ingestSignaturePeers(manifest);
-    await _probeMissingSwarmSources(
-      manifest,
-      primaryPeer: peer,
-      token: token,
-    );
+    await _probeMissingSwarmSources(manifest, primaryPeer: peer, token: token);
     final swarmCandidates = await _swarmStore.candidatesForManifest(manifest);
     final swarmScheduler = SwarmScheduler(swarmCandidates);
     final legacyPeers = await _manifestCache.matchingPeers(
@@ -440,9 +692,9 @@ class TransferClient {
         .expand((rows) => rows)
         .map((candidate) => candidate.peer.id)
         .toSet();
-    final chunkRouteOnly = swarmPeerIds.length > 1 || peers.length > 1;
+    final chunkRouteOnly = swarmPeerIds.isNotEmpty || peers.length > 1;
     final targetPath = localTargetPath(targetDirectory, relativePath);
-    final partialPath = '$targetPath.partial';
+    final partialPath = await _partialPathFor(targetPath);
     final finalFile = File(targetPath);
     final partialFile = File(partialPath);
 
@@ -477,8 +729,11 @@ class TransferClient {
     await _db.upsertDownloadChunks(downloadId, manifest.chunks);
 
     if (manifest.totalBytes == 0) {
-      await finalFile.parent.create(recursive: true);
-      await finalFile.writeAsBytes(const []);
+      await _finalizeDownload(
+        partialFile: partialFile,
+        targetPath: targetPath,
+        deleteEmptyStaging: true,
+      );
       await _db.completeDownload(downloadId, 0);
       await onProgress?.call(0, 0);
       return;
@@ -528,7 +783,10 @@ class TransferClient {
         if (await finalFile.exists()) {
           await finalFile.delete();
         }
-        await partialFile.rename(targetPath);
+        await _finalizeDownload(
+          partialFile: partialFile,
+          targetPath: targetPath,
+        );
       }
       await _db.completeDownload(downloadId, manifest.totalBytes);
     } catch (error) {
@@ -551,49 +809,87 @@ class TransferClient {
     required Peer primaryPeer,
     String? token,
   }) async {
-    final candidates = await _swarmStore.candidatesForManifest(manifest);
-    final missingHashes = <String>{};
-    for (final chunk in manifest.chunks) {
-      if ((candidates[chunk.index] ?? []).isEmpty) {
-        missingHashes.add(chunk.hash);
-      }
-    }
-    if (missingHashes.isEmpty) {
+    final allHashes = manifest.chunks.map((chunk) => chunk.hash).toList();
+    if (allHashes.isEmpty) {
       return;
     }
 
     final signature = contentSignatureFromManifest(manifest);
-    final files = await _db.remoteFilesBySignature(signature);
-    final probedPeers = <String>{};
-    var probes = 0;
-    const maxProbes = 4;
-
-    for (final file in files) {
-      if (probes >= maxProbes) {
-        break;
+    final peerIds = <String>{};
+    for (final file in await _db.remoteFilesBySignature(signature)) {
+      peerIds.add(file.peerId);
+    }
+    final localPeerId = await _db.ensurePeerId();
+    for (final peer in await _db.select(_db.peers).get()) {
+      if (peer.id != localPeerId) {
+        peerIds.add(peer.id);
       }
-      if (file.peerId == primaryPeer.id || probedPeers.contains(file.peerId)) {
+    }
+
+    final probedPeers = <String>{};
+    for (final peerId in peerIds) {
+      if (probedPeers.contains(peerId)) {
         continue;
       }
-      final peer = await _db.peerById(file.peerId);
+      probedPeers.add(peerId);
+
+      final peer = await _db.peerById(peerId);
       if (peer == null) {
         continue;
       }
-      probedPeers.add(peer.id);
-      probes++;
       try {
-        final peerToken = await _tokenForPeer(peer, primaryToken: token);
+        final peerToken = await ensurePeerToken(peer);
+        if (peerToken == null) {
+          continue;
+        }
         final response = await probeChunkAvailability(
           _peerBaseUrl(peer),
-          hashes: missingHashes.toList(),
+          hashes: allHashes,
           token: peerToken,
         );
+        if (response.available.isEmpty) {
+          continue;
+        }
         await _swarmStore.ingestAvailabilityRows(
           peer: peer,
           rows: response.available,
         );
+        await _cacheAvailabilityManifests(
+          peer: peer,
+          rows: response.available,
+          token: peerToken,
+        );
       } catch (_) {
         // best-effort probe
+      }
+    }
+  }
+
+  Future<void> _cacheAvailabilityManifests({
+    required Peer peer,
+    required List<ChunkAvailabilityDto> rows,
+    required String token,
+  }) async {
+    final byEntry = <String, List<ChunkAvailabilityDto>>{};
+    for (final row in rows) {
+      byEntry.putIfAbsent(row.entryId, () => []).add(row);
+    }
+    for (final entryRows in byEntry.values) {
+      final first = entryRows.first;
+      try {
+        final manifest = await fetchFileManifest(
+          _peerBaseUrl(peer),
+          fileId: first.entryId,
+          token: token,
+        );
+        await cacheRemoteManifest(
+          peerId: peer.id,
+          shareId: first.shareId,
+          relativePath: normalizeRemoteEntryPath(manifest.entry.path),
+          manifest: manifest,
+        );
+      } catch (_) {
+        // best-effort cache
       }
     }
   }
@@ -629,9 +925,9 @@ class TransferClient {
         );
         pending = [...pending]
           ..sort(
-            (a, b) => order.indexOf(a.chunkIndex).compareTo(
-                  order.indexOf(b.chunkIndex),
-                ),
+            (a, b) => order
+                .indexOf(a.chunkIndex)
+                .compareTo(order.indexOf(b.chunkIndex)),
           );
 
         final queue = _ChunkWorkQueue(pending);
@@ -709,7 +1005,10 @@ class TransferClient {
       }
       triedSources.add(candidate.sourceKey);
       swarmScheduler.beginFetch(candidate.peer.id);
-      final token = await _tokenForPeer(candidate.peer, primaryToken: primaryToken);
+      final token = await _tokenForPeer(
+        candidate.peer,
+        primaryToken: primaryToken,
+      );
       final baseUrl = _peerBaseUrl(candidate.peer);
       final started = DateTime.now();
       try {
@@ -773,13 +1072,13 @@ class TransferClient {
         }
         swarmScheduler.recordFailure(
           candidate.peer.id,
-          hashMismatch: error is HttpException &&
-              error.message == 'Chunk hash mismatch',
+          hashMismatch:
+              error is HttpException && error.message == 'Chunk hash mismatch',
         );
         await _db.recordChunkSourceFailure(
           candidate.sourceId,
-          hashMismatch: error is HttpException &&
-              error.message == 'Chunk hash mismatch',
+          hashMismatch:
+              error is HttpException && error.message == 'Chunk hash mismatch',
         );
       } finally {
         swarmScheduler.endFetch(candidate.peer.id);
@@ -826,7 +1125,10 @@ class TransferClient {
           }
         });
 
-        legacyScheduler.recordSuccess(peer.id, DateTime.now().difference(started));
+        legacyScheduler.recordSuccess(
+          peer.id,
+          DateTime.now().difference(started),
+        );
         await _db.markDownloadChunkVerified(row.id, sourcePeerId: peer.id);
         progress.clearChunk(chunk.index);
         await progress.persist(force: true);
@@ -853,9 +1155,9 @@ class TransferClient {
   }
 
   Future<String?> _tokenForPeer(Peer peer, {String? primaryToken}) async {
-    final stored = await _sessions.readValidToken(_db, peer);
-    if (stored != null) {
-      return stored;
+    final ensured = await ensurePeerToken(peer);
+    if (ensured != null) {
+      return ensured;
     }
     return primaryToken;
   }
@@ -888,6 +1190,55 @@ class TransferClient {
       }
     }
     await _db.updateDownloadProgressFromChunks(downloadId);
+  }
+
+  Future<String> resolvePartialPath(String targetPath) =>
+      _partialPathFor(targetPath);
+
+  Future<String> _partialPathFor(String targetPath) async {
+    final paths = _downloadPaths;
+    if (paths != null && await paths.requiresDownloadStaging(targetPath)) {
+      final stagingDir = await paths.downloadStagingDirectory();
+      await Directory(stagingDir).create(recursive: true);
+      final digest = sha256.convert(utf8.encode(targetPath)).toString();
+      return '$stagingDir${Platform.pathSeparator}$digest.partial';
+    }
+    return '$targetPath.partial';
+  }
+
+  Future<void> _finalizeDownload({
+    required File partialFile,
+    required String targetPath,
+    bool deleteEmptyStaging = false,
+  }) async {
+    final paths = _downloadPaths;
+    if (paths != null && await paths.requiresDownloadStaging(targetPath)) {
+      if (deleteEmptyStaging && !await partialFile.exists()) {
+        await partialFile.create(recursive: true);
+      }
+      await paths.finalizeDownload(
+        stagingPath: partialFile.path,
+        targetPath: targetPath,
+        safTreePath: await _downloadsSafTreePath?.call(),
+        downloadsRoot: await _downloadsDirectory?.call(),
+      );
+      if (await partialFile.exists()) {
+        await partialFile.delete();
+      }
+      return;
+    }
+
+    await partialFile.parent.create(recursive: true);
+    if (await partialFile.exists()) {
+      if (await File(targetPath).exists()) {
+        await File(targetPath).delete();
+      }
+      await partialFile.rename(targetPath);
+      return;
+    }
+
+    await File(targetPath).parent.create(recursive: true);
+    await File(targetPath).writeAsBytes(const []);
   }
 
   Future<void> _preparePartialFile(File partialFile, int totalBytes) async {

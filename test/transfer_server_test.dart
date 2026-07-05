@@ -1,10 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:blan/core/indexing/chunker.dart';
 import 'package:blan/core/persistence/database.dart';
 import 'package:blan/core/protocol/constants.dart';
 import 'package:blan/core/protocol/models.dart';
 import 'package:blan/core/transfers/transfer_server.dart';
+import 'package:blan/platform/platform_services.dart';
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,7 +31,7 @@ void main() {
 
   setUp(() async {
     db = AppDatabase(NativeDatabase.memory());
-    server = TransferServer(db);
+    server = TransferServer(db, safFiles: const _TestSafFiles());
     tempDir = await Directory.systemTemp.createTemp('blan-server-test');
     testFile = File('${tempDir.path}/hello.txt');
     await testFile.writeAsString('hello world');
@@ -146,6 +149,55 @@ void main() {
     expect(response.body.contains(tempDir.path), isFalse);
   });
 
+  test('manifest succeeds for SAF entries with localUri', () async {
+    const safShareId = 'saf-share';
+    const safFileId = 'saf-file';
+    const safUri =
+        'content://com.android.externalstorage.documents/document/primary%3ADownload%2Fhello.txt';
+
+    await db.into(db.shares).insert(
+          SharesCompanion.insert(
+            id: safShareId,
+            displayName: 'SAF',
+            localPath: 'Download',
+            storageType: const Value('saf'),
+          ),
+        );
+    await db.into(db.entries).insert(
+          EntriesCompanion.insert(
+            id: safFileId,
+            shareId: safShareId,
+            relativePath: 'hello.txt',
+            name: 'hello.txt',
+            size: Value(await testFile.length()),
+            mtimeMs: Value(
+              testFile.lastModifiedSync().millisecondsSinceEpoch,
+            ),
+            hashStatus: const Value('ready'),
+            chunkSize: const Value(32),
+            localUri: Value(safUri),
+          ),
+        );
+    await db.into(db.chunks).insert(
+          ChunksCompanion.insert(
+            entryId: safFileId,
+            chunkIndex: 0,
+            offset: 0,
+            length: await testFile.length(),
+            hash: 'saf123',
+            status: const Value('ready'),
+          ),
+        );
+
+    final response = await client.get(
+      peerUri('/manifest/files/$safFileId'),
+      headers: authHeaders(),
+    );
+    expect(response.statusCode, 200);
+    expect(response.body.contains(safUri), isFalse);
+    expect(response.body.contains('Download'), isFalse);
+  });
+
   test('manifest over browser HTTP works with browser token', () async {
     final response = await http.get(
       browserUri('/manifest/files/$fileId'),
@@ -236,4 +288,26 @@ void main() {
     final resolved = await http.Response.fromStream(response);
     expect(resolved.statusCode, 200);
   });
+}
+
+class _TestSafFiles implements SafFileOperations {
+  const _TestSafFiles();
+
+  @override
+  Future<List<ChunkDescriptor>> hashSafFile({
+    required String uri,
+    required int chunkSize,
+  }) async =>
+      const [];
+
+  @override
+  Future<Uint8List> readSafFileRange({
+    required String uri,
+    required int offset,
+    required int length,
+  }) async =>
+      Uint8List(0);
+
+  @override
+  Future<bool> safFileExists(String uri) async => true;
 }

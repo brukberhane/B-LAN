@@ -323,11 +323,12 @@ class AppDatabase extends _$AppDatabase {
     downloadGroups,
   )..orderBy([(t) => OrderingTerm.desc(t.createdAt)])).watch();
 
-  Stream<List<Transfer>> watchUploads() => (select(transfers)
-        ..where((t) => t.direction.equals(TransferDirection.upload))
-        ..orderBy([(t) => OrderingTerm.desc(t.startedAt)])
-        ..limit(50))
-      .watch();
+  Stream<List<Transfer>> watchUploads() =>
+      (select(transfers)
+            ..where((t) => t.direction.equals(TransferDirection.upload))
+            ..orderBy([(t) => OrderingTerm.desc(t.startedAt)])
+            ..limit(50))
+          .watch();
 
   Future<int> createUploadTransfer({
     String? peerId,
@@ -351,8 +352,9 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> updateTransferProgress(int id, int bytesTransferred) async {
-    final row = await (select(transfers)..where((t) => t.id.equals(id)))
-        .getSingleOrNull();
+    final row = await (select(
+      transfers,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
     if (row == null) {
       return;
     }
@@ -395,12 +397,11 @@ class AppDatabase extends _$AppDatabase {
     Duration maxAge = const Duration(hours: 24),
   }) async {
     final cutoff = DateTime.now().subtract(maxAge);
-    await (delete(transfers)
-          ..where(
-            (t) =>
-                t.state.equals(TransferState.complete) &
-                t.updatedAt.isSmallerThanValue(cutoff),
-          ))
+    await (delete(transfers)..where(
+          (t) =>
+              t.state.equals(TransferState.complete) &
+              t.updatedAt.isSmallerThanValue(cutoff),
+        ))
         .go();
   }
 
@@ -854,9 +855,9 @@ class AppDatabase extends _$AppDatabase {
       ...SearchTokenizer.indexTokens(entry.relativePath),
     };
     await transaction(() async {
-      await (delete(entrySearchTokens)
-            ..where((t) => t.entryId.equals(entryId)))
-          .go();
+      await (delete(
+        entrySearchTokens,
+      )..where((t) => t.entryId.equals(entryId))).go();
       if (tokens.isEmpty) {
         return;
       }
@@ -878,9 +879,9 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> rebuildShareSearchIndex(String shareId) async {
-    final rows = await (select(entries)
-          ..where((t) => t.shareId.equals(shareId)))
-        .get();
+    final rows = await (select(
+      entries,
+    )..where((t) => t.shareId.equals(shareId))).get();
     for (final row in rows) {
       await rebuildSearchTokensForEntry(row.id);
     }
@@ -894,10 +895,11 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<bool> hasSearchTokens(String entryId) async {
-    final row = await (select(entrySearchTokens)
-          ..where((t) => t.entryId.equals(entryId))
-          ..limit(1))
-        .getSingleOrNull();
+    final row =
+        await (select(entrySearchTokens)
+              ..where((t) => t.entryId.equals(entryId))
+              ..limit(1))
+            .getSingleOrNull();
     return row != null;
   }
 
@@ -942,9 +944,9 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<void> removeSearchTokensForEntry(String entryId) async {
-    await (delete(entrySearchTokens)
-          ..where((t) => t.entryId.equals(entryId)))
-        .go();
+    await (delete(
+      entrySearchTokens,
+    )..where((t) => t.entryId.equals(entryId))).go();
   }
 
   Future<String?> contentSignatureForEntry(String entryId) async {
@@ -984,9 +986,7 @@ class AppDatabase extends _$AppDatabase {
     if (terms.isEmpty) {
       return [];
     }
-    final primary = terms.reduce(
-      (a, b) => a.length >= b.length ? a : b,
-    );
+    final primary = terms.reduce((a, b) => a.length >= b.length ? a : b);
     final rows = await customSelect(
       'SELECT DISTINCT e.id AS entry_id '
       'FROM entries e '
@@ -1037,19 +1037,21 @@ class AppDatabase extends _$AppDatabase {
     int pageSize = 100,
     int offset = 0,
   }) async {
-    final share = await (select(shares)..where((t) => t.id.equals(shareId)))
-        .getSingleOrNull();
+    final share = await (select(
+      shares,
+    )..where((t) => t.id.equals(shareId))).getSingleOrNull();
     if (share == null || !share.enabled) {
       return ShareManifestPageDto(shareId: shareId, entries: const []);
     }
-    final rows = await (select(entries)
-          ..where((t) => t.shareId.equals(shareId))
-          ..orderBy([(t) => OrderingTerm.asc(t.relativePath)])
-          ..limit(pageSize, offset: offset))
-        .get();
-    final total = await (select(entries)
-          ..where((t) => t.shareId.equals(shareId)))
-        .get();
+    final rows =
+        await (select(entries)
+              ..where((t) => t.shareId.equals(shareId))
+              ..orderBy([(t) => OrderingTerm.asc(t.relativePath)])
+              ..limit(pageSize, offset: offset))
+            .get();
+    final total = await (select(
+      entries,
+    )..where((t) => t.shareId.equals(shareId))).get();
     final nextOffset = offset + rows.length;
     return ShareManifestPageDto(
       shareId: shareId,
@@ -1099,21 +1101,54 @@ class AppDatabase extends _$AppDatabase {
         contentSignature: contentSignature == null
             ? const Value.absent()
             : Value(contentSignature),
-        manifestJson:
-            manifestJson == null ? const Value.absent() : Value(manifestJson),
+        manifestJson: manifestJson == null
+            ? const Value.absent()
+            : Value(manifestJson),
         cachedAt: Value(DateTime.now()),
       ),
     );
   }
 
-  Future<List<RemoteFile>> remoteFilesBySignature(String signature) =>
-      (select(remoteFiles)..where((t) => t.contentSignature.equals(signature)))
-          .get();
+  Future<List<RemoteFile>> remoteFilesBySignature(String signature) => (select(
+    remoteFiles,
+  )..where((t) => t.contentSignature.equals(signature))).get();
 
-  Future<void> purgeStaleRemoteFiles({Duration maxAge = const Duration(hours: 24)}) async {
+  Future<RemoteFile?> remoteFileForPeerPath({
+    required String peerId,
+    required String shareId,
+    required String relativePath,
+  }) {
+    return (select(remoteFiles)..where(
+          (t) =>
+              t.peerId.equals(peerId) &
+              t.shareId.equals(shareId) &
+              t.relativePath.equals(relativePath),
+        ))
+        .getSingleOrNull();
+  }
+
+  Future<RemoteFile?> remoteFileForPeerPathAnyShare({
+    required String peerId,
+    required String relativePath,
+  }) {
+    return (select(remoteFiles)
+          ..where(
+            (t) =>
+                t.peerId.equals(peerId) &
+                t.relativePath.equals(relativePath),
+          )
+          ..orderBy([(t) => OrderingTerm.desc(t.cachedAt)])
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
+  Future<void> purgeStaleRemoteFiles({
+    Duration maxAge = const Duration(hours: 24),
+  }) async {
     final cutoff = DateTime.now().subtract(maxAge);
-    await (delete(remoteFiles)..where((t) => t.cachedAt.isSmallerThanValue(cutoff)))
-        .go();
+    await (delete(
+      remoteFiles,
+    )..where((t) => t.cachedAt.isSmallerThanValue(cutoff))).go();
   }
 
   Future<void> upsertChunkSourcesFromManifest({
@@ -1125,15 +1160,15 @@ class AppDatabase extends _$AppDatabase {
     final remoteFileId = '$peerId:$shareId:$entryId';
     final now = DateTime.now();
     for (final chunk in manifest.chunks) {
-      final existing = await (select(remoteChunkSources)
-            ..where(
-              (t) =>
-                  t.hash.equals(chunk.hash) &
-                  t.peerId.equals(peerId) &
-                  t.entryId.equals(entryId) &
-                  t.chunkIndex.equals(chunk.index),
-            ))
-          .getSingleOrNull();
+      final existing =
+          await (select(remoteChunkSources)..where(
+                (t) =>
+                    t.hash.equals(chunk.hash) &
+                    t.peerId.equals(peerId) &
+                    t.entryId.equals(entryId) &
+                    t.chunkIndex.equals(chunk.index),
+              ))
+              .getSingleOrNull();
       if (existing == null) {
         await into(remoteChunkSources).insert(
           RemoteChunkSourcesCompanion.insert(
@@ -1150,8 +1185,9 @@ class AppDatabase extends _$AppDatabase {
         );
         continue;
       }
-      await (update(remoteChunkSources)..where((t) => t.id.equals(existing.id)))
-          .write(
+      await (update(
+        remoteChunkSources,
+      )..where((t) => t.id.equals(existing.id))).write(
         RemoteChunkSourcesCompanion(
           remoteFileId: Value(remoteFileId),
           offset: Value(chunk.offset),
@@ -1177,9 +1213,9 @@ class AppDatabase extends _$AppDatabase {
     required int latencyMs,
     required int bytesPerSecond,
   }) async {
-    final row = await (select(remoteChunkSources)
-          ..where((t) => t.id.equals(sourceId)))
-        .getSingleOrNull();
+    final row = await (select(
+      remoteChunkSources,
+    )..where((t) => t.id.equals(sourceId))).getSingleOrNull();
     if (row == null) {
       return;
     }
@@ -1191,7 +1227,9 @@ class AppDatabase extends _$AppDatabase {
     final nextSpeed = priorSpeed == null
         ? bytesPerSecond
         : ((priorSpeed * 3) + bytesPerSecond) ~/ 4;
-    await (update(remoteChunkSources)..where((t) => t.id.equals(sourceId))).write(
+    await (update(
+      remoteChunkSources,
+    )..where((t) => t.id.equals(sourceId))).write(
       RemoteChunkSourcesCompanion(
         lastSeen: Value(DateTime.now()),
         lastSuccessAt: Value(DateTime.now()),
@@ -1206,14 +1244,16 @@ class AppDatabase extends _$AppDatabase {
     int sourceId, {
     bool hashMismatch = false,
   }) async {
-    final row = await (select(remoteChunkSources)
-          ..where((t) => t.id.equals(sourceId)))
-        .getSingleOrNull();
+    final row = await (select(
+      remoteChunkSources,
+    )..where((t) => t.id.equals(sourceId))).getSingleOrNull();
     if (row == null) {
       return;
     }
     final penalty = hashMismatch ? 3 : 1;
-    await (update(remoteChunkSources)..where((t) => t.id.equals(sourceId))).write(
+    await (update(
+      remoteChunkSources,
+    )..where((t) => t.id.equals(sourceId))).write(
       RemoteChunkSourcesCompanion(
         lastSeen: Value(DateTime.now()),
         failureCount: Value(row.failureCount + penalty),
@@ -1225,9 +1265,9 @@ class AppDatabase extends _$AppDatabase {
     Duration maxAge = const Duration(hours: 24),
   }) async {
     final cutoff = DateTime.now().subtract(maxAge);
-    await (delete(remoteChunkSources)
-          ..where((t) => t.lastSeen.isSmallerThanValue(cutoff)))
-        .go();
+    await (delete(
+      remoteChunkSources,
+    )..where((t) => t.lastSeen.isSmallerThanValue(cutoff))).go();
   }
 
   Future<List<ChunkAvailabilityDto>> chunkAvailabilityForHashes(
@@ -1275,8 +1315,7 @@ class AppDatabase extends _$AppDatabase {
       (select(peers)..where((t) => t.id.equals(id))).getSingleOrNull();
 
   Future<Peer?> peerByEndpoint({required String host, required int port}) =>
-      (select(peers)
-            ..where((t) => t.host.equals(host) & t.port.equals(port)))
+      (select(peers)..where((t) => t.host.equals(host) & t.port.equals(port)))
           .getSingleOrNull();
 
   Future<void> upsertPeerFromHello({
@@ -1367,9 +1406,9 @@ class AppDatabase extends _$AppDatabase {
       await (delete(chunks)..where((t) => t.entryId.equals(entry.id))).go();
     }
     await (delete(entries)..where((t) => t.shareId.equals(shareId))).go();
-    await (delete(entrySearchTokens)
-          ..where((t) => t.shareId.equals(shareId)))
-        .go();
+    await (delete(
+      entrySearchTokens,
+    )..where((t) => t.shareId.equals(shareId))).go();
   }
 
   Future<Download?> findResumableDownload({
@@ -1653,6 +1692,12 @@ class AppDatabase extends _$AppDatabase {
   Future<void> setShareEnabled(String shareId, bool enabled) async {
     await (update(shares)..where((t) => t.id.equals(shareId))).write(
       SharesCompanion(enabled: Value(enabled)),
+    );
+  }
+
+  Future<void> setShareDisplayName(String shareId, String displayName) async {
+    await (update(shares)..where((t) => t.id.equals(shareId))).write(
+      SharesCompanion(displayName: Value(displayName)),
     );
   }
 

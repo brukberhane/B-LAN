@@ -1,6 +1,9 @@
+import 'package:file_picker/file_picker.dart';
+
 import 'platform_services.dart';
 
-class StubPlatformServices implements PlatformServices {
+class StubPlatformServices extends DefaultDownloadPathServices
+    implements PlatformServices {
   @override
   Future<void> initialize() async {}
 
@@ -44,4 +47,8 @@ class StubPlatformServices implements PlatformServices {
 
   @override
   Future<String?> defaultDeviceName() async => null;
+
+  @override
+  Future<String?> pickDownloadsDirectory() async =>
+      FilePicker.getDirectoryPath();
 }

@@ -31,14 +31,30 @@ class AppBootstrap extends ConsumerStatefulWidget {
   ConsumerState<AppBootstrap> createState() => _AppBootstrapState();
 }
 
-class _AppBootstrapState extends ConsumerState<AppBootstrap> {
+class _AppBootstrapState extends ConsumerState<AppBootstrap>
+    with WidgetsBindingObserver {
   AppService? _service;
   Object? _error;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _start();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _service?.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _service?.onAppResumed();
+    }
   }
 
   Future<void> _start() async {
@@ -52,12 +68,6 @@ class _AppBootstrapState extends ConsumerState<AppBootstrap> {
     } catch (error) {
       setState(() => _error = error);
     }
-  }
-
-  @override
-  void dispose() {
-    _service?.dispose();
-    super.dispose();
   }
 
   @override

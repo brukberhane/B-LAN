@@ -35,7 +35,12 @@
         <service
             android:name=".BlanForegroundService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="true" />
+
+        <receiver
+            android:name=".SharingStopReceiver"
+            android:exported="false" />
 
         <meta-data
             android:name="flutterEmbedding"

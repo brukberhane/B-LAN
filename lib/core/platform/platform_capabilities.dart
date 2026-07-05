@@ -95,7 +95,8 @@ abstract final class PlatformCapabilities {
     if (Platform.isAndroid) {
       notes.add(
         'Android uses SAF for folder shares; large trees may need manual rescan. '
-        'Scan/download run in a foreground notification while active. '
+        'LAN sharing stays active in the background via a persistent notification '
+        'until you stop sharing or remove the app from recents. '
         'If discovery fails, check router AP isolation and use manual connect.',
       );
     }

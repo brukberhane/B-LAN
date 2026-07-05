@@ -69,8 +69,7 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
                     IconButton(
                       tooltip: 'Open downloads folder',
                       onPressed: () async {
-                        final opened =
-                            await app.openPathInFileManager(path);
+                        final opened = await app.openPathInFileManager(path);
                         if (mounted && !opened) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -80,6 +79,25 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
                         }
                       },
                       icon: const Icon(Icons.folder_open),
+                    ),
+                    IconButton(
+                      tooltip: 'Change downloads folder',
+                      onPressed: () async {
+                        final picked = await app.pickDownloadsDirectory();
+                        if (picked == null) {
+                          return;
+                        }
+                        await app.setDownloadsDirectory(picked);
+                        ref.invalidate(downloadsDirectoryProvider);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Downloads save to $picked'),
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.edit_location_alt),
                     ),
                   ],
                 ),

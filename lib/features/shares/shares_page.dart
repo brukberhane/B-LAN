@@ -93,19 +93,103 @@ class SharesPage extends ConsumerWidget {
     }
     await ref.read(appServiceProvider).addShare(result);
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Sharing $result')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Sharing $result')));
     }
   }
 
   Future<void> _addSafShare(BuildContext context, WidgetRef ref) async {
-    await ref.read(appServiceProvider).addSafShare();
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('SAF folder added')),
-      );
+    final service = ref.read(appServiceProvider);
+    final uri = await service.pickSafTree();
+    if (!context.mounted || uri == null) {
+      return;
     }
+    final defaultName = AppService.safDisplayNameFromPath(uri);
+    final name = await _promptShareName(
+      context,
+      title: 'Name SAF folder',
+      initialName: defaultName,
+    );
+    if (!context.mounted || name == null) {
+      return;
+    }
+    await service.addSafShareFromUri(uri, displayName: name);
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Sharing $name')));
+    }
+  }
+}
+
+Future<String?> _promptShareName(
+  BuildContext context, {
+  required String title,
+  required String initialName,
+}) {
+  return showDialog<String>(
+    context: context,
+    builder: (context) =>
+        _ShareNameDialog(title: title, initialName: initialName),
+  );
+}
+
+class _ShareNameDialog extends StatefulWidget {
+  const _ShareNameDialog({required this.title, required this.initialName});
+
+  final String title;
+  final String initialName;
+
+  @override
+  State<_ShareNameDialog> createState() => _ShareNameDialogState();
+}
+
+class _ShareNameDialogState extends State<_ShareNameDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialName);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value = _controller.text.trim();
+    if (value.isEmpty) {
+      return;
+    }
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          labelText: 'Display name',
+          hintText: 'Shown to peers on the LAN',
+        ),
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Save')),
+      ],
+    );
   }
 }
 
@@ -155,98 +239,120 @@ class _ShareTile extends ConsumerWidget {
       valueListenable: service.searchIndexStatus,
       builder: (context, searchIndexState, _) {
         return ListTile(
-      leading: Icon(
-        share.storageType == 'saf' ? Icons.android : Icons.folder,
-        color: share.enabled ? null : Theme.of(context).disabledColor,
-      ),
-      title: Row(
-        children: [
-          Expanded(child: Text(share.displayName)),
-          if (!share.enabled)
-            const Padding(
-              padding: EdgeInsets.only(left: 8),
-              child: Chip(
-                label: Text('Disabled'),
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          leading: Icon(
+            share.storageType == 'saf' ? Icons.android : Icons.folder,
+            color: share.enabled ? null : Theme.of(context).disabledColor,
+          ),
+          title: Row(
+            children: [
+              Expanded(child: Text(share.displayName)),
+              if (!share.enabled)
+                const Padding(
+                  padding: EdgeInsets.only(left: 8),
+                  child: Chip(
+                    label: Text('Disabled'),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+            ],
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${_storageLabel(share.storageType)} · ${share.localPath}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-            ),
-        ],
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${_storageLabel(share.storageType)} · ${share.localPath}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            isServed
-                ? 'Discoverable when peers can reach this device'
-                : 'Not served until indexing completes and share is enabled',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: 8),
-          ShareProgressCard(
-            share: share,
-            searchIndexState: searchIndexState,
-          ),
-        ],
-      ),
-      isThreeLine: true,
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (share.storageType != 'saf')
-            IconButton(
-              tooltip: 'Open share folder',
-              onPressed: () async {
-                final opened =
-                    await service.openPathInFileManager(share.localPath);
-                if (context.mounted && !opened) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Could not open folder')),
-                  );
-                }
-              },
-              icon: const Icon(Icons.folder_open),
-            ),
-          Switch(
-            value: share.enabled,
-            onChanged: (value) => service.setShareEnabled(share.id, value),
-          ),
-          PopupMenuButton<_ShareAction>(
-            onSelected: (action) async {
-              switch (action) {
-                case _ShareAction.rescan:
-                  await service.rescanShare(share.id);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Rescanning ${share.displayName}')),
-                    );
-                  }
-                case _ShareAction.remove:
-                  final confirmed = await _confirmRemove(context, share);
-                  if (confirmed == true) {
-                    await service.removeShare(share.id);
-                  }
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: _ShareAction.rescan,
-                child: Text('Rescan'),
+              const SizedBox(height: 4),
+              Text(
+                isServed
+                    ? 'Discoverable when peers can reach this device'
+                    : 'Not served until indexing completes and share is enabled',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
-              PopupMenuItem(
-                value: _ShareAction.remove,
-                child: Text('Remove'),
+              const SizedBox(height: 8),
+              ShareProgressCard(
+                share: share,
+                searchIndexState: searchIndexState,
               ),
             ],
           ),
-        ],
-      ),
+          isThreeLine: true,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (share.storageType != 'saf')
+                IconButton(
+                  tooltip: 'Open share folder',
+                  onPressed: () async {
+                    final opened = await service.openPathInFileManager(
+                      share.localPath,
+                    );
+                    if (context.mounted && !opened) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Could not open folder')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.folder_open),
+                ),
+              Switch(
+                value: share.enabled,
+                onChanged: (value) => service.setShareEnabled(share.id, value),
+              ),
+              PopupMenuButton<_ShareAction>(
+                onSelected: (action) async {
+                  switch (action) {
+                    case _ShareAction.rename:
+                      final renamed = await _promptShareName(
+                        context,
+                        title: 'Rename share',
+                        initialName: share.displayName,
+                      );
+                      if (!context.mounted || renamed == null) {
+                        return;
+                      }
+                      await service.renameShare(share.id, renamed);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Renamed to $renamed')),
+                        );
+                      }
+                    case _ShareAction.rescan:
+                      await service.rescanShare(share.id);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Rescanning ${share.displayName}'),
+                          ),
+                        );
+                      }
+                    case _ShareAction.remove:
+                      final confirmed = await _confirmRemove(context, share);
+                      if (confirmed == true) {
+                        await service.removeShare(share.id);
+                      }
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: _ShareAction.rename,
+                    child: Text('Rename'),
+                  ),
+                  PopupMenuItem(
+                    value: _ShareAction.rescan,
+                    child: Text('Rescan'),
+                  ),
+                  PopupMenuItem(
+                    value: _ShareAction.remove,
+                    child: Text('Remove'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         );
       },
     );
@@ -278,4 +384,4 @@ class _ShareTile extends ConsumerWidget {
   }
 }
 
-enum _ShareAction { rescan, remove }
+enum _ShareAction { rename, rescan, remove }
