@@ -21,6 +21,11 @@ class PeersPage extends ConsumerWidget {
         title: const Text('Peers'),
         actions: [
           IconButton(
+            onPressed: () => _refreshLanDiscovery(context, ref),
+            icon: const Icon(Icons.wifi_find),
+            tooltip: 'Refresh LAN discovery',
+          ),
+          IconButton(
             onPressed: () => _showManualPeerDialog(context, ref),
             icon: const Icon(Icons.add_link),
             tooltip: 'Connect manually',
@@ -69,6 +74,12 @@ class PeersPage extends ConsumerWidget {
                     if (peer.identityStatus == PeerIdentityStatus.suspicious)
                       const Chip(
                         label: Text('Suspicious'),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    if (peer.stale)
+                      const Chip(
+                        label: Text('Stale'),
                         visualDensity: VisualDensity.compact,
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
@@ -157,6 +168,7 @@ class PeersPage extends ConsumerWidget {
       '${peer.host}:${peer.port}',
       peer.scheme,
       peer.manual ? 'Manual' : 'Discovered',
+      if (peer.stale) 'stale',
       'seen ${formatRelativeTime(peer.lastSeen)}',
     ];
     if (peer.tlsCertFingerprint != null && peer.tlsCertFingerprint!.isNotEmpty) {
@@ -234,6 +246,25 @@ class PeersPage extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Session/auth failed: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _refreshLanDiscovery(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(appServiceProvider).refreshLanDiscovery();
+      ref.invalidate(lanAddressesProvider);
+      ref.invalidate(peersProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('LAN advertise and scan refreshed')),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Refresh failed: $error')),
         );
       }
     }

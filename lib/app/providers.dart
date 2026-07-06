@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/persistence/database.dart';
+import '../core/platform/lan_addresses.dart';
 import '../core/platform/platform_health.dart';
 import '../core/security/device_identity.dart';
 import '../core/services/app_service.dart';
@@ -21,7 +22,11 @@ final sharesProvider = StreamProvider((ref) {
 
 final peersProvider = StreamProvider((ref) {
   final db = ref.watch(databaseProvider);
-  return db.watchPeers();
+  ref.watch(lanAddressesProvider);
+  return db.watchPeers().asyncMap((rows) async {
+    final subnets = await listLocalIpv4Subnets();
+    return db.filterPeersOnLocalSubnet(rows, subnets);
+  });
 });
 
 final downloadsProvider = StreamProvider((ref) {

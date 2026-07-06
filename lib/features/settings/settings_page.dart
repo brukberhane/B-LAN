@@ -420,6 +420,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       identityStatus: PeerIdentityStatus.normal,
       lastSeen: DateTime.now(),
       manual: true,
+      stale: false,
     );
 
     if (!mounted) {

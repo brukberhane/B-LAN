@@ -80,6 +80,7 @@ void main() {
       identityStatus: PeerIdentityStatus.identityChanged,
       lastSeen: DateTime.now(),
       manual: false,
+      stale: false,
     );
 
     await tester.pumpWidget(

@@ -14,6 +14,7 @@ Peer _peer(String id, {bool trusted = false}) => Peer(
       identityStatus: 'normal',
       lastSeen: DateTime.now(),
       manual: true,
+      stale: false,
     );
 
 SwarmChunkCandidate _candidate({

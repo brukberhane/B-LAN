@@ -1,10 +1,12 @@
 import 'dart:io';
 
 import 'package:blan/core/persistence/database.dart';
+import 'package:blan/core/platform/lan_addresses.dart';
 import 'package:blan/core/protocol/constants.dart';
 import 'package:blan/core/protocol/download_states.dart';
 import 'package:blan/core/protocol/models.dart';
-import 'package:drift/drift.dart';
+import 'package:blan/core/security/peer_identity.dart';
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -20,7 +22,7 @@ void main() {
   });
 
   test('opens at current schema version', () {
-    expect(db.schemaVersion, 13);
+    expect(db.schemaVersion, 14);
   });
 
   test('setSetting upserts existing keys', () async {
@@ -179,6 +181,97 @@ void main() {
     await db.recoverInterruptedDownloads();
     final row = await db.downloadById('dl-1');
     expect(row?.state, DownloadState.queued);
+  });
+
+  test('purgeUntrustedPeers removes only untrusted peers', () async {
+    await db.into(db.peers).insert(
+          PeersCompanion.insert(
+            id: 'trusted-peer',
+            nick: 'trusted',
+            host: '192.168.1.10',
+            port: 59488,
+            trusted: const Value(true),
+          ),
+        );
+    await db.into(db.peers).insert(
+          PeersCompanion.insert(
+            id: 'temp-peer',
+            nick: 'temp',
+            host: '192.168.1.20',
+            port: 59488,
+          ),
+        );
+
+    final purged = await db.purgeUntrustedPeers();
+    expect(purged, 1);
+    expect(await db.peerById('trusted-peer'), isNotNull);
+    expect(await db.peerById('temp-peer'), isNull);
+  });
+
+  test('filterPeersOnLocalSubnet keeps same-subnet peers only', () async {
+    final rows = [
+      Peer(
+        id: 'a',
+        nick: 'a',
+        host: '192.168.1.20',
+        port: 1,
+        scheme: peerSchemeHttps,
+        fingerprint: null,
+        tlsCertFingerprint: null,
+        trusted: false,
+        identityStatus: PeerIdentityStatus.normal,
+        lastSeen: DateTime.now(),
+        manual: false,
+        stale: true,
+      ),
+      Peer(
+        id: 'b',
+        nick: 'b',
+        host: '192.168.2.20',
+        port: 1,
+        scheme: peerSchemeHttps,
+        fingerprint: null,
+        tlsCertFingerprint: null,
+        trusted: false,
+        identityStatus: PeerIdentityStatus.normal,
+        lastSeen: DateTime.now(),
+        manual: false,
+        stale: false,
+      ),
+    ];
+    final filtered = db.filterPeersOnLocalSubnet(rows, [
+      const Ipv4Subnet(address: '192.168.1.10', prefixLength: 24),
+    ]);
+    expect(filtered.map((peer) => peer.id), ['a']);
+  });
+
+  test('filterPeersOnLocalSubnet matches peers on any device subnet', () {
+    Peer row(String id, String host) => Peer(
+          id: id,
+          nick: id,
+          host: host,
+          port: 1,
+          scheme: peerSchemeHttps,
+          fingerprint: null,
+          tlsCertFingerprint: null,
+          trusted: false,
+          identityStatus: PeerIdentityStatus.normal,
+          lastSeen: DateTime.now(),
+          manual: false,
+          stale: false,
+        );
+    final filtered = db.filterPeersOnLocalSubnet(
+      [
+        row('wifi', '192.168.1.20'),
+        row('eth', '10.0.99.55'),
+        row('other', '192.168.9.1'),
+      ],
+      [
+        const Ipv4Subnet(address: '192.168.1.10', prefixLength: 24),
+        const Ipv4Subnet(address: '10.0.5.20', prefixLength: 16),
+      ],
+    );
+    expect(filtered.map((peer) => peer.id), ['wifi', 'eth']);
   });
 
   test('database reopens with persisted settings on disk', () async {

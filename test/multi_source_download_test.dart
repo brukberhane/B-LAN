@@ -125,6 +125,7 @@ void main() {
         identityStatus: PeerIdentityStatus.normal,
         lastSeen: DateTime.now(),
         manual: true,
+      stale: false,
       );
 
       await client.downloadEntry(
@@ -240,6 +241,7 @@ void main() {
         identityStatus: PeerIdentityStatus.normal,
         lastSeen: DateTime.now(),
         manual: true,
+      stale: false,
       );
 
       await client.downloadEntry(
@@ -345,6 +347,7 @@ void main() {
         identityStatus: PeerIdentityStatus.normal,
         lastSeen: DateTime.now(),
         manual: true,
+      stale: false,
       );
 
       final downloadId = await db.enqueueDownload(
@@ -454,6 +457,7 @@ void main() {
           identityStatus: PeerIdentityStatus.normal,
           lastSeen: DateTime.now(),
           manual: true,
+      stale: false,
         );
 
         final downloadId = await db.enqueueDownload(
@@ -542,6 +546,7 @@ void main() {
         identityStatus: PeerIdentityStatus.normal,
         lastSeen: DateTime.now(),
         manual: true,
+      stale: false,
       );
 
       await expectLater(

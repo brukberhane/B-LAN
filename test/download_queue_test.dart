@@ -105,6 +105,7 @@ void main() {
       identityStatus: PeerIdentityStatus.normal,
       lastSeen: DateTime.now(),
       manual: true,
+      stale: false,
     );
     await (db.update(db.peers)..where((t) => t.id.equals(peerId))).write(
       PeersCompanion(

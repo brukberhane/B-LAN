@@ -74,6 +74,7 @@ class Peers extends Table {
       text().withDefault(const Constant('normal'))();
   DateTimeColumn get lastSeen => dateTime().nullable()();
   BoolColumn get manual => boolean().withDefault(const Constant(false))();
+  BoolColumn get stale => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column<Object>> get primaryKey => {id};

@@ -154,6 +154,7 @@ void main() {
         identityStatus: PeerIdentityStatus.normal,
         lastSeen: DateTime.now(),
         manual: false,
+      stale: false,
       );
       expect(await store.readValidToken(db, peer), isNull);
       expect(await db.getSetting('session_127.0.0.1:1234'), isEmpty);
@@ -171,6 +172,7 @@ void main() {
         identityStatus: PeerIdentityStatus.normal,
         lastSeen: DateTime.now(),
         manual: false,
+      stale: false,
       );
       await store.saveToken(db, peer, 'session-token');
       final raw = await db.getSetting('session_127.0.0.1:1234');
@@ -190,6 +192,7 @@ void main() {
         identityStatus: PeerIdentityStatus.normal,
         lastSeen: DateTime.now(),
         manual: false,
+      stale: false,
       );
       await store.saveToken(db, peer, 'bound-token');
       final changed = Peer(
@@ -203,6 +206,7 @@ void main() {
         identityStatus: peer.identityStatus,
         lastSeen: peer.lastSeen,
         manual: peer.manual,
+        stale: peer.stale,
       );
       expect(await store.readValidToken(db, changed), isNull);
     });

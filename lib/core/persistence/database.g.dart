@@ -2208,6 +2208,19 @@ class $PeersTable extends Peers with TableInfo<$PeersTable, Peer> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _staleMeta = const VerificationMeta('stale');
+  @override
+  late final GeneratedColumn<bool> stale = GeneratedColumn<bool>(
+    'stale',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("stale" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2221,6 +2234,7 @@ class $PeersTable extends Peers with TableInfo<$PeersTable, Peer> {
     identityStatus,
     lastSeen,
     manual,
+    stale,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2314,6 +2328,12 @@ class $PeersTable extends Peers with TableInfo<$PeersTable, Peer> {
         manual.isAcceptableOrUnknown(data['manual']!, _manualMeta),
       );
     }
+    if (data.containsKey('stale')) {
+      context.handle(
+        _staleMeta,
+        stale.isAcceptableOrUnknown(data['stale']!, _staleMeta),
+      );
+    }
     return context;
   }
 
@@ -2367,6 +2387,10 @@ class $PeersTable extends Peers with TableInfo<$PeersTable, Peer> {
         DriftSqlType.bool,
         data['${effectivePrefix}manual'],
       )!,
+      stale: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}stale'],
+      )!,
     );
   }
 
@@ -2388,6 +2412,7 @@ class Peer extends DataClass implements Insertable<Peer> {
   final String identityStatus;
   final DateTime? lastSeen;
   final bool manual;
+  final bool stale;
   const Peer({
     required this.id,
     required this.nick,
@@ -2400,6 +2425,7 @@ class Peer extends DataClass implements Insertable<Peer> {
     required this.identityStatus,
     this.lastSeen,
     required this.manual,
+    required this.stale,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2421,6 +2447,7 @@ class Peer extends DataClass implements Insertable<Peer> {
       map['last_seen'] = Variable<DateTime>(lastSeen);
     }
     map['manual'] = Variable<bool>(manual);
+    map['stale'] = Variable<bool>(stale);
     return map;
   }
 
@@ -2443,6 +2470,7 @@ class Peer extends DataClass implements Insertable<Peer> {
           ? const Value.absent()
           : Value(lastSeen),
       manual: Value(manual),
+      stale: Value(stale),
     );
   }
 
@@ -2465,6 +2493,7 @@ class Peer extends DataClass implements Insertable<Peer> {
       identityStatus: serializer.fromJson<String>(json['identityStatus']),
       lastSeen: serializer.fromJson<DateTime?>(json['lastSeen']),
       manual: serializer.fromJson<bool>(json['manual']),
+      stale: serializer.fromJson<bool>(json['stale']),
     );
   }
   @override
@@ -2482,6 +2511,7 @@ class Peer extends DataClass implements Insertable<Peer> {
       'identityStatus': serializer.toJson<String>(identityStatus),
       'lastSeen': serializer.toJson<DateTime?>(lastSeen),
       'manual': serializer.toJson<bool>(manual),
+      'stale': serializer.toJson<bool>(stale),
     };
   }
 
@@ -2497,6 +2527,7 @@ class Peer extends DataClass implements Insertable<Peer> {
     String? identityStatus,
     Value<DateTime?> lastSeen = const Value.absent(),
     bool? manual,
+    bool? stale,
   }) => Peer(
     id: id ?? this.id,
     nick: nick ?? this.nick,
@@ -2511,6 +2542,7 @@ class Peer extends DataClass implements Insertable<Peer> {
     identityStatus: identityStatus ?? this.identityStatus,
     lastSeen: lastSeen.present ? lastSeen.value : this.lastSeen,
     manual: manual ?? this.manual,
+    stale: stale ?? this.stale,
   );
   Peer copyWithCompanion(PeersCompanion data) {
     return Peer(
@@ -2531,6 +2563,7 @@ class Peer extends DataClass implements Insertable<Peer> {
           : this.identityStatus,
       lastSeen: data.lastSeen.present ? data.lastSeen.value : this.lastSeen,
       manual: data.manual.present ? data.manual.value : this.manual,
+      stale: data.stale.present ? data.stale.value : this.stale,
     );
   }
 
@@ -2547,7 +2580,8 @@ class Peer extends DataClass implements Insertable<Peer> {
           ..write('trusted: $trusted, ')
           ..write('identityStatus: $identityStatus, ')
           ..write('lastSeen: $lastSeen, ')
-          ..write('manual: $manual')
+          ..write('manual: $manual, ')
+          ..write('stale: $stale')
           ..write(')'))
         .toString();
   }
@@ -2565,6 +2599,7 @@ class Peer extends DataClass implements Insertable<Peer> {
     identityStatus,
     lastSeen,
     manual,
+    stale,
   );
   @override
   bool operator ==(Object other) =>
@@ -2580,7 +2615,8 @@ class Peer extends DataClass implements Insertable<Peer> {
           other.trusted == this.trusted &&
           other.identityStatus == this.identityStatus &&
           other.lastSeen == this.lastSeen &&
-          other.manual == this.manual);
+          other.manual == this.manual &&
+          other.stale == this.stale);
 }
 
 class PeersCompanion extends UpdateCompanion<Peer> {
@@ -2595,6 +2631,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
   final Value<String> identityStatus;
   final Value<DateTime?> lastSeen;
   final Value<bool> manual;
+  final Value<bool> stale;
   final Value<int> rowid;
   const PeersCompanion({
     this.id = const Value.absent(),
@@ -2608,6 +2645,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     this.identityStatus = const Value.absent(),
     this.lastSeen = const Value.absent(),
     this.manual = const Value.absent(),
+    this.stale = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PeersCompanion.insert({
@@ -2622,6 +2660,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     this.identityStatus = const Value.absent(),
     this.lastSeen = const Value.absent(),
     this.manual = const Value.absent(),
+    this.stale = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        nick = Value(nick),
@@ -2639,6 +2678,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     Expression<String>? identityStatus,
     Expression<DateTime>? lastSeen,
     Expression<bool>? manual,
+    Expression<bool>? stale,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2654,6 +2694,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
       if (identityStatus != null) 'identity_status': identityStatus,
       if (lastSeen != null) 'last_seen': lastSeen,
       if (manual != null) 'manual': manual,
+      if (stale != null) 'stale': stale,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2670,6 +2711,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     Value<String>? identityStatus,
     Value<DateTime?>? lastSeen,
     Value<bool>? manual,
+    Value<bool>? stale,
     Value<int>? rowid,
   }) {
     return PeersCompanion(
@@ -2684,6 +2726,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
       identityStatus: identityStatus ?? this.identityStatus,
       lastSeen: lastSeen ?? this.lastSeen,
       manual: manual ?? this.manual,
+      stale: stale ?? this.stale,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2724,6 +2767,9 @@ class PeersCompanion extends UpdateCompanion<Peer> {
     if (manual.present) {
       map['manual'] = Variable<bool>(manual.value);
     }
+    if (stale.present) {
+      map['stale'] = Variable<bool>(stale.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2744,6 +2790,7 @@ class PeersCompanion extends UpdateCompanion<Peer> {
           ..write('identityStatus: $identityStatus, ')
           ..write('lastSeen: $lastSeen, ')
           ..write('manual: $manual, ')
+          ..write('stale: $stale, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -9526,6 +9573,7 @@ typedef $$PeersTableCreateCompanionBuilder =
       Value<String> identityStatus,
       Value<DateTime?> lastSeen,
       Value<bool> manual,
+      Value<bool> stale,
       Value<int> rowid,
     });
 typedef $$PeersTableUpdateCompanionBuilder =
@@ -9541,6 +9589,7 @@ typedef $$PeersTableUpdateCompanionBuilder =
       Value<String> identityStatus,
       Value<DateTime?> lastSeen,
       Value<bool> manual,
+      Value<bool> stale,
       Value<int> rowid,
     });
 
@@ -9690,6 +9739,11 @@ class $$PeersTableFilterComposer extends Composer<_$AppDatabase, $PeersTable> {
 
   ColumnFilters<bool> get manual => $composableBuilder(
     column: $table.manual,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get stale => $composableBuilder(
+    column: $table.stale,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -9857,6 +9911,11 @@ class $$PeersTableOrderingComposer
     column: $table.manual,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get stale => $composableBuilder(
+    column: $table.stale,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$PeersTableAnnotationComposer
@@ -9906,6 +9965,9 @@ class $$PeersTableAnnotationComposer
 
   GeneratedColumn<bool> get manual =>
       $composableBuilder(column: $table.manual, builder: (column) => column);
+
+  GeneratedColumn<bool> get stale =>
+      $composableBuilder(column: $table.stale, builder: (column) => column);
 
   Expression<T> remoteEntriesCacheRefs<T extends Object>(
     Expression<T> Function($$RemoteEntriesCacheTableAnnotationComposer a) f,
@@ -10054,6 +10116,7 @@ class $$PeersTableTableManager
                 Value<String> identityStatus = const Value.absent(),
                 Value<DateTime?> lastSeen = const Value.absent(),
                 Value<bool> manual = const Value.absent(),
+                Value<bool> stale = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PeersCompanion(
                 id: id,
@@ -10067,6 +10130,7 @@ class $$PeersTableTableManager
                 identityStatus: identityStatus,
                 lastSeen: lastSeen,
                 manual: manual,
+                stale: stale,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -10082,6 +10146,7 @@ class $$PeersTableTableManager
                 Value<String> identityStatus = const Value.absent(),
                 Value<DateTime?> lastSeen = const Value.absent(),
                 Value<bool> manual = const Value.absent(),
+                Value<bool> stale = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => PeersCompanion.insert(
                 id: id,
@@ -10095,6 +10160,7 @@ class $$PeersTableTableManager
                 identityStatus: identityStatus,
                 lastSeen: lastSeen,
                 manual: manual,
+                stale: stale,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

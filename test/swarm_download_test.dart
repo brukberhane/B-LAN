@@ -213,6 +213,7 @@ void main() {
       identityStatus: PeerIdentityStatus.normal,
       lastSeen: DateTime.now(),
       manual: true,
+      stale: false,
     );
 
     await client.downloadEntry(

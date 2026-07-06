@@ -93,7 +93,9 @@ class AppService {
   BrowserTokenStore? _browserTokens;
   ShareWatcher? _shareWatcher;
   Timer? _reconcileTimer;
+  Timer? _stalePeerRetryTimer;
   static const _reconcileInterval = Duration(minutes: 30);
+  static const _stalePeerRetryInterval = Duration(seconds: 45);
   final _peerHandshakesInFlight = <String, Future<void>>{};
   final sharingActive = ValueNotifier(true);
 
@@ -112,6 +114,10 @@ class AppService {
     _secrets = await CompositeSecretStore.open(db);
     _browserTokens = BrowserTokenStore(_secrets!, db);
     server.attachSecrets(_secrets!);
+    final purged = await db.purgeUntrustedPeers();
+    if (purged > 0) {
+      _log.info('Purged $purged untrusted peer(s) from previous session');
+    }
     await DeviceIdentity(_secrets!).ensureIdentity();
     await db.ensurePeerId();
     final deviceName = await platform.defaultDeviceName();
@@ -146,6 +152,10 @@ class AppService {
     );
     discovery.onPeerFound = _onDiscoveredPeer;
     discovery.onPeerLost = _onLostPeer;
+    _stalePeerRetryTimer = Timer.periodic(
+      _stalePeerRetryInterval,
+      (_) => unawaited(_retryStalePeers()),
+    );
     if (Platform.isAndroid) {
       await platform.acquireMulticastLock();
     }
@@ -286,6 +296,8 @@ class AppService {
   Future<void> dispose() async {
     await _searchIndexTask;
     await downloadQueue.stop();
+    _stalePeerRetryTimer?.cancel();
+    _stalePeerRetryTimer = null;
     _reconcileTimer?.cancel();
     _reconcileTimer = null;
     _shareWatcher?.dispose();
@@ -422,6 +434,8 @@ class AppService {
 
   Future<List<String>> lanIpv4Addresses() => listLanIpv4Addresses();
 
+  Future<List<Ipv4Subnet>> lanIpv4Subnets() => listLocalIpv4Subnets();
+
   Future<String?> primaryLanBrowserUrl(int port) async {
     final addresses = await lanIpv4Addresses();
     if (addresses.isEmpty) {
@@ -471,6 +485,25 @@ class AppService {
       port: httpsPort,
       browserHttpPort: browserPort,
     );
+  }
+
+  /// Re-advertise on LAN and run a fresh browse + stale peer retries.
+  Future<void> refreshLanDiscovery() async {
+    if (!server.isRunning) {
+      throw StateError('LAN sharing is not running');
+    }
+    if (discovery.supportsAdvertising) {
+      await _refreshDiscoveryAdvertising();
+    } else if (!kIsWeb) {
+      final peerId = await db.ensurePeerId();
+      await discovery.start(
+        peerId: peerId,
+        nick: await db.getNick(),
+        port: server.boundHttpsPort ?? await db.ensureHttpsPort(),
+        browserHttpPort: server.boundBrowserPort ?? await db.ensureHttpPort(),
+      );
+    }
+    await _retryStalePeers();
   }
 
   Future<void> trustPeer(String peerId) => db.trustPeer(peerId);
@@ -533,6 +566,9 @@ class AppService {
     final peer = await db.peerById(hello.peerId);
     if (peer != null) {
       await _sessions.saveToken(db, peer, session);
+      if (!manual) {
+        await db.setPeerStale(peer.id, false);
+      }
     }
   }
 
@@ -667,6 +703,9 @@ class AppService {
         ghostPeerIds: {peer.peerId},
       );
       final saved = await db.peerByEndpoint(host: peer.host, port: peer.port);
+      if (saved != null) {
+        await db.setPeerStale(saved.id, false);
+      }
       _log.info(
         'Discovered peer ${saved?.nick ?? peer.nick} at ${peer.host}:${peer.port}',
       );
@@ -683,9 +722,51 @@ class AppService {
     if (peer.manual) {
       return;
     }
-    await (db.delete(db.peers)..where((t) => t.id.equals(peer.peerId))).go();
-    await _sessions.revoke(db, peer.host, peer.port);
     discovery.removePeer(peer.peerId);
+
+    final saved = await db.peerById(peer.peerId);
+    if (saved == null) {
+      return;
+    }
+
+    await db.setPeerStale(peer.peerId, true);
+
+    final lan = await lanIpv4Subnets();
+    if (hostSharesLocalSubnet(saved.host, lan)) {
+      unawaited(_retryPeerHandshake(saved));
+    }
+  }
+
+  Future<void> _retryStalePeers() async {
+    final lan = await lanIpv4Subnets();
+    if (lan.isEmpty) {
+      return;
+    }
+    final peers = await db.stalePeersOnLocalSubnet(lan);
+    for (final peer in peers) {
+      if (peer.manual) {
+        continue;
+      }
+      unawaited(_retryPeerHandshake(peer));
+    }
+  }
+
+  Future<void> _retryPeerHandshake(Peer peer) async {
+    try {
+      await _handshakePeer(
+        host: peer.host,
+        port: peer.port,
+        manual: peer.manual,
+        ghostPeerIds: {peer.id},
+      );
+      await db.setPeerStale(peer.id, false);
+    } catch (error, stack) {
+      _log.fine(
+        'Stale peer retry failed for ${peer.host}:${peer.port}: $error',
+        error,
+        stack,
+      );
+    }
   }
 
   void _startWatchingShare(Share share) {

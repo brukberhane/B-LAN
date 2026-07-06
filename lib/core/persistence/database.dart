@@ -11,6 +11,7 @@ import '../protocol/transfer_states.dart';
 import '../security/peer_identity.dart';
 import '../security/peer_session_store.dart';
 import '../indexing/chunker.dart';
+import '../platform/lan_addresses.dart';
 import '../search/content_signature.dart';
 import '../search/search_tokenizer.dart';
 import 'tables.dart';
@@ -38,7 +39,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -132,6 +133,9 @@ class AppDatabase extends _$AppDatabase {
         await customStatement(
           "UPDATE peers SET scheme = '${peerSchemeHttps}' WHERE scheme IS NULL OR scheme = ''",
         );
+      }
+      if (from < 14) {
+        await migrator.addColumn(peers, peers.stale);
       }
     },
   );
@@ -1360,8 +1364,49 @@ class AppDatabase extends _$AppDatabase {
         identityStatus: Value(identityStatus),
         manual: Value(manual),
         lastSeen: Value(DateTime.now()),
+        stale: const Value(false),
       ),
     );
+  }
+
+  Future<void> setPeerStale(String peerId, bool stale) async {
+    await (update(peers)..where((t) => t.id.equals(peerId))).write(
+      PeersCompanion(stale: Value(stale)),
+    );
+  }
+
+  Future<List<Peer>> stalePeersOnLocalSubnet(List<Ipv4Subnet> localSubnets) async {
+    final rows = await (select(peers)..where((t) => t.stale.equals(true))).get();
+    return filterPeersOnLocalSubnet(rows, localSubnets);
+  }
+
+  List<Peer> filterPeersOnLocalSubnet(
+    List<Peer> rows,
+    List<Ipv4Subnet> localSubnets,
+  ) {
+    if (localSubnets.isEmpty) {
+      return const [];
+    }
+    return rows
+        .where((peer) => hostSharesLocalSubnet(peer.host, localSubnets))
+        .toList();
+  }
+
+  Future<int> purgeUntrustedPeers() async {
+    final untrusted =
+        await (select(peers)..where((t) => t.trusted.equals(false))).get();
+    if (untrusted.isEmpty) {
+      return 0;
+    }
+    final ids = untrusted.map((peer) => peer.id).toSet();
+    for (final peer in untrusted) {
+      await deleteSetting(PeerSessionStore.settingKey(peer.host, peer.port));
+    }
+    await (delete(downloads)..where((t) => t.peerId.isIn(ids))).go();
+    await (delete(remoteEntriesCache)..where((t) => t.peerId.isIn(ids))).go();
+    await (delete(remoteFiles)..where((t) => t.peerId.isIn(ids))).go();
+    await (delete(remoteChunkSources)..where((t) => t.peerId.isIn(ids))).go();
+    return (delete(peers)..where((t) => t.trusted.equals(false))).go();
   }
 
   Future<void> trustPeer(String peerId) async {
@@ -1370,6 +1415,7 @@ class AppDatabase extends _$AppDatabase {
       const PeersCompanion(
         trusted: Value(true),
         identityStatus: Value(PeerIdentityStatus.normal),
+        stale: Value(false),
       ),
     );
   }

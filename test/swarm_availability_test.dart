@@ -114,6 +114,7 @@ void main() {
       identityStatus: 'normal',
       lastSeen: DateTime.now(),
       manual: true,
+      stale: false,
     );
     await db.into(db.peers).insert(
           PeersCompanion.insert(
@@ -179,6 +180,7 @@ void main() {
       identityStatus: 'normal',
       lastSeen: DateTime.now(),
       manual: true,
+      stale: false,
     );
     final peerB = Peer(
       id: 'peer-b',
@@ -192,6 +194,7 @@ void main() {
       identityStatus: 'normal',
       lastSeen: DateTime.now(),
       manual: true,
+      stale: false,
     );
     await db.into(db.peers).insert(
           PeersCompanion.insert(
