@@ -1,3 +1,4 @@
+import 'package:blan/core/protocol/constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -185,7 +186,10 @@ class PeersPage extends ConsumerWidget {
             ),
             TextField(
               controller: portController,
-              decoration: const InputDecoration(labelText: 'Port'),
+              decoration: const InputDecoration(
+                labelText: 'Peer HTTPS port',
+                helperText: 'Default 59488 — not browser HTTP (59487)',
+              ),
               keyboardType: TextInputType.number,
             ),
             TextField(
@@ -211,7 +215,8 @@ class PeersPage extends ConsumerWidget {
       return;
     }
 
-    final port = int.tryParse(portController.text.trim()) ?? 59487;
+    final port =
+        int.tryParse(portController.text.trim()) ?? defaultPeerHttpsPort;
     try {
       await ref.read(appServiceProvider).addManualPeer(
             hostController.text.trim(),

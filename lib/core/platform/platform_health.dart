@@ -173,6 +173,30 @@ Future<PlatformHealthReport> buildPlatformHealthReport({
     );
   }
 
+  if (Platform.isMacOS) {
+    items.add(
+      const PlatformHealthItem(
+        label: 'Local network',
+        level: PlatformHealthLevel.info,
+        message: 'Discovery needs Local Network permission on macOS',
+        hint:
+            'System Settings → Privacy & Security → Local Network → enable B-LAN. '
+            'Manual connect uses peer HTTPS port (Settings → Peer HTTPS port), '
+            'not browser HTTP.',
+      ),
+    );
+    items.add(
+      const PlatformHealthItem(
+        label: 'macOS firewall',
+        level: PlatformHealthLevel.info,
+        message: 'Inbound HTTPS may be blocked until allowed',
+        hint:
+            'Allow incoming connections for B-LAN when prompted, or add a rule '
+            'for the peer HTTPS port.',
+      ),
+    );
+  }
+
   if (Platform.isWindows) {
     items.add(
       const PlatformHealthItem(

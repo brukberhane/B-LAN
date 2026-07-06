@@ -83,6 +83,13 @@ abstract final class PlatformCapabilities {
       );
       return notes;
     }
+    if (Platform.isMacOS) {
+      notes.add(
+        'macOS needs Local Network permission for peer discovery. Manual connect '
+        'uses peer HTTPS port from Settings (default 59488), not browser HTTP '
+        '(59487).',
+      );
+    }
     if (Platform.isWindows) {
       notes.add(windowsAdvertiseLimitation);
     }

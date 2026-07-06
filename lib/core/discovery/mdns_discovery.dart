@@ -8,7 +8,7 @@ import 'package:logging/logging.dart';
 import '../protocol/constants.dart';
 import '../protocol/models.dart';
 import 'mdns_service_name.dart';
-import 'windows_mdns_browse.dart';
+import 'lan_mdns_browse.dart';
 
 class MdnsDiscovery {
   MdnsDiscovery();
@@ -20,7 +20,7 @@ class MdnsDiscovery {
   BonsoirBroadcast? _broadcast;
   BonsoirDiscovery? _discovery;
   StreamSubscription<BonsoirDiscoveryEvent>? _discoverySub;
-  WindowsMdnsBrowse? _windowsBrowse;
+  LanMdnsBrowse? _lanBrowse;
 
   String? _localPeerId;
   final Map<String, DiscoveredPeer> _peers = {};
@@ -49,7 +49,7 @@ class MdnsDiscovery {
     }
 
     if (Platform.isWindows) {
-      await _startWindowsBrowse();
+      await _startLanBrowse();
       return;
     }
 
@@ -61,7 +61,7 @@ class MdnsDiscovery {
     );
   }
 
-  Future<void> _startBonsoir({
+  Future<void> _startBonsoirAdvertise({
     required String peerId,
     required String nick,
     required int port,
@@ -85,22 +85,37 @@ class MdnsDiscovery {
     _broadcast = BonsoirBroadcast(service: service);
     await _broadcast!.initialize();
     await _broadcast!.start();
+    _log.info(
+      'mDNS advertise active ($mdnsServiceType) on :$port as $serviceName',
+    );
+  }
+
+  Future<void> _startBonsoir({
+    required String peerId,
+    required String nick,
+    required int port,
+    int? browserHttpPort,
+  }) async {
+    await _startBonsoirAdvertise(
+      peerId: peerId,
+      nick: nick,
+      port: port,
+      browserHttpPort: browserHttpPort,
+    );
 
     _discovery = BonsoirDiscovery(type: mdnsServiceType);
     await _discovery!.initialize();
     _discoverySub = _discovery!.eventStream!.listen(_onBonsoirEvent);
     await _discovery!.start();
 
-    _log.info(
-      'mDNS advertise+browse active ($mdnsServiceType) on :$port as $serviceName',
-    );
+    _log.info('mDNS browse active ($mdnsServiceType)');
   }
 
-  Future<void> _startWindowsBrowse() async {
-    _windowsBrowse = WindowsMdnsBrowse();
-    _windowsBrowse!.onPeerFound = _registerPeer;
-    await _windowsBrowse!.start();
-    _log.info('Windows mDNS browse only (advertise unsupported)');
+  Future<void> _startLanBrowse() async {
+    _lanBrowse = LanMdnsBrowse(localPeerId: _localPeerId);
+    _lanBrowse!.onPeerFound = _registerPeer;
+    await _lanBrowse!.start();
+    _log.info('multicast_dns browse active ($mdnsServiceType)');
   }
 
   void _onBonsoirEvent(BonsoirDiscoveryEvent event) {
@@ -174,6 +189,12 @@ class MdnsDiscovery {
         .where((host) => !host.startsWith('fe80:'))
         .toSet()
         .toList();
+    if (hosts.isEmpty) {
+      final single = service.hostAddress;
+      if (single != null && single.isNotEmpty && !single.startsWith('fe80:')) {
+        hosts.add(single);
+      }
+    }
     hosts.sort((a, b) {
       final aIpv4 =
           InternetAddress.tryParse(a)?.type == InternetAddressType.IPv4;
@@ -211,8 +232,8 @@ class MdnsDiscovery {
     _discovery = null;
     await _broadcast?.stop();
     _broadcast = null;
-    await _windowsBrowse?.stop();
-    _windowsBrowse = null;
+    await _lanBrowse?.stop();
+    _lanBrowse = null;
     _peers.clear();
     _localPeerId = null;
   }

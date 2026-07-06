@@ -78,7 +78,16 @@ class DownloadsLocationSection extends ConsumerWidget {
             ),
           ),
           loading: () => const ListTile(title: Text('Loading…')),
-          error: (_, _) => const SizedBox.shrink(),
+          error: (error, _) => ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Could not resolve downloads folder'),
+            subtitle: Text('$error'),
+            trailing: IconButton(
+              tooltip: 'Choose folder',
+              onPressed: () => _chooseFolder(context, ref),
+              icon: const Icon(Icons.edit_location_alt),
+            ),
+          ),
         ),
       ],
     );
