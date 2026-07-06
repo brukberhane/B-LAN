@@ -20,10 +20,25 @@ final sharesProvider = StreamProvider((ref) {
   return db.watchShares();
 });
 
+final peerSubnetFilterProvider = FutureProvider<bool>((ref) async {
+  final db = ref.watch(databaseProvider);
+  return db.peerSubnetFilterEnabled();
+});
+
+final lanSubnetsProvider = FutureProvider<List<Ipv4Subnet>>((ref) async {
+  ref.watch(lanAddressesProvider);
+  return listLocalIpv4Subnets();
+});
+
 final peersProvider = StreamProvider((ref) {
   final db = ref.watch(databaseProvider);
   ref.watch(lanAddressesProvider);
+  ref.watch(peerSubnetFilterProvider);
   return db.watchPeers().asyncMap((rows) async {
+    final filterEnabled = await db.peerSubnetFilterEnabled();
+    if (!filterEnabled) {
+      return rows;
+    }
     final subnets = await listLocalIpv4Subnets();
     return db.filterPeersOnLocalSubnet(rows, subnets);
   });

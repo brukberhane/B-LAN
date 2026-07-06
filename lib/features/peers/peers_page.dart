@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../core/persistence/database.dart';
+import '../../core/platform/lan_addresses.dart';
 import '../../core/platform/platform_capabilities.dart';
 import '../../core/security/peer_identity.dart';
 import '../../core/ui/format.dart';
@@ -15,6 +16,9 @@ class PeersPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final peers = ref.watch(peersProvider);
+    final filterEnabled = ref.watch(peerSubnetFilterProvider).valueOrNull ?? true;
+    final localSubnets =
+        ref.watch(lanSubnetsProvider).valueOrNull ?? const <Ipv4Subnet>[];
 
     return Scaffold(
       appBar: AppBar(
@@ -39,108 +43,139 @@ class PeersPage extends ConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  _emptyPeersMessage(),
+                  _emptyPeersMessage(filterEnabled: filterEnabled),
                   textAlign: TextAlign.center,
                 ),
               ),
             );
           }
-          return ListView.separated(
-            itemCount: rows.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final peer = rows[index];
-              final warning = PeerIdentityStatus.isWarning(peer.identityStatus);
-              return ListTile(
-                leading: Icon(
-                  peer.identityStatus == PeerIdentityStatus.identityChanged
-                      ? Icons.warning_amber
-                      : peer.identityStatus == PeerIdentityStatus.suspicious
-                          ? Icons.gpp_bad_outlined
-                          : peer.manual
-                              ? Icons.link
-                              : Icons.wifi,
-                  color: warning ? Colors.orange : null,
-                ),
-                title: Row(
-                  children: [
-                    Expanded(child: Text(peer.nick)),
-                    if (peer.identityStatus == PeerIdentityStatus.identityChanged)
-                      const Chip(
-                        label: Text('Identity changed'),
-                        visualDensity: VisualDensity.compact,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          return Column(
+            children: [
+              if (!filterEnabled)
+                _SubnetFilterOffBanner(subnets: localSubnets),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: rows.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final peer = rows[index];
+                    final warning =
+                        PeerIdentityStatus.isWarning(peer.identityStatus);
+                    final offSubnet = !filterEnabled &&
+                        !hostSharesLocalSubnet(peer.host, localSubnets);
+                    return ListTile(
+                      leading: Icon(
+                        peer.identityStatus ==
+                                PeerIdentityStatus.identityChanged
+                            ? Icons.warning_amber
+                            : peer.identityStatus ==
+                                    PeerIdentityStatus.suspicious
+                                ? Icons.gpp_bad_outlined
+                                : peer.manual
+                                    ? Icons.link
+                                    : Icons.wifi,
+                        color: warning ? Colors.orange : null,
                       ),
-                    if (peer.identityStatus == PeerIdentityStatus.suspicious)
-                      const Chip(
-                        label: Text('Suspicious'),
-                        visualDensity: VisualDensity.compact,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      title: Row(
+                        children: [
+                          Expanded(child: Text(peer.nick)),
+                          if (offSubnet)
+                            const Chip(
+                              label: Text('Off-subnet'),
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          if (peer.identityStatus ==
+                              PeerIdentityStatus.identityChanged)
+                            const Chip(
+                              label: Text('Identity changed'),
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          if (peer.identityStatus ==
+                              PeerIdentityStatus.suspicious)
+                            const Chip(
+                              label: Text('Suspicious'),
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          if (peer.stale)
+                            const Chip(
+                              label: Text('Stale'),
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ),
+                        ],
                       ),
-                    if (peer.stale)
-                      const Chip(
-                        label: Text('Stale'),
-                        visualDensity: VisualDensity.compact,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      subtitle: Text(
+                        _peerSubtitle(
+                          peer,
+                          filterEnabled: filterEnabled,
+                          localSubnets: localSubnets,
+                        ),
                       ),
-                  ],
-                ),
-                subtitle: Text(_peerSubtitle(peer)),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (peer.trusted)
-                      const Padding(
-                        padding: EdgeInsets.only(right: 4),
-                        child: Icon(Icons.verified_user, size: 18),
-                      ),
-                    PopupMenuButton<_PeerAction>(
-                      onSelected: (action) async {
-                        final service = ref.read(appServiceProvider);
-                        switch (action) {
-                          case _PeerAction.trust:
-                            await service.trustPeer(peer.id);
-                          case _PeerAction.forgetTrust:
-                            await service.forgetPeerTrust(peer.id);
-                          case _PeerAction.reauthenticate:
-                            await service.reauthenticatePeer(peer.id);
-                          case _PeerAction.revokeSessions:
-                            await service.revokePeerSessions(peer.id);
-                          case _PeerAction.remove:
-                            await _confirmRemovePeer(context, ref, peer);
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        if (!peer.trusted)
-                          const PopupMenuItem(
-                            value: _PeerAction.trust,
-                            child: Text('Trust peer'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (peer.trusted)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 4),
+                              child: Icon(Icons.verified_user, size: 18),
+                            ),
+                          PopupMenuButton<_PeerAction>(
+                            onSelected: (action) async {
+                              final service = ref.read(appServiceProvider);
+                              switch (action) {
+                                case _PeerAction.trust:
+                                  await service.trustPeer(peer.id);
+                                case _PeerAction.forgetTrust:
+                                  await service.forgetPeerTrust(peer.id);
+                                case _PeerAction.reauthenticate:
+                                  await service.reauthenticatePeer(peer.id);
+                                case _PeerAction.revokeSessions:
+                                  await service.revokePeerSessions(peer.id);
+                                case _PeerAction.remove:
+                                  await _confirmRemovePeer(context, ref, peer);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              if (!peer.trusted)
+                                const PopupMenuItem(
+                                  value: _PeerAction.trust,
+                                  child: Text('Trust peer'),
+                                ),
+                              if (peer.trusted)
+                                const PopupMenuItem(
+                                  value: _PeerAction.forgetTrust,
+                                  child: Text('Forget trust'),
+                                ),
+                              const PopupMenuItem(
+                                value: _PeerAction.reauthenticate,
+                                child: Text('Re-authenticate'),
+                              ),
+                              const PopupMenuItem(
+                                value: _PeerAction.revokeSessions,
+                                child: Text('Revoke sessions'),
+                              ),
+                              const PopupMenuItem(
+                                value: _PeerAction.remove,
+                                child: Text('Remove'),
+                              ),
+                            ],
                           ),
-                        if (peer.trusted)
-                          const PopupMenuItem(
-                            value: _PeerAction.forgetTrust,
-                            child: Text('Forget trust'),
-                          ),
-                        const PopupMenuItem(
-                          value: _PeerAction.reauthenticate,
-                          child: Text('Re-authenticate'),
-                        ),
-                        const PopupMenuItem(
-                          value: _PeerAction.revokeSessions,
-                          child: Text('Revoke sessions'),
-                        ),
-                        const PopupMenuItem(
-                          value: _PeerAction.remove,
-                          child: Text('Remove'),
-                        ),
-                      ],
-                    ),
-                    const Icon(Icons.chevron_right),
-                  ],
+                          const Icon(Icons.chevron_right),
+                        ],
+                      ),
+                      onTap: () => _openPeer(context, peer),
+                    );
+                  },
                 ),
-                onTap: () => _openPeer(context, peer),
-              );
-            },
+              ),
+            ],
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -149,10 +184,12 @@ class PeersPage extends ConsumerWidget {
     );
   }
 
-  String _emptyPeersMessage() {
+  String _emptyPeersMessage({required bool filterEnabled}) {
     final base =
         'No peers yet. Add one manually (+) or wait for LAN discovery.';
     final hints = <String>[
+      if (filterEnabled)
+        'Peers on other subnets are hidden — disable in Settings → LAN peer filter.',
       if (!PlatformCapabilities.supportsMdnsAdvertising)
         ...PlatformCapabilities.limitationNotes(),
       'Check Settings → Network health if discovery fails.',
@@ -163,7 +200,11 @@ class PeersPage extends ConsumerWidget {
     return '$base\n\n${hints.join('\n\n')}';
   }
 
-  String _peerSubtitle(Peer peer) {
+  String _peerSubtitle(
+    Peer peer, {
+    required bool filterEnabled,
+    required List<Ipv4Subnet> localSubnets,
+  }) {
     final parts = <String>[
       '${peer.host}:${peer.port}',
       peer.scheme,
@@ -171,6 +212,9 @@ class PeersPage extends ConsumerWidget {
       if (peer.stale) 'stale',
       'seen ${formatRelativeTime(peer.lastSeen)}',
     ];
+    if (!filterEnabled) {
+      parts.add(describePeerSubnetMatch(peer.host, localSubnets));
+    }
     if (peer.tlsCertFingerprint != null && peer.tlsCertFingerprint!.isNotEmpty) {
       parts.add('TLS ${peer.tlsCertFingerprint!.substring(0, 8)}…');
     }
@@ -255,6 +299,8 @@ class PeersPage extends ConsumerWidget {
     try {
       await ref.read(appServiceProvider).refreshLanDiscovery();
       ref.invalidate(lanAddressesProvider);
+      ref.invalidate(lanSubnetsProvider);
+      ref.invalidate(peerSubnetFilterProvider);
       ref.invalidate(peersProvider);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -318,4 +364,28 @@ enum _PeerAction {
   reauthenticate,
   revokeSessions,
   remove,
+}
+
+class _SubnetFilterOffBanner extends StatelessWidget {
+  const _SubnetFilterOffBanner({required this.subnets});
+
+  final List<Ipv4Subnet> subnets;
+
+  @override
+  Widget build(BuildContext context) {
+    final localLabel = subnets.isEmpty
+        ? 'none detected'
+        : subnets.map(formatIpv4Subnet).join(', ');
+    return Material(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Text(
+          'Subnet filter off — showing all peers. Local subnets: $localLabel. '
+          'Re-enable in Settings → LAN peer filter.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ),
+    );
+  }
 }

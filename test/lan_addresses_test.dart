@@ -2,6 +2,12 @@ import 'package:blan/core/platform/lan_addresses.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('inferredLanPrefixLength defaults private ranges to /24', () {
+    expect(inferredLanPrefixLength('192.168.1.10'), 24);
+    expect(inferredLanPrefixLength('10.0.0.5'), 24);
+    expect(inferredLanPrefixLength('172.16.0.2'), 24);
+  });
+
   test('filters private LAN ranges', () {
     expect(isUsableLanIpv4Address('192.168.1.10'), isTrue);
     expect(isUsableLanIpv4Address('10.0.0.5'), isTrue);
@@ -46,5 +52,19 @@ void main() {
     expect(hostSharesLocalSubnet('172.16.3.44', locals), isTrue);
     expect(hostSharesLocalSubnet('192.168.2.1', locals), isFalse);
     expect(hostSharesLocalSubnet('10.1.0.1', locals), isFalse);
+  });
+
+  test('describePeerSubnetMatch explains match and mismatch', () {
+    final locals = [
+      const Ipv4Subnet(address: '192.168.1.10', prefixLength: 24),
+    ];
+    expect(
+      describePeerSubnetMatch('192.168.1.42', locals),
+      'matches 192.168.1.10/24',
+    );
+    expect(
+      describePeerSubnetMatch('192.168.2.1', locals),
+      'no match (local: 192.168.1.10/24)',
+    );
   });
 }

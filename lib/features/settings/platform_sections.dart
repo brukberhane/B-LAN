@@ -4,7 +4,68 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../core/persistence/database.dart';
+import '../../core/platform/lan_addresses.dart';
 import '../../core/platform/platform_health.dart';
+
+class LanPeerFilterSection extends ConsumerWidget {
+  const LanPeerFilterSection({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final filter = ref.watch(peerSubnetFilterProvider);
+    final subnets = ref.watch(lanSubnetsProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'LAN peer filter',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        filter.when(
+          data: (enabled) => SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Hide peers outside local subnets'),
+            subtitle: Text(
+              enabled
+                  ? 'Only peers on this device\'s IPv4 subnets appear in the list.'
+                  : 'All connected peers are shown — use this to debug subnet mismatches.',
+            ),
+            value: enabled,
+            onChanged: (value) async {
+              await ref
+                  .read(databaseProvider)
+                  .setPeerSubnetFilterEnabled(value);
+              ref.invalidate(peerSubnetFilterProvider);
+              ref.invalidate(peersProvider);
+            },
+          ),
+          loading: () => const ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Hide peers outside local subnets'),
+          ),
+          error: (_, _) => const SizedBox.shrink(),
+        ),
+        subnets.when(
+          data: (list) => ListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text('Local IPv4 subnets'),
+            subtitle: Text(
+              list.isEmpty
+                  ? 'None detected — subnet filter hides every peer'
+                  : list.map(formatIpv4Subnet).join(', '),
+            ),
+          ),
+          loading: () => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+}
 
 class PlatformTroubleshootingSection extends ConsumerWidget {
   const PlatformTroubleshootingSection({super.key});

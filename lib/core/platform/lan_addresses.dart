@@ -27,7 +27,7 @@ Future<List<Ipv4Subnet>> listLocalIpv4Subnets() async {
       if (!_isUsableLanAddress(host)) {
         continue;
       }
-      final prefix = addr is InterfaceAddress ? addr.prefixLength : 32;
+      final prefix = _readPrefixLength(addr, host);
       if (prefix <= 0 || prefix > 32) {
         continue;
       }
@@ -78,6 +78,40 @@ bool _isUsableLanAddress(String host) {
   return false;
 }
 
+/// Reads OS prefix length when the runtime address object exposes it.
+int _readPrefixLength(InternetAddress addr, String host) {
+  try {
+    final dynamic withPrefix = addr;
+    final prefix = withPrefix.prefixLength;
+    if (prefix is int && prefix > 0 && prefix <= 32) {
+      return prefix;
+    }
+  } catch (_) {
+    // InternetAddress on this SDK has no prefixLength.
+  }
+  return _inferredLanPrefixLength(host);
+}
+
+/// Typical LAN prefix when the OS does not report one.
+int _inferredLanPrefixLength(String host) {
+  final parts = host.split('.');
+  if (parts.length != 4) {
+    return 24;
+  }
+  final a = int.tryParse(parts[0]);
+  final b = int.tryParse(parts[1]);
+  if (a == 10) {
+    return 24;
+  }
+  if (a == 172 && b != null && b >= 16 && b <= 31) {
+    return 24;
+  }
+  if (a == 192 && b == 168) {
+    return 24;
+  }
+  return 24;
+}
+
 int _compareLanAddress(String a, String b) {
   final scoreA = _lanAddressScore(a);
   final scoreB = _lanAddressScore(b);
@@ -106,10 +140,35 @@ String browserUrl(String host, int port) => 'http://$host:$port';
 String peerUrl(String host, int port) => browserUrl(host, port);
 
 @visibleForTesting
+int inferredLanPrefixLength(String host) => _inferredLanPrefixLength(host);
+
+@visibleForTesting
 bool isUsableLanIpv4Address(String host) => _isUsableLanAddress(host);
 
 @visibleForTesting
 int compareLanIpv4Address(String a, String b) => _compareLanAddress(a, b);
+
+String formatIpv4Subnet(Ipv4Subnet subnet) =>
+    '${subnet.address}/${subnet.prefixLength}';
+
+/// Debug label for whether [peerHost] falls in any [localSubnets].
+String describePeerSubnetMatch(String peerHost, List<Ipv4Subnet> localSubnets) {
+  if (!isUsableLanIpv4Address(peerHost)) {
+    return 'peer host not private IPv4';
+  }
+  if (localSubnets.isEmpty) {
+    return 'no local subnets detected';
+  }
+  final matches = localSubnets
+      .where((subnet) => hostInIpv4Subnet(peerHost, subnet))
+      .map(formatIpv4Subnet)
+      .toList();
+  if (matches.isNotEmpty) {
+    return 'matches ${matches.join(', ')}';
+  }
+  final locals = localSubnets.map(formatIpv4Subnet).join(', ');
+  return 'no match (local: $locals)';
+}
 
 /// Whether [peerHost] is reachable on any of the device's local subnets.
 bool hostSharesLocalSubnet(String peerHost, List<Ipv4Subnet> localSubnets) {

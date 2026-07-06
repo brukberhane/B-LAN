@@ -221,6 +221,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             const Divider(height: 32),
             const DownloadsLocationSection(),
             const Divider(height: 32),
+            const LanPeerFilterSection(),
+            const Divider(height: 32),
             const PlatformTroubleshootingSection(),
           ],
           if (!kIsWeb) ...[

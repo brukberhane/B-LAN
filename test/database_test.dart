@@ -208,6 +208,14 @@ void main() {
     expect(await db.peerById('temp-peer'), isNull);
   });
 
+  test('peerSubnetFilterEnabled defaults on and can be disabled', () async {
+    expect(await db.peerSubnetFilterEnabled(), isTrue);
+    await db.setPeerSubnetFilterEnabled(false);
+    expect(await db.peerSubnetFilterEnabled(), isFalse);
+    await db.setPeerSubnetFilterEnabled(true);
+    expect(await db.peerSubnetFilterEnabled(), isTrue);
+  });
+
   test('filterPeersOnLocalSubnet keeps same-subnet peers only', () async {
     final rows = [
       Peer(

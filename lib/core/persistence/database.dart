@@ -214,6 +214,16 @@ class AppDatabase extends _$AppDatabase {
     await (delete(settings)..where((t) => t.key.equals(key))).go();
   }
 
+  /// When true (default), [filterPeersOnLocalSubnet] hides peers outside local CIDRs.
+  Future<bool> peerSubnetFilterEnabled() async {
+    final raw = await getSetting('peer_subnet_filter', defaultValue: '1');
+    return raw != '0';
+  }
+
+  Future<void> setPeerSubnetFilterEnabled(bool enabled) async {
+    await setSetting('peer_subnet_filter', enabled ? '1' : '0');
+  }
+
   Future<String> ensurePeerId() async {
     var peerId = await getSetting('peer_id');
     if (peerId.isEmpty) {
