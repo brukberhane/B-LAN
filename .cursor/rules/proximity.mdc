@@ -88,3 +88,19 @@ What this spoke does not cover:
 | Secret decode throws "before accept" on the device that just accepted | Session accepted-flag was only set when *decoding* an accept the peer sent | Set accepted on encode of accept as well as decode. The local accept never comes back through decode |
 
 <!-- last-verified: 2026-10 -->
+
+### `Host-chain walker never tries the next device`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| After hotspot+WFD fail on the first host, the attempt stops or never calls the second host | One shared private-network port for every `hostId`, or the walker re-skips WFD after policy already filtered the list | Index ports by `hostId`. Continue only on a typed private-network failure. Do not re-apply WFD join rules in the walker |
+
+<!-- last-verified: 2026-10 -->
+
+### `Control pipe shares the sender's map`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Peer sees a mutated sealing field after the sender edits the map post-send | Frame was forwarded by reference | Copy the JSON map on send. Treat the control port as an opaque pipe — do not strip `x25519` or re-sign |
+
+<!-- last-verified: 2026-10 -->

@@ -82,3 +82,8 @@ Android implementation of the T05 ports: BLE advert and scan, classic Bluetooth 
 ## Learnings
 
 ## Reality notes
+
+- T05 ports live in `lib/core/proximity/proximity_radios.dart` (`BlePresencePort`, `ControlChannelPort`, `PrivateNetworkPort`, `OsPassphrasePort`) with fakes in `proximity_radio_fakes.dart`. Bind Android to those abstracts — do not widen `PlatformServices`.
+- Advert in = already-packed 31-byte `ProximityAdvert.pack()`; nick = scan-response bytes. Control `send` forwards codec JSON maps as-is (keep `x25519`).
+- `walkHostChain` is the fail-stepper; policy WFD skip stays in `hostChain()`. OS PSK miss returns `null` (fall through). Shizuku bind is T07, not this task.
+- Unit tests on Linux keep using T05 fakes; mock MethodChannels only where the host cannot open a radio.
