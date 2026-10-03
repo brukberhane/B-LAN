@@ -1,0 +1,10 @@
+# https://lefthook.dev/
+# Install once: make install-hooks
+# pre-commit runs the fast gate (analyze + test). The apk build is too slow for
+# a commit hook; full `make verify` runs at /task-3-complete close-out.
+
+pre-commit:
+  parallel: false
+  commands:
+    verify:
+      run: make quick-verify

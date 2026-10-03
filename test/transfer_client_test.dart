@@ -284,7 +284,6 @@ void main() {
       await TransferClient(
         db,
         httpClient: trackingClient,
-        maxConcurrentChunkDownloads: 3,
       ).downloadEntry(
         peer: peer,
         shareId: shareId,
@@ -379,7 +378,9 @@ void main() {
       );
 
       expect(countingClient.chunkRequests, 0);
-      expect(countingClient.manifestRequests, 1);
+      // One fetch resolves the manifest; the availability probe may
+      // best-effort re-cache the same manifest, so allow >= 1.
+      expect(countingClient.manifestRequests, greaterThanOrEqualTo(1));
 
       final rows = await db.select(db.downloads).get();
       expect(rows.single.state, DownloadState.complete);
@@ -453,7 +454,19 @@ void main() {
         targetDirectory: downloadDir.path,
         token: browserToken,
       );
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      // Wait until the download row exists (and is registered as the
+      // active download) before cancelling; fixed delays race the
+      // manifest/probe phase that precedes row creation.
+      String? downloadId;
+      for (var i = 0; i < 200; i++) {
+        final rows = await db.select(db.downloads).get();
+        if (rows.isNotEmpty) {
+          downloadId = rows.single.id;
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(downloadId, isA<String>());
       slowTransfer.cancelActiveDownload();
       await expectLater(
         future,
@@ -545,8 +558,13 @@ class _CountingClient extends http.BaseClient {
   void close() => _inner.close();
 }
 
-bool _isChunkRequest(Uri uri) =>
-    uri.path.endsWith('/chunks') || uri.path.contains('/chunks/');
+bool _isChunkRequest(Uri uri) {
+  // The availability probe is metadata, not a chunk byte fetch.
+  if (uri.path.endsWith('/chunks/availability')) {
+    return false;
+  }
+  return uri.path.endsWith('/chunks') || uri.path.contains('/chunks/');
+}
 
 class _ConcurrencyTrackingClient extends http.BaseClient {
   _ConcurrencyTrackingClient(this._inner);

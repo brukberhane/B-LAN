@@ -4,7 +4,6 @@ import 'package:blan/core/indexing/chunker.dart';
 import 'package:blan/core/persistence/database.dart';
 import 'package:blan/core/protocol/constants.dart';
 import 'package:blan/core/protocol/download_states.dart';
-import 'package:blan/core/protocol/models.dart';
 import 'package:blan/core/security/peer_identity.dart';
 import 'package:blan/core/transfers/remote_manifest_cache.dart';
 import 'package:blan/core/transfers/transfer_client.dart';

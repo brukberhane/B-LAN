@@ -587,7 +587,7 @@ class AppService {
 
   Future<String> downloadsDirectory() async {
     final custom = await db.getSetting('downloads_path');
-    if (custom != null && custom.isNotEmpty) {
+    if (custom.isNotEmpty) {
       return _resolveDownloadsRoot(custom);
     }
     final platformDefault = platform is DownloadPathServices
@@ -612,7 +612,7 @@ class AppService {
   /// SAF-relative path when user picked a custom Android downloads folder.
   Future<String?> downloadsSafTreePath() async {
     final custom = await db.getSetting('downloads_path');
-    if (custom == null || custom.isEmpty || custom.startsWith('/')) {
+    if (custom.isEmpty || custom.startsWith('/')) {
       return null;
     }
     return custom;

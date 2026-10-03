@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:drift/drift.dart';
 
 import '../persistence/database.dart';
 import '../protocol/models.dart';

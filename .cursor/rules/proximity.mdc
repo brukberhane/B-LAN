@@ -1,0 +1,66 @@
+---
+description: Nearby discovery, invites, and private-network session rules
+globs: "lib/**/*proximity*.dart"
+alwaysApply: false
+---
+
+# Proximity Rules
+
+## Scope
+
+- BLE presence, badges, link sheet, host chain, invite queue
+- Classic Bluetooth control channel, GATT fallback
+- Session rules that decide LAN vs hotspot vs Wi-Fi Direct
+
+What this spoke does not cover:
+
+- Android hotspot/Wi-Fi Direct API calls → `android-wifi.mdc`
+- Shizuku package detection → `shizuku.mdc`
+- Existing mDNS service → `discovery.mdc`
+
+## Invariants
+
+1. Visible switch defaults on. Foreground: advertise and scan. Background sharing service: advertise and accept invites, do not scan.
+2. Badges: Same LAN (`/hello` on a local subnet), Other LAN (address advertised but not that success), BLE only (no usable address and not on mDNS).
+3. Untrusted non-LAN tap: link sheet, then the target sees nick, 6-digit code, host plan, link plan. Default host is the other phone. Trusted same-LAN opens immediately. Trusted different-LAN shows the sheet without the code. Trusted and neither on Wi-Fi skips the sheet and runs the host choice.
+4. No LAN password (extract failed, or the person will not type): fall through to the private-network chain. Declining the short-code prompt or leaving the link sheet before a choice stops the attempt.
+5. Host chain: chosen device starts a local-only hotspot. Android then tries Wi-Fi Direct if the hotspot fails. Then the next device already in the attempt. Desktops only try a hotspot. If a desktop must join and the hotspot failed, skip Wi-Fi Direct. All candidates failing ends the attempt.
+6. Members may invite while the host setting is on (default on). Hotspot: the admitter and the new phone trust only each other, then the SSID and passphrase are forwarded. Wi-Fi Direct: only the group owner admits; a member relays. One invite dialog at a time; others wait; 60s timeout declines.
+7. Control channel is classic Bluetooth, else BLE GATT. Frames are sealed with Ed25519. No system Bluetooth pairing dialog and no Nearby Connections. Secrets ride only after Accept.
+8. File bytes stay on the existing pinned HTTPS client, aimed at the address delivered on the control channel.
+9. The visible switch does not keep an empty hotspot up. Idle default is 3 minutes after the last client leaves. Disband is manual and asks once. A transfer counts as in use.
+10. Legacy BLE advert payload is 31 bytes. Advert carries flags, IPv4, port, short peer id, role, group id. Nick goes in the scan response. Never a fingerprint or a password.
+11. iOS gets real platform code and expected tests. Assertions run on mocks until a Mac can execute them.
+
+## External docs
+
+**Docs (if stuck):** https://developer.android.com/develop/connectivity/bluetooth/ble/ble-overview
+
+- Bluetooth classic sockets: https://developer.android.com/develop/connectivity/bluetooth
+- last consulted: 2026-10
+
+## Problem classes
+
+### `Nearby Connections fights the hotspot`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Hotspot or Wi-Fi Direct drops as soon as the invite connects | Nearby Connections upgrades its own link onto Wi-Fi | Keep control traffic on Bluetooth or GATT. Do not add the Nearby Connections SDK. |
+
+<!-- last-verified: 2026-10 -->
+
+### `Third phone starts a second network`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A joiner tap creates a new hotspot | Advert lacked role and group id, or the client ignored them | Advert includes role, group id, and host id. A phone already in a group invites into that group. |
+
+<!-- last-verified: 2026-10 -->
+
+### `Password prompt abort drops the transfer`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| User dismisses the PSK field and the peer disappears | Skip was treated as Decline | Missing PSK falls through to the host chain. Only short-code decline and link-sheet cancel abort. |
+
+<!-- last-verified: 2026-10 -->

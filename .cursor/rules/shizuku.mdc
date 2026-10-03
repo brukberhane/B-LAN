@@ -1,0 +1,50 @@
+---
+description: Shevery and Shizuku detection for privileged Wi-Fi PSK reads
+globs: "android/**/*.kt"
+alwaysApply: false
+---
+
+# Shizuku Rules
+
+## Scope
+
+- Detecting Shevery / Shizuku and asking for the binder permission
+- Reading the current or saved WPA2/WPA3-Personal passphrase through the privileged Wi-Fi API
+
+What this spoke does not cover:
+
+- Storing the passphrase → `security.mdc`
+- What happens when the user will not provide one → `proximity.mdc` (fall through to the host chain)
+
+## Invariants
+
+1. Copy provider detection from SecureSettingsManager `ShizukuManager` (`/home/brukb/projects/Android/SecureSettingsManager`). Known packages first: `com.hamondev.shevery`, `moe.shizuku.privileged.api`, `moe.shizuku.manager`. Then scan for `moe.shizuku.manager.permission.MANAGER` or `API_V23`, a Shizuku authority / `ShizukuConnector` provider, or a `ShizukuReceiver`.
+2. States: unknown, ready, no permission, dead, not installed. Sticky binder listeners. Pre-v11 is too old.
+3. First time a LAN share needs a password and Shizuku is running, ask once. Yes stays on. No stays off until Settings. Absent or dead means type the password, with the same Settings copy as that app ("start it in Shevery", "install Shevery/Shizuku").
+4. The read is `getPrivilegedConnectedNetwork` / `getPrivilegedConfiguredNetworks` through the Shizuku binder. `WRITE_SECURE_SETTINGS` does not reveal Wi-Fi passwords. Do not copy SecureSettingsManager's "start Shizuku after unlock" flow.
+5. Personal WPA only. Do not request or store enterprise identities.
+
+## External docs
+
+**Docs (if stuck):** https://github.com/RikkaApps/Shizuku
+
+- Reference: `app/src/main/java/com/secure/settings/manager/core/shizuku/ShizukuManager.kt` in SecureSettingsManager
+- last consulted: 2026-10
+
+## Problem classes
+
+### `Shizuku installed but state stays not-installed`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Shevery is on the device and B-LAN says install Shizuku | Detector only checked `moe.shizuku.privileged.api` | Use the known-package list, then the permission / provider / receiver scan. |
+
+<!-- last-verified: 2026-10 -->
+
+### `pm grant WRITE_SECURE_SETTINGS still returns no PSK`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Grant succeeds and the passphrase is null | That permission is not the Wi-Fi secret capability | Call the privileged WifiManager methods on the Shizuku binder. Android 11+ shell uid is what can see them. |
+
+<!-- last-verified: 2026-10 -->

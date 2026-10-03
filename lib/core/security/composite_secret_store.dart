@@ -59,12 +59,12 @@ class CompositeSecretStore implements SecretStore {
   Future<String> readOrEmpty(String key) async {
     if (_secure != null) {
       try {
-        final value = await _secure!.read(key: key);
+        final value = await _secure.read(key: key);
         if (value != null && value.isNotEmpty) {
           return decodeSecureValue(value);
         }
       } on PlatformException {
-        await _secure!.delete(key: key);
+        await _secure.delete(key: key);
       }
     }
     final wrapped = await _db.getSetting('secret_$key');
@@ -77,7 +77,7 @@ class CompositeSecretStore implements SecretStore {
   @override
   Future<void> write(String key, String value) async {
     if (_secure != null) {
-      await _secure!.write(key: key, value: encodeSecureValue(value));
+      await _secure.write(key: key, value: encodeSecureValue(value));
       await _db.deleteSetting('secret_$key');
       await _db.deleteSetting(key);
       return;
@@ -89,7 +89,7 @@ class CompositeSecretStore implements SecretStore {
   @override
   Future<void> delete(String key) async {
     if (_secure != null) {
-      await _secure!.delete(key: key);
+      await _secure.delete(key: key);
     }
     await _db.deleteSetting('secret_$key');
     await _db.deleteSetting(key);

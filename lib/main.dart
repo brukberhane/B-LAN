@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
 import 'app/app.dart';
-import 'core/persistence/database.dart';
 import 'core/persistence/database_open.dart';
 
 Future<void> main() async {

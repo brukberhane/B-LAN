@@ -196,7 +196,13 @@ void main() {
       token: browserToken,
     );
     final id = result.downloadId!;
-    await Future<void>.delayed(const Duration(milliseconds: 80));
+    // Wait until the partial file exists before pausing; fixed delays
+    // race the session/manifest/probe phase that precedes partial creation.
+    final partial = File('${downloadDir.path}/data.bin.partial');
+    for (var i = 0; i < 400 && !await partial.exists(); i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(await partial.exists(), isTrue);
     await slowQueue.pause(id);
 
     final paused = await db.downloadById(id);

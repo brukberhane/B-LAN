@@ -1,0 +1,60 @@
+---
+description: Android local-only hotspot, Wi-Fi Direct, and STA join
+globs: "android/**/*.{kt,xml}"
+alwaysApply: false
+---
+
+# Android Wi-Fi Rules
+
+## Scope
+
+- Local-only hotspot (`WifiManager.startLocalOnlyHotspot` / `startLocalOnlyHotspotWithConfiguration`)
+- Wi-Fi Direct group fallback (`WifiP2pManager`)
+- Joining a shared LAN or hotspot (`WifiNetworkSuggestion`, `WifiNetworkSpecifier`)
+
+What this spoke does not cover:
+
+- When to host → `proximity.mdc`
+- Reading a saved home PSK → `shizuku.mdc`
+
+## Invariants
+
+1. Private network means a local-only hotspot first. It has no internet. Close the reservation on idle or Disband.
+2. Wi-Fi Direct runs only after that device's hotspot fails, and only on Android. The group owner is the only admitter.
+3. Joining a local-only network uses `WifiNetworkSpecifier` so concurrent-STA phones can keep their other Wi-Fi. Joining a normal LAN uses the system suggestion / add-network approval. The app does not switch Wi-Fi silently.
+4. Warn before spin-up that the host's current Wi-Fi may pause. Do not migrate an in-flight transfer onto a new group owner mid-session. Host failure handling is spin-up only.
+5. Permissions: `CHANGE_WIFI_STATE`, and `NEARBY_WIFI_DEVICES` with `neverForLocation` when the app targets API 33+. Location is the pre-33 substitute, not an extra track.
+
+## External docs
+
+**Docs (if stuck):** https://developer.android.com/develop/connectivity/wifi/localonlyhotspot
+
+- Wi-Fi Direct: https://developer.android.com/develop/connectivity/wifi/wifi-direct
+- Specifier: https://developer.android.com/reference/android/net/wifi/WifiNetworkSpecifier
+- last consulted: 2026-10
+
+## Problem classes
+
+### `Hotspot SSID is random and the joiner never hears it`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| `startLocalOnlyHotspot` without a config picks the SSID | Custom config API is missing or was ignored | Read SSID and passphrase from `LocalOnlyHotspotReservation` and send them on the sealed control channel after Accept. Use `startLocalOnlyHotspotWithConfiguration` when that public method exists. |
+
+<!-- last-verified: 2026-10 -->
+
+### `Host lost its home Wi-Fi for the whole day`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| STA dropped and never returned | Visible switch was treated as "keep hotspot up" | Switch controls BLE only. Tear the reservation down when no client is associated and the idle timer fires, or on Disband. |
+
+<!-- last-verified: 2026-10 -->
+
+### `System Settings QR did not yield the password`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| App launched the DPP QR intent and still has no PSK | That intent renders a code for a passphrase the caller already passed in | Do not use it to extract. Show our own QR only after the PSK is known. Extraction is Shizuku or typed entry. |
+
+<!-- last-verified: 2026-10 -->

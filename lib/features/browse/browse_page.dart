@@ -345,6 +345,10 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
     final fresh =
         await ref.read(databaseProvider).peerById(widget.peer.id) ?? widget.peer;
 
+    if (!mounted) {
+      return false;
+    }
+
     if (fresh.identityStatus == PeerIdentityStatus.suspicious) {
       final proceed = await showDialog<bool>(
         context: context,
@@ -371,6 +375,10 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
       }
     }
 
+    if (!mounted) {
+      return false;
+    }
+
     if (fresh.identityStatus == PeerIdentityStatus.identityChanged) {
       final trust = await showDialog<bool>(
         context: context,
@@ -395,6 +403,10 @@ class _BrowsePageState extends ConsumerState<BrowsePage> {
         await ref.read(appServiceProvider).trustPeer(fresh.id);
         return true;
       }
+      return false;
+    }
+
+    if (!mounted) {
       return false;
     }
 

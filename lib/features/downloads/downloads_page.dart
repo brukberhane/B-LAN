@@ -34,8 +34,10 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
             tooltip: 'Clear completed',
             onPressed: () async {
               final cleared = await app.downloadQueue.clearCompleted();
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+              if (!context.mounted) {
+                return;
+              }
+              ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
                       cleared == 0
@@ -44,7 +46,6 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
                     ),
                   ),
                 );
-              }
             },
             icon: const Icon(Icons.cleaning_services_outlined),
           ),
@@ -70,7 +71,10 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
                       tooltip: 'Open downloads folder',
                       onPressed: () async {
                         final opened = await app.openPathInFileManager(path);
-                        if (mounted && !opened) {
+                        if (!context.mounted) {
+                          return;
+                        }
+                        if (!opened) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text('Could not open folder'),
@@ -89,13 +93,14 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
                         }
                         await app.setDownloadsDirectory(picked);
                         ref.invalidate(downloadsDirectoryProvider);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Downloads save to $picked'),
-                            ),
-                          );
+                        if (!context.mounted) {
+                          return;
                         }
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Downloads save to $picked'),
+                          ),
+                        );
                       },
                       icon: const Icon(Icons.edit_location_alt),
                     ),
@@ -210,10 +215,6 @@ class _GroupTile extends ConsumerWidget {
       0,
       (sum, row) => sum + downloadDisplayedBytes(row),
     );
-    final progress = group.totalBytes == 0
-        ? null
-        : displayedBytes / group.totalBytes;
-
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: ExpansionTile(
@@ -304,9 +305,9 @@ class _DownloadTile extends ConsumerWidget {
           if (download.inFlightBytes > 0)
             'Verified ${formatBytes(download.downloadedBytes)} · '
                 'receiving ${formatBytes(download.inFlightBytes)}',
-          if (chunkLine != null) chunkLine,
-          if (sourceLine != null) sourceLine,
-          if (waitingLine != null) waitingLine,
+          ?chunkLine,
+          ?sourceLine,
+          ?waitingLine,
           if (download.errorMessage?.isNotEmpty ?? false)
             download.errorMessage!,
           'Target: ${download.targetPath}',

@@ -1,0 +1,48 @@
+---
+description: LAN mDNS discovery and reachability
+globs: "lib/core/discovery/**/*.dart"
+alwaysApply: false
+---
+
+# Discovery Rules
+
+## Scope
+
+- Bonsoir advertise/browse and the Windows `multicast_dns` browse path
+- Service type `_blan._tcp`, peer HTTPS port 59488
+- Subnet filter and `/hello` reachability used by nearby badges
+
+What this spoke does not cover:
+
+- BLE advert layout and private-network session → `proximity.mdc`
+- Trust flag → `security.mdc`
+
+## Invariants
+
+1. mDNS stays the same-LAN path. Nearby must not disable advertise/browse.
+2. TXT stays `peerId`, `pv`, `nick`, `tls`, `scheme`, optional `browserHttpPort`. Do not put a fingerprint or a Wi-Fi password in TXT.
+3. A Same LAN badge requires an advertised IPv4 on a local subnet and a successful `/hello`. Anything else is not Same LAN.
+
+## External docs
+
+**Docs (if stuck):** https://pub.dev/packages/bonsoir
+
+- last consulted: 2026-10
+
+## Problem classes
+
+### `Peer missing on Windows`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Other platforms see this machine; Windows does not appear | Windows browse-only. This process does not advertise. | Document the limit. Manual connect remains the way to reach a Windows host. Do not pretend Bonsoir advertise works there. |
+
+<!-- last-verified: 2026-10 -->
+
+### `Nearby badge says Same LAN but transfers fail`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Subnet match treated as reachable | `/hello` never ran, or AP isolation drops the TCP path | Badge Same LAN only after `/hello` succeeds. Otherwise Other LAN or BLE only, per `proximity.mdc`. |
+
+<!-- last-verified: 2026-10 -->

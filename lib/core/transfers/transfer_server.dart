@@ -35,9 +35,8 @@ class _SessionInfo {
 }
 
 class TransferServer {
-  TransferServer(this._db, {SafFileOperations? safFiles})
-    : _safFiles = safFiles,
-      _uploads = UploadManager(_db);
+  TransferServer(this._db, {this._safFiles})
+    : _uploads = UploadManager(_db);
 
   final AppDatabase _db;
   final SafFileOperations? _safFiles;

@@ -131,7 +131,7 @@ class AppDatabase extends _$AppDatabase {
         await migrator.addColumn(peers, peers.scheme);
         await migrator.addColumn(peers, peers.tlsCertFingerprint);
         await customStatement(
-          "UPDATE peers SET scheme = '${peerSchemeHttps}' WHERE scheme IS NULL OR scheme = ''",
+          "UPDATE peers SET scheme = '$peerSchemeHttps' WHERE scheme IS NULL OR scheme = ''",
         );
       }
       if (from < 14) {

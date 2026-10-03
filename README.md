@@ -1,89 +1,143 @@
 # B-LAN
 
-Flutter rewrite of D-LAN: share folders on your LAN, discover peers, browse remote files, and download with verified chunk resume.
+```text
+ ____       _        _    _   _
+| __ )     | |      / \  | \ | |
+|  _ \     | |     / _ \ |  \| |
+| |_) |    | |___ / ___ \| |\  |
+|____/     |_____/_/   \_\_| \_|
+```
 
-## Platforms
+## Summary
 
-| Platform | Share | Discover | Advertise | Notes |
-|----------|-------|----------|-----------|-------|
-| Linux | Yes | Yes | Yes | Bonsoir 7 + Avahi; allow TCP HTTP port on LAN |
-| macOS | Yes | Yes | Yes | Bonsoir advertise + browse |
-| Windows | Yes | Yes | No | Browse/manual connect; advertise not supported yet |
-| Android | SAF/filesystem | Yes | Yes | Foreground service for scan/download; SAF needs manual rescan |
-| Web | No | No | No | Manual connect with browser token only |
+B-LAN shares folders with other devices you trust. On a normal LAN it finds peers with mDNS, browses their files, and downloads with verified chunks over pinned HTTPS. The next layer lets phones that are near each other see one another over Bluetooth, accept once, and either join a Wi-Fi or start a private hotspot when they are not already on the same network.
 
-Desktop: Settings shows network health checks, copy LAN URL, open downloads/share folders. Tray/background mode not implemented — closing the app stops sharing.
+People running the app on Linux, macOS, Windows, or Android. iOS code and tests ship with the nearby work and stay mocked until a Mac can run them. Done means a nearby device can be opened on the existing transfer stack, and `make verify` stays green.
 
-**Security:** Ed25519 device identity; peer trust and identity-changed workflow; sessions bound to peer fingerprint; suspicious-peer warnings after hash mismatches; secrets in platform secure storage when available (settings fallback on desktop/Linux without keyring). Browser token optional expiry in Settings. Peer transfers use HTTPS with pinned self-signed TLS certs; local browser API stays on loopback HTTP.
+## Table of Contents
 
-See [docs/platform-test-matrix.md](docs/platform-test-matrix.md) for manual validation checklist.
+- [The problem](#-the-problem)
+- [The fix](#-the-fix)
+- [Status](#-status)
+- [Repo layout](#-repo-layout)
+- [Dependencies and docs](#-dependencies--docs)
+- [Building](#-building)
+- [Model recommendations](#model-recommendations)
+- [Security](#-security)
+- [License](#-license)
 
-## Discovery (mDNS)
+---
 
-- Service type: `_blan._tcp`
-- **Android / macOS / Linux**: Bonsoir `^7.1.4` advertise + browse (no `bonsoir_linux_dbus`, no `configureBonsoirPlatform()`)
-- **Linux**: requires Avahi (`avahi-daemon`) for reliable discovery
-- **Windows**: browse-only via `multicast_dns`; use manual peer connect to reach this machine
-- **Web**: disabled; enter host, port, and browser token in Settings
-- TXT records: `peerId`, `pv`, `nick`
-- On resolve: HTTP `/hello` + `/session` handshake, upsert peer by real `peerId`
+## ❗ The problem
 
-## Android
+| What you try | What happens |
+| ------------ | ------------ |
+| Two phones on different Wi-Fi, or on none | mDNS never lists them. Manual connect needs an address they do not have. |
+| Same LAN, discovery works | Pinned HTTPS on port 59488 already covers browse and download. Nearby must not replace that. |
+| "Just use Nearby Share's library" | That stack takes over Wi-Fi and does not speak B-LAN's chunk protocol. |
 
-- **SAF folder sharing**: folder-copy icon on Shares screen (Storage Access Framework tree URI).
-- **Foreground service**: scan/hash/download show persistent notification while running.
-- **Multicast lock**: held while app core is active for mDNS browse.
-- Permissions: notifications, multicast, foreground `dataSync`, cleartext HTTP for LAN.
+## 🛠️ The fix
 
-## Run
+Today: advertise `_blan._tcp`, handshake `/hello` and `/session`, transfer on pinned HTTPS.
+
+Next, from the settled nearby design:
+
+1. BLE list on the Peers screen, with a badge for same LAN, other LAN, or BLE only.
+2. One accept dialog and a 6-digit code for a new device. Trust sticks to the Ed25519 fingerprint.
+3. If they are not on one reachable LAN, share a WPA2/WPA3-Personal network or start a local-only hotspot. Android tries Wi-Fi Direct only when the hotspot fails, then the next device.
+4. File bytes stay on the existing client, pointed at the new address.
+
+```text
+BLE advert → accept on Bluetooth → LAN or hotspot/Wi-Fi Direct → HTTPS :59488
+```
+
+## 📊 Status
+
+| Area | State |
+| ---- | ----- |
+| Agent rules (`.cursor/rules/`) | Retargeted to this app |
+| Phase index (`planning/phases/`) | See [INDEX](planning/phases/INDEX.md) |
+| LAN share, discovery, transfers | In the tree |
+| Nearby proximity | Planned. Not implemented. |
+| Verify | `make verify` — analyze, test, Android debug apk |
+
+Host toolchain at bootstrap: Flutter 3.47.2, Dart 3.13.2, stable channel. A newer Flutter stable was advertised. The shared SDK was left as-is.
+
+## 📂 Repo layout
+
+| Path | For |
+| ---- | --- |
+| [`README.md`](README.md) | Humans |
+| [`.cursor/rules/`](.cursor/rules/) | Agent conventions |
+| [`.cursor/skills/`](.cursor/skills/) | Plan / execute / complete |
+| [`planning/phases/`](planning/phases/) | Task sequence |
+| [`lib/`](lib/) | Dart app |
+| [`android/`](android/) | Android runner and foreground service |
+
+## 📚 Dependencies & docs
+
+| Dependency | Role | Docs | Agent rules |
+| ---------- | ---- | ---- | ----------- |
+| Flutter 3.47 / Dart 3.13 | UI, runners, platform channels | [docs.flutter.dev](https://docs.flutter.dev/) | [flutter.mdc](.cursor/rules/flutter.mdc) |
+| Gradle 8.14 / AGP 8.11.1 / Kotlin 2.2.20 | Android apk build (Flutter 3.47 minimums) | [gradle.org](https://gradle.org/) | [flutter.mdc](.cursor/rules/flutter.mdc) |
+| Drift | Local database | [drift.simonbinder.eu](https://drift.simonbinder.eu/) | [drift.mdc](.cursor/rules/drift.mdc) |
+| Bonsoir | mDNS advertise and browse | [pub.dev/bonsoir](https://pub.dev/packages/bonsoir) | [discovery.mdc](.cursor/rules/discovery.mdc) |
+| cryptography + flutter_secure_storage | Identity, pins, secrets | [pub.dev/cryptography](https://pub.dev/packages/cryptography) | [security.mdc](.cursor/rules/security.mdc) |
+| Android BLE / Bluetooth | Nearby presence and control channel | [BLE overview](https://developer.android.com/develop/connectivity/bluetooth/ble/ble-overview) | [proximity.mdc](.cursor/rules/proximity.mdc) |
+| Android Wi-Fi | Local-only hotspot, Wi-Fi Direct, join | [Local-only hotspot](https://developer.android.com/develop/connectivity/wifi/localonlyhotspot) | [android-wifi.mdc](.cursor/rules/android-wifi.mdc) |
+| Shizuku / Shevery | Privileged read of a personal Wi-Fi passphrase | [RikkaApps/Shizuku](https://github.com/RikkaApps/Shizuku) | [shizuku.mdc](.cursor/rules/shizuku.mdc) |
+
+## 🔁 Building with [Turboplan](https://github.com/commoddity/turboplan)
+
+Work proceeds one phase task at a time. Each command tells you which model size to use for that step and for the next one. Sizes are recommendations.
+
+```text
+/task-1-plan TXX          model: medium (large if the task is hard)
+      ↓
+/task-2-execute TXX       model: small (medium or large only if the plan says so)
+      ↓
+/task-3-complete TXX      model: small (medium if there is a real lesson to write down)
+      → push (default) + manual test → next stub branch
+```
+
+## Model recommendations
+
+| Step | Size | Why |
+| ---- | ---- | --- |
+| `/task-1-plan` | medium | The plan has to be detailed enough for a smaller model to implement. Use large when the stub is ambiguous or spans several platforms. |
+| `/task-2-execute` | small | Follow the plan. Use medium when the plan says the work is non-trivial. Use large only when the plan says large. |
+| `/task-3-complete` | small | Re-verify, commit, push, manual test. Use medium when a real failure should be written into the rules. A brand-new failure mode can be re-run on large. That does not block the close-out. |
+
+See [`planning/phases/INDEX.md`](planning/phases/INDEX.md).
 
 ```bash
-cd B-LAN
 flutter pub get
-dart run build_runner build
+dart run build_runner build   # after Drift edits
+make verify
+make install-hooks             # once; pre-commit runs make quick-verify (analyze+test)
 flutter run -d linux
 ```
 
-## Architecture
+### Platforms that already share
 
-- `lib/core/persistence/` — Drift/SQLite local index and queue
-- `lib/core/indexing/` — folder scan, incremental watch (desktop), SHA-256 chunk hashing
-- `lib/core/transfers/` — embedded HTTP server + verified download client
-- `lib/core/discovery/` — mDNS browse/advertise (Windows browse-only)
-- `lib/features/` — shares, peers, browse, downloads, settings UI
+| Platform | Share | Discover | Advertise |
+| -------- | ----- | --------- | --------- |
+| Linux | Yes | Yes | Yes. Bonsoir + Avahi |
+| macOS | Yes | Yes | Yes |
+| Windows | Yes | Yes | No. Browse and manual connect |
+| Android | SAF or filesystem | Yes | Yes. Foreground service while sharing |
+| Web | No | No | No. Manual connect with a browser token |
 
-## Protocol (v1)
+Protocol v1: `GET /hello`, `POST /session`, shares, entries, manifests, chunks, ranged files. Peer transfers are HTTPS with a pinned self-signed cert. The browser API stays on loopback HTTP port 59487.
 
-- `GET /hello` — peer metadata
-- `POST /session` — native client session token
-- `GET /shares`, `GET /entries`, `GET /manifest/files/<id>`, `GET /chunks?hash=`, `GET /files/<id>` with `Range`
-- Web clients use browser token from Settings; native clients use `/session`
-- Device Ed25519 identity in `/hello`; peer trust and `identity_changed` workflow
-- Multi-source downloads: matching manifests, per-chunk peer failover
+## 🔒 Security
 
-## Testing
+- Ed25519 device identity. Trust is explicit. Untrusted peers are removed on the next launch.
+- Nearby accept trusts those two fingerprints. A 6-digit code is on both screens. Passwords move only after Accept, sealed on Bluetooth.
+- WPA2-Personal and WPA3-Personal only. No enterprise Wi-Fi.
+- Passphrases go in the platform secure store when it exists. They are not SQLite columns, logs, or BLE payloads.
+- Android cannot read the current Wi-Fi password without Shizuku (ADB or root) on Android 11+. `WRITE_SECURE_SETTINGS` does not do it.
 
-Automated MVP suite (`flutter test`):
+## 📜 License
 
-| Area | Tests |
-|------|-------|
-| Protocol DTOs + defaults | `protocol_test.dart` |
-| HTTP server auth, CORS, range, chunks | `transfer_server_test.dart` |
-| Verified resume, retry, cancel, multi-source | `transfer_client_test.dart`, `multi_source_download_test.dart` |
-| Indexing + incremental + stress fixtures | `share_incremental_test.dart`, `stress_indexing_test.dart` |
-| DB schema, indexes, queue states | `database_test.dart` |
-| Security trust/sessions | `security_test.dart` |
-| UI smoke + feature widgets | `widget_test.dart`, `widget_features_test.dart` |
-| Platform health + LAN helpers | `platform_health_test.dart`, `lan_addresses_test.dart`, `platform_services_mock_test.dart` |
-
-Optional DB benchmark: `dart run tool/db_benchmark.dart --quick` — see [docs/db-benchmark-decision.md](docs/db-benchmark-decision.md).
-
-Manual cross-platform matrix: [docs/platform-test-matrix.md](docs/platform-test-matrix.md).
-
-## Dev
-
-```bash
-flutter test
-flutter analyze
-dart run tool/db_benchmark.dart --quick   # optional persistence smoke
-```
+No license file is declared in this tree yet.

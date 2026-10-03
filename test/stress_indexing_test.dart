@@ -1,10 +1,8 @@
 import 'dart:io';
 
-import 'package:blan/core/indexing/chunker.dart';
 import 'package:blan/core/indexing/share_scanner.dart';
 import 'package:blan/core/persistence/database.dart';
 import 'package:blan/platform/platform_services.dart';
-import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 

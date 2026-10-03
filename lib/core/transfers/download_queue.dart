@@ -22,16 +22,14 @@ class DownloadQueue {
     this._db,
     this._client, {
     required PlatformServices platform,
-    required Future<String> Function() downloadsDirectory,
+    required this._downloadsDirectory,
     PeerSessionStore? sessions,
-    DownloadQueueProgressCallback? onForegroundProgress,
+    this._onForegroundProgress,
   }) : _platform = platform,
        _downloadPaths = platform is DownloadPathServices
            ? platform as DownloadPathServices
            : DefaultDownloadPathServices(),
-       _downloadsDirectory = downloadsDirectory,
-       _sessions = sessions ?? PeerSessionStore(),
-       _onForegroundProgress = onForegroundProgress;
+       _sessions = sessions ?? PeerSessionStore();
 
   final AppDatabase _db;
   final TransferClient _client;
@@ -48,6 +46,7 @@ class DownloadQueue {
   bool _workSignaled = false;
   String? _activeDownloadId;
   Completer<void>? _wake;
+  Completer<void>? _loopDone;
 
   String? get activeDownloadId => _activeDownloadId;
 
@@ -57,7 +56,13 @@ class DownloadQueue {
     }
     _running = true;
     await _db.recoverInterruptedDownloads();
-    unawaited(_loop());
+    _loopDone = Completer<void>();
+    unawaited(
+      _loop().whenComplete(() {
+        _loopDone?.complete();
+        _loopDone = null;
+      }),
+    );
   }
 
   Future<void> stop() async {
@@ -68,6 +73,10 @@ class DownloadQueue {
     _wake?.complete();
     _wake = null;
     await _platform.stopForegroundTask(_foregroundTaskId);
+    final loopDone = _loopDone;
+    if (loopDone != null && !loopDone.isCompleted) {
+      await loopDone.future;
+    }
   }
 
   Future<EnqueueResult> enqueue({

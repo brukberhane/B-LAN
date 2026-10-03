@@ -1,7 +1,5 @@
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
@@ -10,10 +8,8 @@ import '../security/tls_identity.dart';
 /// HTTP client that pins a peer's self-signed TLS certificate.
 class PinnedPeerHttpClient extends http.BaseClient {
   PinnedPeerHttpClient({required String expectedFingerprintSha256Hex})
-      : _expected = expectedFingerprintSha256Hex.toLowerCase(),
-        _inner = IOClient(_createHttpClient(expectedFingerprintSha256Hex));
+      : _inner = IOClient(_createHttpClient(expectedFingerprintSha256Hex));
 
-  final String _expected;
   final http.Client _inner;
 
   @override

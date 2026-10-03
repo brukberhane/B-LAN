@@ -10,7 +10,6 @@ import '../../platform/platform_services.dart';
 import '../indexing/chunker.dart';
 import '../persistence/database.dart';
 import '../search/content_signature.dart';
-import '../protocol/constants.dart';
 import '../protocol/download_states.dart';
 import '../protocol/models.dart';
 import '../protocol/path_safety.dart';
@@ -29,19 +28,14 @@ class TransferClient {
   TransferClient(
     this._db, {
     PlatformServices? platform,
-    Future<String?> Function()? downloadsSafTreePath,
-    Future<String> Function()? downloadsDirectory,
+    this._downloadsSafTreePath,
+    this._downloadsDirectory,
     http.Client? httpClient,
-    int? maxConcurrentChunkDownloads,
   }) : _downloadPaths = platform is DownloadPathServices
            ? platform as DownloadPathServices
            : null,
-       _downloadsSafTreePath = downloadsSafTreePath,
-       _downloadsDirectory = downloadsDirectory,
        _httpClient = httpClient ?? http.Client(),
        _usePinnedClients = httpClient == null,
-       _maxConcurrentChunkDownloads =
-           maxConcurrentChunkDownloads ?? maxConcurrentDownloads,
        _manifestCache = RemoteManifestCache(_db),
        _swarmStore = SwarmAvailabilityStore(_db);
 
@@ -51,7 +45,6 @@ class TransferClient {
   final Future<String> Function()? _downloadsDirectory;
   final http.Client _httpClient;
   final bool _usePinnedClients;
-  final int _maxConcurrentChunkDownloads;
   final PeerSessionStore _sessions = PeerSessionStore();
   final RemoteManifestCache _manifestCache;
   final SwarmAvailabilityStore _swarmStore;
@@ -232,7 +225,7 @@ class TransferClient {
       'pageSize': '$pageSize',
       if (minSize != null) 'minSize': '$minSize',
       if (maxSize != null) 'maxSize': '$maxSize',
-      if (pageToken != null) 'pageToken': pageToken,
+      'pageToken': ?pageToken,
     };
     final uri = Uri.parse('$baseUrl/search').replace(queryParameters: params);
     final response = await _get(uri.toString(), token: token);
@@ -250,7 +243,7 @@ class TransferClient {
   }) async {
     final params = <String, String>{
       'pageSize': '$pageSize',
-      if (pageToken != null) 'pageToken': pageToken,
+      'pageToken': ?pageToken,
     };
     final uri = Uri.parse(
       '$baseUrl/manifest/shares/$shareId',
@@ -727,8 +720,12 @@ class TransferClient {
           totalBytes: manifest.totalBytes,
         );
     await _db.upsertDownloadChunks(downloadId, manifest.chunks);
+    _activeDownloadId = downloadId;
+    _cancelledDownloads.remove(downloadId);
 
     if (manifest.totalBytes == 0) {
+      _activeDownloadId = null;
+      _cancelledDownloads.remove(downloadId);
       await _finalizeDownload(
         partialFile: partialFile,
         targetPath: targetPath,
@@ -746,8 +743,6 @@ class TransferClient {
       manifest: manifest,
     );
 
-    _activeDownloadId = downloadId;
-    _cancelledDownloads.remove(downloadId);
     try {
       await _downloadPendingChunks(
         downloadId: downloadId,
@@ -915,7 +910,10 @@ class TransferClient {
     );
 
     try {
-      while (!_isCancelled(downloadId)) {
+      while (true) {
+        if (_isCancelled(downloadId)) {
+          throw const DownloadCancelled();
+        }
         var pending = await _db.pendingDownloadChunks(downloadId);
         if (pending.isEmpty) {
           return;
@@ -1466,14 +1464,12 @@ class TransferClient {
 
 class _InFlightProgressTracker {
   _InFlightProgressTracker({
-    required AppDatabase db,
-    required String downloadId,
-    required int totalBytes,
+    required this._db,
+    required this._downloadId,
+    required this._totalBytes,
     required this.persistInterval,
     this.onProgress,
-  }) : _db = db,
-       _downloadId = downloadId,
-       _totalBytes = totalBytes;
+  });
 
   final AppDatabase _db;
   final String _downloadId;

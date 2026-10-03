@@ -1,0 +1,49 @@
+---
+description: Device identity, peer trust, TLS pins, and secrets
+globs: "lib/core/security/**/*.dart"
+alwaysApply: false
+---
+
+# Security Rules
+
+## Scope
+
+- Ed25519 device identity, `/hello` signature, TLS cert pin
+- Peer `trusted` flag, identity-changed, suspicious
+- `SecretStore` / `flutter_secure_storage`
+
+What this spoke does not cover:
+
+- When a nearby prompt is shown → `proximity.mdc`
+- How a passphrase is read from the OS → `shizuku.mdc` and `proximity.mdc`
+
+## Invariants
+
+1. New peers start untrusted. `trustPeer` is the persistent grant. Untrusted rows are purged on next launch.
+2. Nearby accept stores mutual trust for the two fingerprints even if the Wi-Fi step fails later. Reject or timeout writes nothing.
+3. A passphrase is eligible for `SecretStore.write` only when `usesSecureStorage` is true. Otherwise it lives for the attempt and is dropped.
+4. Control-channel secrets (LAN PSK, hotspot PSK) are sealed to the peer identity and sent only after Accept.
+
+## External docs
+
+**Docs (if stuck):** https://pub.dev/packages/cryptography
+
+- last consulted: 2026-10
+
+## Problem classes
+
+### `Trusted peer lost trust after a rescan`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| `trusted` flipped false and the session disappeared | Fingerprint or TLS cert pin mismatched on upsert | Keep the identity-changed path. Do not auto-retrust. The user re-accepts. |
+
+<!-- last-verified: 2026-10 -->
+
+### `Home Wi-Fi password in the database`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Passphrase readable with `sqlite3` | Column or settings key holds the secret | Move the secret to the platform secure store. Drift keeps SSID and `wpa2-psk` / `wpa3-sae` only. |
+
+<!-- last-verified: 2026-10 -->

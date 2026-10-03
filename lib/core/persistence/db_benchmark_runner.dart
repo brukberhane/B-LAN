@@ -5,7 +5,6 @@ import 'dart:math';
 import 'package:blan/core/indexing/chunker.dart';
 import 'package:blan/core/persistence/database.dart';
 import 'package:blan/core/protocol/constants.dart';
-import 'package:blan/core/protocol/download_states.dart';
 import 'package:blan/core/protocol/models.dart';
 import 'package:drift/drift.dart';
 
@@ -74,7 +73,7 @@ class DbBenchmarkWorkloadResult {
         if (p50Ms != null) 'p50Ms': p50Ms,
         if (p95Ms != null) 'p95Ms': p95Ms,
         if (meanMs != null) 'meanMs': meanMs,
-        if (extra != null) ...extra!,
+        ...?extra,
       };
 }
 

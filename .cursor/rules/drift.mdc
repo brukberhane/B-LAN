@@ -1,0 +1,47 @@
+---
+description: Drift schema and code generation
+globs: "lib/core/persistence/**/*.dart"
+alwaysApply: false
+---
+
+# Drift Rules
+
+## Scope
+
+- `lib/core/persistence/` tables, database, and generated `database.g.dart`
+- Settings rows and the remembered-Wi-Fi table
+
+What this spoke does not cover:
+
+- Passphrase bytes → `security.mdc` secret store
+- Nearby session policy → `proximity.mdc`
+
+## Invariants
+
+1. Schema changes ship with a Drift migration and regenerated code (`dart run build_runner build`).
+2. Remembered networks store SSID and security type (`wpa2-psk` or `wpa3-sae`) in Drift. The passphrase is a secret-store key, never a column.
+3. No enterprise / 802.1X columns. WPA2-Personal and WPA3-Personal only.
+
+## External docs
+
+**Docs (if stuck):** https://drift.simonbinder.eu/
+
+- last consulted: 2026-10
+
+## Problem classes
+
+### `Build fails after a table edit`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Missing getters on the database class | `database.g.dart` is stale | Run `dart run build_runner build`. Commit the generated file with the table change. |
+
+<!-- last-verified: 2026-10 -->
+
+### `Passphrase visible in the sqlite file`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A Wi-Fi password shows up under `settings` or a text column | Secret written through `SettingsSecretStore` or a Drift string column | Store the passphrase only through `SecretStore` when `usesSecureStorage` is true. If secure storage is missing, keep it in memory for the attempt and do not write it. |
+
+<!-- last-verified: 2026-10 -->

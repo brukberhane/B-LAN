@@ -1,0 +1,74 @@
+---
+description: Flutter app structure, platform channels, and lifecycle
+globs: "**/*.{dart,kt,swift}"
+alwaysApply: false
+---
+
+# Flutter Rules
+
+## Scope
+
+- `lib/` UI, Riverpod providers, and Dart platform interfaces
+- `android/`, `linux/`, `macos/`, `windows/`, and `ios/` runners when a task adds them
+- Foreground service and background invite UI
+
+What this spoke does not cover:
+
+- Drift tables → `drift.mdc`
+- mDNS → `discovery.mdc`
+- Trust and secrets → `security.mdc`
+- Nearby session rules → `proximity.mdc`
+
+## Invariants
+
+1. Uses Flutter 3.47 / Dart 3.13 on the stable channel recorded in the hub. Do not upgrade the shared SDK inside a task.
+2. UI state goes through existing Riverpod providers. Do not add a second state framework.
+3. Platform-specific radio and Wi-Fi calls stay behind Dart interfaces with fakes for tests. Widget tests must not require a handset.
+
+## External docs
+
+**Docs (if stuck):** https://docs.flutter.dev/
+
+- last consulted: 2026-10
+
+## Problem classes
+
+### `Background invite never appears`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Accept UI only shows while the activity is resumed | Android blocks background activity starts. Full-screen intents are special access. | Request display-over-apps and full-screen intent. Show a dialog when granted. Fall back to a heads-up notification with Accept and Decline. Desktop raises a window. |
+
+<!-- last-verified: 2026-10 -->
+
+### `Apk build fails after a Flutter SDK bump`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| `flutter build apk` dies on Gradle/AGP/Kotlin "lower than Flutter's minimum" | Each stable raises minimums for all three; they surface one per build, and each cold retry costs minutes | Read the `DependencyValidationException` line — it names the exact minimum. Bump Gradle wrapper + AGP (`settings.gradle.kts`) + Kotlin in one pass. Run `flutter build apk --debug -v > log` — non-verbose mode hides Gradle output entirely |
+
+<!-- last-verified: 2026-10 -->
+
+### `Async test fails on a fixed delay after a new pre-work phase is added`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Test that waits a fixed ms, then asserts on a row/file/cancel, flakes or fails after new HTTP calls were inserted before the phase it watches | Fixed delays race whatever async work precedes the observable state | Poll for the observable (row exists, file exists) with a bounded loop, then act. HTTP counting wrappers: exclude metadata endpoints sharing the byte-route path prefix (e.g. an availability probe under `/chunks/`) or new probes break old request counts |
+
+<!-- last-verified: 2026-10 -->
+
+### `Unhandled async error from a previous test fails the next test`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A passing test fails with a resource-closed error ("Can't re-open a database after closing") that the runner attributes to a later test | Background worker loop outlives its owner: teardown closes the DB while the worker still polls it; the unhandled error lands in whatever test runs next | `stop()` must await loop exit (completer wired to the loop's `whenComplete`) before teardown closes resources. Also make cancel-during-startup paths throw the cancel exception, not a generic "incomplete" error |
+
+<!-- last-verified: 2026-10 -->
+
+### `iOS tests skipped because there is no Mac`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| iOS branch has no assertions | Runner cannot launch on this Linux host | Write the platform code and expected tests against a mock channel. Mark the cases that need a device as Mac-only. Do not delete the expected assertions. |
+
+<!-- last-verified: 2026-10 -->

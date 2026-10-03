@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
-import '../../core/persistence/database.dart';
 import '../../core/platform/lan_addresses.dart';
 import '../../core/platform/platform_health.dart';
 

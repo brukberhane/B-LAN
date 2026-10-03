@@ -1,0 +1,311 @@
+---
+description: Always-applied project routing, automation, and safety rules
+alwaysApply: true
+---
+
+# B-LAN — Agent Rules
+
+This file is the always-on entry for Cursor (`.cursor/rules/general.mdc`).
+Domain playbooks live beside it as `.cursor/rules/*.mdc`. Invocable workflows
+live in `.cursor/skills/*/SKILL.md`.
+
+**`.cursor/rules/` is the sole source of truth for rules.** Do not recreate a
+parallel rules tree elsewhere.
+
+**Hub → spoke (hard):** this file is the hub. Domain playbooks are spokes.
+Do not collapse provider/API/framework detail into this file — route via the
+tables below. New spokes must be added to the Routing Map and/or Problem Class table.
+
+---
+
+# Karpathy Behavioral Guidelines
+
+These guidelines apply **at all times** when coding in an agentic environment.
+
+## 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them — don't pick silently.
+- If a simpler approach exists, say so.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- If you write 200 lines and it could be 50, rewrite it.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- Remove imports/variables/functions that YOUR changes made unused.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+For multi-step tasks, state a brief plan with verification steps:
+
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+```
+
+Name the **capability layer** you are advancing so work stays ordered.
+
+---
+
+## CRITICAL: Read Rules Before You Act
+
+1. **Read before you act.** Before editing or proposing a change, read the
+   matching rule file(s) in `.cursor/rules/`.
+2. **This file always applies.**
+3. **Rules override defaults.** If a rule conflicts with your instincts, the
+   rule wins.
+4. **If no rule covers the situation, stop and ask** rather than guessing.
+
+### Routing Map — Which Domain Rule To Read
+
+| When you are working on... | Read and follow |
+| -------------------------- | --------------- |
+| Flutter UI, platform channels, app lifecycle | `.cursor/rules/flutter.mdc` |
+| Drift schema, queries, generated code | `.cursor/rules/drift.mdc` |
+| mDNS discovery, peer list, LAN reachability | `.cursor/rules/discovery.mdc` |
+| Identity, trust, TLS pins, secret storage | `.cursor/rules/security.mdc` |
+| Nearby BLE, control channel, session rules | `.cursor/rules/proximity.mdc` |
+| Android hotspot, Wi-Fi Direct, network join | `.cursor/rules/android-wifi.mdc` |
+| Shizuku / Shevery Wi-Fi password read | `.cursor/rules/shizuku.mdc` |
+| Anything else or unsure | this file + ask |
+
+When a task spans multiple areas, read every applicable rule file before starting.
+
+---
+
+## Project Architecture
+
+- **Product**: B-LAN
+- **Shape**: Flutter app. Local folder share, mDNS peer discovery, pinned HTTPS chunk transfers. Nearby proximity (BLE + private network) is a planned layer on top of the same transfer stack.
+- **Platforms**: Linux, macOS, Windows, Android, limited web. iOS platform code and expected tests are in scope for proximity; assert against mocks until a Mac can run them.
+- **Primary language**: Dart 3.13 / Flutter 3.47 (stable channel on this machine)
+- **Build / verify**: `make verify` (`flutter analyze`, `flutter test`, `flutter build apk --debug`)
+
+```
+lib/
+  app/            shell, providers
+  core/
+    discovery/    mDNS advertise + browse
+    indexing/     scan, hash, watch
+    network/      pinned HTTP client
+    persistence/  Drift
+    protocol/     DTOs, ports
+    security/     Ed25519, TLS, secrets, sessions
+    transfers/    shelf HTTPS server + download client
+  features/       shares, peers, browse, search, transfers, settings
+  platform/       Android / desktop / stub services
+android/          manifest, foreground service
+```
+
+LAN sharing is already implemented: `_blan._tcp`, TXT `peerId` / `pv` / `nick` / `tls` / `scheme`, HTTPS `:59488`, browser HTTP `:59487` on loopback. Trust is explicit and persistent. Untrusted peer rows are purged on next launch. Browse works before trust. An untrusted download asks once vs trust.
+
+Nearby proximity does not replace that path. It adds a BLE list and, when the peer is not reachable on the current LAN, a private network whose address is then used by the existing client.
+
+### Inspiration sources
+
+- D-LAN (C++ predecessor): folder share on a LAN
+- Quick Share: nearby list, one accept dialog, then a high-speed local link
+- SecureSettingsManager `ShizukuManager`: provider detection for Shevery and Shizuku
+
+### Build & Run
+
+```bash
+flutter pub get
+dart run build_runner build   # after Drift table edits
+make verify                    # analyze + test + android debug apk
+make install-hooks             # once per clone; pre-commit runs make quick-verify (analyze+test)
+flutter run -d linux
+```
+
+---
+
+## Delivery Principles
+
+**MVP sequence of record:** [`planning/phases/INDEX.md`](../../planning/phases/INDEX.md).
+Use `/task-1-plan` → `/task-2-execute` → `/task-3-complete`. Do not skip layers.
+
+### Layered build order
+
+See [`planning/phases/INDEX.md`](../../planning/phases/INDEX.md) for the
+current layered build order and task sequence.
+
+Wire features in dependency order. **Stop at a failed verification.** Do not
+advance to the next layer on a broken base.
+
+### Atomic work + verification gates
+
+Prefer small, independently checkable units. Before calling a chunk done, run
+the cheapest proof that fits (`make verify`, package tests, manual path).
+
+### Model size for every step
+
+State the size in the user-facing close of that step, and name the size for the next command. Sizes are recommendations.
+
+| Step | Default | Use a larger one when |
+| ---- | ------- | --------------------- |
+| `/task-1-plan` | medium | The stub is ambiguous or crosses several platforms |
+| `/task-2-execute` | small | The plan says medium, or it says large |
+| `/task-3-complete` | small | Dialectic has a real failure to encode (then medium). A novel failure mode can be re-run on large. It does not block close-out |
+
+Human table: [README model recommendations](../../README.md#model-recommendations).
+
+**Plan handoff bar:** `/task-1-plan` must write an Execution plan detailed
+enough that a **lesser agent** can implement it without rediscovering
+architecture, guessing file paths, or inventing design. Prefer:
+
+- Concrete files/packages to create or edit
+- Function/type/API shapes or signatures when non-obvious
+- Ordered steps with `→ verify:` checks
+- Explicit test cases to add
+- Exact verify/lint commands
+- Risks, pitfalls, and "do not" edges
+
+If the plan is only high-level ("wire the handler", "add tests"), it is
+**incomplete** — deepen it before marking it planned.
+
+---
+
+## Safety / Workflow Rails
+
+NEVER do these without explicit user approval:
+
+- Modify `.cursor/rules/` files (except via `/dialectic-of-cognition`)
+- Commit or push to git **outside** `/task-3-complete`
+- Force-push, rewrite shared history, or push secrets
+- Put a Wi-Fi passphrase, hotspot passphrase, or Shizuku output that contains one into SQLite, logs, BLE adverts, or mDNS TXT
+- Use Google Nearby Connections, or add WPA-Enterprise join
+
+### Package managers / toolchain
+
+Flutter/Dart via the host SDK (`flutter`, `dart`). Drift codegen: `dart run build_runner build`. Do not `flutter upgrade` the shared SDK from a task. Do not add a second HTTP stack for LAN or nearby file bytes.
+
+### Verification defaults
+
+- Prefer `make verify` after substantive edits
+- If verification fails, fix that layer — do not advance
+
+---
+
+## Rule Maintenance (Self-Evolving Rules)
+
+<!-- last-verified: 2026-10 -->
+
+Rules must improve over time. Follow the dialectic of cognition:
+
+> *From the particular to the general, then from the general to the particular.*
+
+**Operational harness:** invoke `/dialectic-of-cognition` (see
+`.cursor/skills/dialectic-of-cognition/SKILL.md`).
+
+**Write only to** `.cursor/rules/*.mdc`.
+
+**Trigger:** Apply this process when ANY of these are true:
+
+- Debugging took >5 minutes
+- External documentation was consulted
+- More than one corrective attempt was needed before the fix worked
+- The root cause was non-obvious from the error message alone
+
+Trivial fixes (typos, config values, one-line renames) should **NOT** trigger
+rule updates — they add noise without improving recognition.
+
+### 0. Abort gate — is this generalizable?
+
+Before extracting a principle, apply the one-sentence test: **can you state the
+rule without naming a specific file, function, class, variable, or endpoint?**
+If not, stop here — there is nothing to encode. The value stays in the diff.
+
+### 1. Particular → General (abstract)
+
+Extract the **class** of problem, not the instance.
+
+### 2. General → Particular (encode)
+
+Write into the appropriate `.cursor/rules/*.mdc`. A good entry answers:
+
+1. **What does it look like?** (symptoms)
+2. **What causes it?** (root pattern)
+3. **How do you fix it?** (actionable steps)
+
+Illustration from this product (belongs in `security.mdc`, not duplicated as a second policy here): an untrusted peer that disappeared after restart was purged on launch on purpose. The fix is to trust explicitly, not to stop the purge.
+
+```
+### `<Problem Class Name>`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| `<observable>` | `<root pattern>` | `<actionable steps>` |
+
+<!-- last-verified: YYYY-MM -->
+```
+
+### 3. Verify — practice tests theory
+
+Would a cold-read AI recognize the symptom and apply the fix without
+re-investigation? If not, refine.
+
+### 4. Check for contradictions
+
+When a new principle conflicts with an old one for the same symptoms, encode
+the boundary condition — don't silently overwrite.
+
+### 5. Deduplicate before adding — prefer refinement over proliferation
+
+### 6. Rule decay — keep the knowledge base alive
+
+Add `<!-- last-verified: YYYY-MM -->`. Review entries older than 6 months when
+working in that domain.
+
+### 7. File size threshold — split before rules become unreadable
+
+If a `.cursor/rules/*.mdc` file exceeds ~550 lines after an edit, propose a
+split to the user. Never split without approval.
+
+---
+
+## Routing Table — Problem Class → Rule File
+
+| Change type / Problem domain | Rule file |
+| ---------------------------- | --------- |
+| Widget, route, platform channel, lifecycle | `.cursor/rules/flutter.mdc` |
+| Schema, DAO, build_runner | `.cursor/rules/drift.mdc` |
+| mDNS, subnet filter, discovered peer | `.cursor/rules/discovery.mdc` |
+| Fingerprint, trust, pin, secret store | `.cursor/rules/security.mdc` |
+| BLE badge, invite, host chain, control frames | `.cursor/rules/proximity.mdc` |
+| Hotspot, Wi-Fi Direct, specifier join | `.cursor/rules/android-wifi.mdc` |
+| Shevery/Shizuku detection, privileged PSK read | `.cursor/rules/shizuku.mdc` |
+| Cross-cutting / unknown | `.cursor/rules/general.mdc` |
+
+---
+
+## Skills Inventory
+
+| Skill | Path | Purpose |
+| ----- | ---- | ------- |
+| `/bootstrap-turboplan` | `.cursor/skills/bootstrap-turboplan/SKILL.md` | Retarget rules, phases, README, verify gate |
+| `/task-1-plan` | `.cursor/skills/task-1-plan/SKILL.md` | Plan one phase task |
+| `/task-2-execute` | `.cursor/skills/task-2-execute/SKILL.md` | Implement one phase task |
+| `/task-3-complete` | `.cursor/skills/task-3-complete/SKILL.md` | Verify + dialectic + INDEX ✅ + commit + push (default) + manual test + next branch |
+| `/dialectic-of-cognition` | `.cursor/skills/dialectic-of-cognition/SKILL.md` | Encode session learnings into rules |
+| `/audit-rules` | `.cursor/skills/audit-rules/SKILL.md` | Read-only audit of rules/skills vs tree |
+| `/grill-me` | `.cursor/skills/grill-me/SKILL.md` | Interrogate an idea over a design tree until shared understanding; feeds /setup-tasks |
+| `/setup-tasks` | `.cursor/skills/setup-tasks/SKILL.md` | New feature → context → phase stubs appended to INDEX |

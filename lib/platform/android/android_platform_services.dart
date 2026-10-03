@@ -192,8 +192,8 @@ class AndroidPlatformServices
     await _channel.invokeMethod<void>('publishDownloadFile', {
       'stagingPath': stagingPath,
       'targetPath': targetPath,
-      if (safTreePath != null) 'safTreePath': safTreePath,
-      if (downloadsRoot != null) 'downloadsRoot': downloadsRoot,
+      'safTreePath': ?safTreePath,
+      'downloadsRoot': ?downloadsRoot,
     });
   }
 

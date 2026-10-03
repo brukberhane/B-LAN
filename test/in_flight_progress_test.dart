@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:blan/core/indexing/chunker.dart';
 import 'package:blan/core/persistence/database.dart';
 import 'package:blan/core/protocol/constants.dart';
-import 'package:blan/core/protocol/download_states.dart';
 import 'package:blan/core/protocol/models.dart';
 import 'package:blan/core/security/peer_identity.dart';
 import 'package:blan/core/transfers/download_progress.dart';
@@ -184,10 +183,19 @@ void main() {
       token: browserToken,
     );
 
-    await Future<void>.delayed(const Duration(milliseconds: 40));
-    client.cancelDownload(
-      (await (db.select(db.downloads)).getSingle()).id,
-    );
+    // Wait until the download row exists before cancelling; fixed delays
+    // race the manifest/probe phase that precedes row creation.
+    String? downloadId;
+    for (var i = 0; i < 200; i++) {
+      final rows = await db.select(db.downloads).get();
+      if (rows.isNotEmpty) {
+        downloadId = rows.single.id;
+        break;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(downloadId, isNotNull);
+    client.cancelDownload(downloadId!);
 
     await expectLater(
       future,
@@ -202,10 +210,15 @@ void main() {
   });
 }
 
-bool _isChunkLikeRequest(Uri uri, Map<String, String> headers) =>
-    uri.pathSegments.contains('chunks') ||
-    uri.queryParameters.containsKey('hash') ||
-    headers.containsKey('range');
+bool _isChunkLikeRequest(Uri uri, Map<String, String> headers) {
+  // The availability probe is metadata, not a chunk byte stream.
+  if (uri.path.endsWith('/chunks/availability')) {
+    return false;
+  }
+  return uri.pathSegments.contains('chunks') ||
+      uri.queryParameters.containsKey('hash') ||
+      headers.containsKey('range');
+}
 
 class _IncrementalChunkClient extends http.BaseClient {
   _IncrementalChunkClient(this._inner);
