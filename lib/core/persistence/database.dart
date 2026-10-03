@@ -33,13 +33,14 @@ part 'database.g.dart';
     Downloads,
     DownloadChunks,
     Transfers,
+    RememberedNetworks,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -137,6 +138,9 @@ class AppDatabase extends _$AppDatabase {
       if (from < 14) {
         await migrator.addColumn(peers, peers.stale);
       }
+      if (from < 15) {
+        await migrator.createTable(rememberedNetworks);
+      }
     },
   );
 
@@ -222,6 +226,48 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> setPeerSubnetFilterEnabled(bool enabled) async {
     await setSetting('peer_subnet_filter', enabled ? '1' : '0');
+  }
+
+  Future<bool> nearbyVisible() async {
+    final raw = await getSetting('nearby_visible', defaultValue: '1');
+    return raw != '0';
+  }
+
+  Future<void> setNearbyVisible(bool enabled) async {
+    await setSetting('nearby_visible', enabled ? '1' : '0');
+  }
+
+  Future<int> nearbyIdleMinutes() async {
+    final raw = await getSetting('nearby_idle_minutes', defaultValue: '3');
+    return int.tryParse(raw) ?? 3;
+  }
+
+  Future<void> setNearbyIdleMinutes(int minutes) async {
+    if (minutes < 1) {
+      throw ArgumentError('nearby idle minutes must be >= 1');
+    }
+    await setSetting('nearby_idle_minutes', '$minutes');
+  }
+
+  Future<bool> nearbyMembersCanInvite() async {
+    final raw = await getSetting(
+      'nearby_members_can_invite',
+      defaultValue: '1',
+    );
+    return raw != '0';
+  }
+
+  Future<void> setNearbyMembersCanInvite(bool enabled) async {
+    await setSetting('nearby_members_can_invite', enabled ? '1' : '0');
+  }
+
+  Future<bool> nearbyShizukuAllowed() async {
+    final raw = await getSetting('nearby_shizuku_allowed', defaultValue: '0');
+    return raw == '1';
+  }
+
+  Future<void> setNearbyShizukuAllowed(bool enabled) async {
+    await setSetting('nearby_shizuku_allowed', enabled ? '1' : '0');
   }
 
   Future<String> ensurePeerId() async {

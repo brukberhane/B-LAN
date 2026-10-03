@@ -81,4 +81,5 @@ Dart interfaces for BLE advert/scan, the control socket, hotspot, Wi-Fi Direct, 
 
 - BLE advert bytes: `ProximityAdvert.pack()` is already the 31-byte legacy payload; nick is `ProximityScanResponse`, not the advert. Do not invent a second layout.
 - Control socket `send frame` carries `ControlFrameCodec` JSON maps. Do not re-sign or drop the hello `x25519` field — it is part of the signed transcript.
+- T04 landed: Drift schemaVersion **15**, `RememberedNetworks` + `RememberedWifiStore` (`wifi_psk_$id` only when `usesSecureStorage`), nearby settings keys on `AppDatabase`. Radio ports may accept SSID/PSK args; do not re-implement remember/settings persistence here.
 

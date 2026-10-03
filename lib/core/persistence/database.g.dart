@@ -7953,6 +7953,267 @@ class TransfersCompanion extends UpdateCompanion<Transfer> {
   }
 }
 
+class $RememberedNetworksTable extends RememberedNetworks
+    with TableInfo<$RememberedNetworksTable, RememberedNetwork> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RememberedNetworksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _ssidMeta = const VerificationMeta('ssid');
+  @override
+  late final GeneratedColumn<String> ssid = GeneratedColumn<String>(
+    'ssid',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  static const VerificationMeta _securityMeta = const VerificationMeta(
+    'security',
+  );
+  @override
+  late final GeneratedColumn<String> security = GeneratedColumn<String>(
+    'security',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, ssid, security];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'remembered_networks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RememberedNetwork> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('ssid')) {
+      context.handle(
+        _ssidMeta,
+        ssid.isAcceptableOrUnknown(data['ssid']!, _ssidMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_ssidMeta);
+    }
+    if (data.containsKey('security')) {
+      context.handle(
+        _securityMeta,
+        security.isAcceptableOrUnknown(data['security']!, _securityMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_securityMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  RememberedNetwork map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RememberedNetwork(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      ssid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}ssid'],
+      )!,
+      security: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}security'],
+      )!,
+    );
+  }
+
+  @override
+  $RememberedNetworksTable createAlias(String alias) {
+    return $RememberedNetworksTable(attachedDatabase, alias);
+  }
+}
+
+class RememberedNetwork extends DataClass
+    implements Insertable<RememberedNetwork> {
+  final String id;
+  final String ssid;
+  final String security;
+  const RememberedNetwork({
+    required this.id,
+    required this.ssid,
+    required this.security,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['ssid'] = Variable<String>(ssid);
+    map['security'] = Variable<String>(security);
+    return map;
+  }
+
+  RememberedNetworksCompanion toCompanion(bool nullToAbsent) {
+    return RememberedNetworksCompanion(
+      id: Value(id),
+      ssid: Value(ssid),
+      security: Value(security),
+    );
+  }
+
+  factory RememberedNetwork.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RememberedNetwork(
+      id: serializer.fromJson<String>(json['id']),
+      ssid: serializer.fromJson<String>(json['ssid']),
+      security: serializer.fromJson<String>(json['security']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'ssid': serializer.toJson<String>(ssid),
+      'security': serializer.toJson<String>(security),
+    };
+  }
+
+  RememberedNetwork copyWith({String? id, String? ssid, String? security}) =>
+      RememberedNetwork(
+        id: id ?? this.id,
+        ssid: ssid ?? this.ssid,
+        security: security ?? this.security,
+      );
+  RememberedNetwork copyWithCompanion(RememberedNetworksCompanion data) {
+    return RememberedNetwork(
+      id: data.id.present ? data.id.value : this.id,
+      ssid: data.ssid.present ? data.ssid.value : this.ssid,
+      security: data.security.present ? data.security.value : this.security,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RememberedNetwork(')
+          ..write('id: $id, ')
+          ..write('ssid: $ssid, ')
+          ..write('security: $security')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, ssid, security);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RememberedNetwork &&
+          other.id == this.id &&
+          other.ssid == this.ssid &&
+          other.security == this.security);
+}
+
+class RememberedNetworksCompanion extends UpdateCompanion<RememberedNetwork> {
+  final Value<String> id;
+  final Value<String> ssid;
+  final Value<String> security;
+  final Value<int> rowid;
+  const RememberedNetworksCompanion({
+    this.id = const Value.absent(),
+    this.ssid = const Value.absent(),
+    this.security = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  RememberedNetworksCompanion.insert({
+    required String id,
+    required String ssid,
+    required String security,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       ssid = Value(ssid),
+       security = Value(security);
+  static Insertable<RememberedNetwork> custom({
+    Expression<String>? id,
+    Expression<String>? ssid,
+    Expression<String>? security,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (ssid != null) 'ssid': ssid,
+      if (security != null) 'security': security,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  RememberedNetworksCompanion copyWith({
+    Value<String>? id,
+    Value<String>? ssid,
+    Value<String>? security,
+    Value<int>? rowid,
+  }) {
+    return RememberedNetworksCompanion(
+      id: id ?? this.id,
+      ssid: ssid ?? this.ssid,
+      security: security ?? this.security,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (ssid.present) {
+      map['ssid'] = Variable<String>(ssid.value);
+    }
+    if (security.present) {
+      map['security'] = Variable<String>(security.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RememberedNetworksCompanion(')
+          ..write('id: $id, ')
+          ..write('ssid: $ssid, ')
+          ..write('security: $security, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -7972,6 +8233,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $DownloadsTable downloads = $DownloadsTable(this);
   late final $DownloadChunksTable downloadChunks = $DownloadChunksTable(this);
   late final $TransfersTable transfers = $TransfersTable(this);
+  late final $RememberedNetworksTable rememberedNetworks =
+      $RememberedNetworksTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -7990,6 +8253,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     downloads,
     downloadChunks,
     transfers,
+    rememberedNetworks,
   ];
 }
 
@@ -14020,6 +14284,181 @@ typedef $$TransfersTableProcessedTableManager =
       Transfer,
       PrefetchHooks Function()
     >;
+typedef $$RememberedNetworksTableCreateCompanionBuilder =
+    RememberedNetworksCompanion Function({
+      required String id,
+      required String ssid,
+      required String security,
+      Value<int> rowid,
+    });
+typedef $$RememberedNetworksTableUpdateCompanionBuilder =
+    RememberedNetworksCompanion Function({
+      Value<String> id,
+      Value<String> ssid,
+      Value<String> security,
+      Value<int> rowid,
+    });
+
+class $$RememberedNetworksTableFilterComposer
+    extends Composer<_$AppDatabase, $RememberedNetworksTable> {
+  $$RememberedNetworksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ssid => $composableBuilder(
+    column: $table.ssid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get security => $composableBuilder(
+    column: $table.security,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RememberedNetworksTableOrderingComposer
+    extends Composer<_$AppDatabase, $RememberedNetworksTable> {
+  $$RememberedNetworksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ssid => $composableBuilder(
+    column: $table.ssid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get security => $composableBuilder(
+    column: $table.security,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RememberedNetworksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $RememberedNetworksTable> {
+  $$RememberedNetworksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get ssid =>
+      $composableBuilder(column: $table.ssid, builder: (column) => column);
+
+  GeneratedColumn<String> get security =>
+      $composableBuilder(column: $table.security, builder: (column) => column);
+}
+
+class $$RememberedNetworksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $RememberedNetworksTable,
+          RememberedNetwork,
+          $$RememberedNetworksTableFilterComposer,
+          $$RememberedNetworksTableOrderingComposer,
+          $$RememberedNetworksTableAnnotationComposer,
+          $$RememberedNetworksTableCreateCompanionBuilder,
+          $$RememberedNetworksTableUpdateCompanionBuilder,
+          (
+            RememberedNetwork,
+            BaseReferences<
+              _$AppDatabase,
+              $RememberedNetworksTable,
+              RememberedNetwork
+            >,
+          ),
+          RememberedNetwork,
+          PrefetchHooks Function()
+        > {
+  $$RememberedNetworksTableTableManager(
+    _$AppDatabase db,
+    $RememberedNetworksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RememberedNetworksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RememberedNetworksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RememberedNetworksTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> ssid = const Value.absent(),
+                Value<String> security = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RememberedNetworksCompanion(
+                id: id,
+                ssid: ssid,
+                security: security,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String ssid,
+                required String security,
+                Value<int> rowid = const Value.absent(),
+              }) => RememberedNetworksCompanion.insert(
+                id: id,
+                ssid: ssid,
+                security: security,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RememberedNetworksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $RememberedNetworksTable,
+      RememberedNetwork,
+      $$RememberedNetworksTableFilterComposer,
+      $$RememberedNetworksTableOrderingComposer,
+      $$RememberedNetworksTableAnnotationComposer,
+      $$RememberedNetworksTableCreateCompanionBuilder,
+      $$RememberedNetworksTableUpdateCompanionBuilder,
+      (
+        RememberedNetwork,
+        BaseReferences<
+          _$AppDatabase,
+          $RememberedNetworksTable,
+          RememberedNetwork
+        >,
+      ),
+      RememberedNetwork,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -14050,4 +14489,6 @@ class $AppDatabaseManager {
       $$DownloadChunksTableTableManager(_db, _db.downloadChunks);
   $$TransfersTableTableManager get transfers =>
       $$TransfersTableTableManager(_db, _db.transfers);
+  $$RememberedNetworksTableTableManager get rememberedNetworks =>
+      $$RememberedNetworksTableTableManager(_db, _db.rememberedNetworks);
 }

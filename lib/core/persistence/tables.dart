@@ -218,3 +218,12 @@ class Transfers extends Table {
   DateTimeColumn get updatedAt =>
       dateTime().withDefault(currentDateAndTime)();
 }
+
+class RememberedNetworks extends Table {
+  TextColumn get id => text()();
+  TextColumn get ssid => text().unique()();
+  TextColumn get security => text()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}

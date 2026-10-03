@@ -21,7 +21,7 @@ What this spoke does not cover:
 
 1. New peers start untrusted. `trustPeer` is the persistent grant. Untrusted rows are purged on next launch.
 2. Nearby accept stores mutual trust for the two fingerprints even if the Wi-Fi step fails later. Reject or timeout writes nothing.
-3. A passphrase is eligible for `SecretStore.write` only when `usesSecureStorage` is true. Otherwise it lives for the attempt and is dropped.
+3. A passphrase is eligible for `SecretStore.write` only when `usesSecureStorage` is true. Otherwise it lives for the attempt and is dropped. The store interface does **not** refuse an insecure write — callers must gate before `write`.
 4. Control-channel secrets (LAN PSK, hotspot PSK) are sealed to the peer identity and sent only after Accept. Any ECDH public used to seal must be covered by the sender's Ed25519 signature.
 
 ## External docs
@@ -44,7 +44,7 @@ What this spoke does not cover:
 
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
-| Passphrase readable with `sqlite3` | Column or settings key holds the secret | Move the secret to the platform secure store. Drift keeps SSID and `wpa2-psk` / `wpa3-sae` only. |
+| Passphrase readable with `sqlite3` | Column, settings key, or insecure `SecretStore.write` (sqlite fallback) holds the secret | Gate at the call site: call `write` only when `usesSecureStorage` is true. Drift keeps SSID and `wpa2-psk` / `wpa3-sae` only. Do not make `write` throw globally — device-key fallback still needs sqlite. |
 
 <!-- last-verified: 2026-10 -->
 

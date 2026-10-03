@@ -22,7 +22,7 @@ void main() {
   });
 
   test('opens at current schema version', () {
-    expect(db.schemaVersion, 14);
+    expect(db.schemaVersion, 15);
   });
 
   test('setSetting upserts existing keys', () async {

@@ -42,6 +42,6 @@ What this spoke does not cover:
 
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
-| A Wi-Fi password shows up under `settings` or a text column | Secret written through `SettingsSecretStore` or a Drift string column | Store the passphrase only through `SecretStore` when `usesSecureStorage` is true. If secure storage is missing, keep it in memory for the attempt and do not write it. |
+| A Wi-Fi password shows up under `settings` or a text column | Caller invoked `SecretStore.write` without checking `usesSecureStorage`; insecure stores persist into Drift | Gate before `write`. If secure storage is missing, keep the attempt value in memory and skip `write`. Never add a passphrase column. |
 
 <!-- last-verified: 2026-10 -->
