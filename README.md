@@ -71,7 +71,7 @@ Host toolchain at bootstrap: Flutter 3.47.2, Dart 3.13.2, stable channel. A newe
 | [`.cursor/rules/`](.cursor/rules/) | Agent conventions |
 | [`.cursor/skills/`](.cursor/skills/) | Plan / execute / complete |
 | [`planning/phases/`](planning/phases/) | Task sequence |
-| [`lib/`](lib/) | Dart app |
+| [`lib/`](lib/) | Dart app (`lib/core/proximity/` = pure nearby session policy) |
 | [`android/`](android/) | Android runner and foreground service |
 
 ## 📚 Dependencies & docs

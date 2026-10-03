@@ -79,3 +79,5 @@ Bytes for the pre-IP channel. Identity handshake, then nick, code, link plan, an
 ## Learnings
 
 ## Reality notes
+
+- T02 added policy types under `lib/core/proximity/` (`TrustDecision`, host/link enums). Frames carry nick/code/host plan; they do not re-implement badge or sheet policy.

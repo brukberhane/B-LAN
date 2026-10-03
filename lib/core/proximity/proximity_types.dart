@@ -1,0 +1,105 @@
+enum ProximityBadge { sameLan, otherLan, bleOnly }
+
+enum ProximityDeviceKind { android, desktop, ios }
+
+enum ProximityRole { owner, member }
+
+enum PrivateNetworkKind { hotspot, wifiDirect }
+
+enum HostMethod { hotspot, wifiDirect }
+
+enum TapAction {
+  openLan,
+  showSheetWithCode,
+  showSheetWithoutCode,
+  skipSheetStartHostChain,
+}
+
+enum AttemptEndReason {
+  running,
+  abortedSheetCancel,
+  abortedCodeDecline,
+  abortedInviteTimeout,
+  hostChainExhausted,
+}
+
+enum LanPasswordEvent { missing, refused }
+
+enum UserAbort { sheetCancel, codeDecline, inviteTimeout }
+
+class BadgeFacts {
+  const BadgeFacts({
+    required this.hasAdvertisedIpv4,
+    required this.onLocalSubnet,
+    required this.helloSucceeded,
+  });
+  final bool hasAdvertisedIpv4;
+  final bool onLocalSubnet;
+  final bool helloSucceeded;
+}
+
+class TapFacts {
+  const TapFacts({
+    required this.trusted,
+    required this.badge,
+    required this.localHasWifi,
+    required this.remoteHasWifi,
+  });
+  final bool trusted;
+  final ProximityBadge badge;
+  final bool localHasWifi;
+  final bool remoteHasWifi;
+}
+
+class LinkSheetOptions {
+  const LinkSheetOptions({
+    required this.showUseLanMine,
+    required this.showUseLanTheirs,
+    required this.showPrivateNetwork,
+    required this.showShortCode,
+  });
+  final bool showUseLanMine;
+  final bool showUseLanTheirs;
+  final bool showPrivateNetwork;
+  final bool showShortCode;
+}
+
+class AttemptDevice {
+  const AttemptDevice({
+    required this.id,
+    required this.kind,
+    this.fingerprint = '',
+  });
+  final String id;
+  final ProximityDeviceKind kind;
+  final String fingerprint;
+}
+
+class HostStep {
+  const HostStep({required this.hostId, required this.method});
+  final String hostId;
+  final HostMethod method;
+
+  @override
+  bool operator ==(Object other) =>
+      other is HostStep && other.hostId == hostId && other.method == method;
+
+  @override
+  int get hashCode => Object.hash(hostId, method);
+
+  @override
+  String toString() => 'HostStep($hostId, $method)';
+}
+
+class TrustDecision {
+  const TrustDecision.none()
+    : localFingerprint = null,
+      remoteFingerprint = null;
+  const TrustDecision.mutual({
+    required this.localFingerprint,
+    required this.remoteFingerprint,
+  });
+  final String? localFingerprint;
+  final String? remoteFingerprint;
+  bool get storesTrust => localFingerprint != null && remoteFingerprint != null;
+}

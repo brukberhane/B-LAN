@@ -28,7 +28,7 @@ LAN share, mDNS, pinned HTTPS, and trust already exist in `lib/`. This index doe
 | ID | Title | Status | Depends-on | Next | Layer | Notes |
 | -- | ----- | ------ | ---------- | ---- | ----- | ----- |
 | T01 | [Verify gate](./T01-verify-gate.md) | ✅ | — | T02 | L0 | Existing app. `make verify` builds an Android debug apk |
-| T02 | [Session rules](./T02-proximity-session.md) | Pending | T01 | T03 | L3 | Pure policy |
+| T02 | [Session rules](./T02-proximity-session.md) | ✅ | T01 | T03 | L3 | Pure policy |
 | T03 | [Sealed control frames](./T03-control-frames.md) | Pending | T02 | T04 | L3 | No radio |
 | T04 | [Wi-Fi secrets and settings](./T04-wifi-secrets.md) | Pending | T03 | T05 | L2 | PSK not in SQLite |
 | T05 | [Radio ports and fakes](./T05-radio-ports.md) | Pending | T04 | T06 | L4 | Interfaces |

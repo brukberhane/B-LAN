@@ -81,3 +81,7 @@ Wires the session rules to the radio ports, mDNS `/hello`, trust storage, and th
 ## Learnings
 
 ## Reality notes
+
+- T02 shipped `lib/core/proximity/` (pure policy + `InviteQueue`). Call it; do not re-decide badges/sheets/host order.
+- `InviteQueue.tick` expires from `enqueuedAt`, not promote time. After a 60s active dialog, a waiter can decline on the next tick unless you reset the clock on promote or only tick the active window.
+- Host chain already skips Wi-Fi Direct when any non-host is desktop/iOS. Do not re-add those steps in the orchestrator.

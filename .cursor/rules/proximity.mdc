@@ -64,3 +64,19 @@ What this spoke does not cover:
 | User dismisses the PSK field and the peer disappears | Skip was treated as Decline | Missing PSK falls through to the host chain. Only short-code decline and link-sheet cancel abort. |
 
 <!-- last-verified: 2026-10 -->
+
+### `Wi-Fi Direct step kept for a non-Android joiner`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Host chain includes WFD when a desktop or iOS device must join | Host methods listed without checking every non-host | Skip `wifiDirect` when any non-host cannot join WFD (`kind != android`). Host-method lists alone are not enough |
+
+<!-- last-verified: 2026-10 -->
+
+### `Waiting invite dies right after the active one`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Second invite times out on the next orchestrator tick after a long first dialog | Timeout is measured from `enqueuedAt`, not promote time | On promote, reset the clock for the new active invite, or tick only against activate time. Do not change the pure queue without re-planning T02 |
+
+<!-- last-verified: 2026-10 -->
