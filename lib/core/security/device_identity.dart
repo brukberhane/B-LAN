@@ -65,6 +65,30 @@ class DeviceIdentity {
     );
     return base64Encode(signature.bytes);
   }
+
+  static Future<bool> verifyUtf8({
+    required String publicKeyBase64,
+    required String message,
+    required String signatureBase64,
+  }) async {
+    if (publicKeyBase64.isEmpty || signatureBase64.isEmpty) {
+      return false;
+    }
+    final key = SimplePublicKey(
+      base64Decode(publicKeyBase64),
+      type: KeyPairType.ed25519,
+    );
+    final sig = Signature(base64Decode(signatureBase64), publicKey: key);
+    return _algorithm.verify(utf8.encode(message), signature: sig);
+  }
+
+  Future<List<int>> ed25519Seed() async {
+    final privateB64 = await _secrets.readOrEmpty(_privateKeySetting);
+    if (privateB64.isEmpty) {
+      throw StateError('Device private key missing');
+    }
+    return base64Decode(privateB64);
+  }
 }
 
 String fingerprintFromPublicKeyBytes(List<int> publicKeyBytes) {

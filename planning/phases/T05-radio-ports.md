@@ -78,3 +78,7 @@ Dart interfaces for BLE advert/scan, the control socket, hotspot, Wi-Fi Direct, 
 ## Learnings
 
 ## Reality notes
+
+- BLE advert bytes: `ProximityAdvert.pack()` is already the 31-byte legacy payload; nick is `ProximityScanResponse`, not the advert. Do not invent a second layout.
+- Control socket `send frame` carries `ControlFrameCodec` JSON maps. Do not re-sign or drop the hello `x25519` field — it is part of the signed transcript.
+

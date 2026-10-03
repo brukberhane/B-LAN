@@ -22,7 +22,7 @@ What this spoke does not cover:
 1. New peers start untrusted. `trustPeer` is the persistent grant. Untrusted rows are purged on next launch.
 2. Nearby accept stores mutual trust for the two fingerprints even if the Wi-Fi step fails later. Reject or timeout writes nothing.
 3. A passphrase is eligible for `SecretStore.write` only when `usesSecureStorage` is true. Otherwise it lives for the attempt and is dropped.
-4. Control-channel secrets (LAN PSK, hotspot PSK) are sealed to the peer identity and sent only after Accept.
+4. Control-channel secrets (LAN PSK, hotspot PSK) are sealed to the peer identity and sent only after Accept. Any ECDH public used to seal must be covered by the sender's Ed25519 signature.
 
 ## External docs
 
@@ -45,5 +45,13 @@ What this spoke does not cover:
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
 | Passphrase readable with `sqlite3` | Column or settings key holds the secret | Move the secret to the platform secure store. Drift keeps SSID and `wpa2-psk` / `wpa3-sae` only. |
+
+<!-- last-verified: 2026-10 -->
+
+### `Unsigned ECDH key steals a sealed secret`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A third party on the control link decrypts a PSK that was "sealed" | Identity signature covers the JSON body but not the ECDH public sitting beside it | Include the sealing public key in the signed payload. Verify it before opening the AEAD |
 
 <!-- last-verified: 2026-10 -->

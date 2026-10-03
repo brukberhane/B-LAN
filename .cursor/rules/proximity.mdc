@@ -26,7 +26,7 @@ What this spoke does not cover:
 4. No LAN password (extract failed, or the person will not type): fall through to the private-network chain. Declining the short-code prompt or leaving the link sheet before a choice stops the attempt.
 5. Host chain: chosen device starts a local-only hotspot. Android then tries Wi-Fi Direct if the hotspot fails. Then the next device already in the attempt. Desktops only try a hotspot. If a desktop must join and the hotspot failed, skip Wi-Fi Direct. All candidates failing ends the attempt.
 6. Members may invite while the host setting is on (default on). Hotspot: the admitter and the new phone trust only each other, then the SSID and passphrase are forwarded. Wi-Fi Direct: only the group owner admits; a member relays. One invite dialog at a time; others wait; 60s timeout declines.
-7. Control channel is classic Bluetooth, else BLE GATT. Frames are sealed with Ed25519. No system Bluetooth pairing dialog and no Nearby Connections. Secrets ride only after Accept.
+7. Control channel is classic Bluetooth, else BLE GATT. Frames are signed with Ed25519. Derived X25519 used to seal PSKs is not a second stored identity; its public value rides in the signed hello. No system Bluetooth pairing dialog and no Nearby Connections. Secrets ride only after Accept.
 8. File bytes stay on the existing pinned HTTPS client, aimed at the address delivered on the control channel.
 9. The visible switch does not keep an empty hotspot up. Idle default is 3 minutes after the last client leaves. Disband is manual and asks once. A transfer counts as in use.
 10. Legacy BLE advert payload is 31 bytes. Advert carries flags, IPv4, port, short peer id, role, group id. Nick goes in the scan response. Never a fingerprint or a password.
@@ -78,5 +78,13 @@ What this spoke does not cover:
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
 | Second invite times out on the next orchestrator tick after a long first dialog | Timeout is measured from `enqueuedAt`, not promote time | On promote, reset the clock for the new active invite, or tick only against activate time. Do not change the pure queue without re-planning T02 |
+
+<!-- last-verified: 2026-10 -->
+
+### `Invitee cannot open the secret after Accept`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Secret decode throws "before accept" on the device that just accepted | Session accepted-flag was only set when *decoding* an accept the peer sent | Set accepted on encode of accept as well as decode. The local accept never comes back through decode |
 
 <!-- last-verified: 2026-10 -->

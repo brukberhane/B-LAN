@@ -85,3 +85,4 @@ Wires the session rules to the radio ports, mDNS `/hello`, trust storage, and th
 - T02 shipped `lib/core/proximity/` (pure policy + `InviteQueue`). Call it; do not re-decide badges/sheets/host order.
 - `InviteQueue.tick` expires from `enqueuedAt`, not promote time. After a 60s active dialog, a waiter can decline on the next tick unless you reset the clock on promote or only tick the active window.
 - Host chain already skips Wi-Fi Direct when any non-host is desktop/iOS. Do not re-add those steps in the orchestrator.
+- T03: use `ControlFrameCodec`. `encode(accept)` and `decode(accept)` both set `session.accepted`. Secrets before that throw. Hello `x25519` is inside the signature.

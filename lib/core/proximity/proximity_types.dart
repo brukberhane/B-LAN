@@ -89,6 +89,26 @@ class HostStep {
 
   @override
   String toString() => 'HostStep($hostId, $method)';
+
+  Map<String, dynamic> toJson() => {
+    'hostId': hostId,
+    'method': method == HostMethod.wifiDirect ? 'wifiDirect' : 'hotspot',
+  };
+
+  factory HostStep.fromJson(Map<String, dynamic> json) {
+    return HostStep(
+      hostId: json['hostId'] as String,
+      method: hostMethodFromName(json['method'] as String),
+    );
+  }
+}
+
+HostMethod hostMethodFromName(String name) {
+  return switch (name) {
+    'hotspot' => HostMethod.hotspot,
+    'wifiDirect' => HostMethod.wifiDirect,
+    _ => throw FormatException('unknown host method $name'),
+  };
 }
 
 class TrustDecision {

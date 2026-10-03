@@ -79,3 +79,6 @@ Drift rows for SSIDs the user chose to remember, passphrases in the existing sec
 ## Learnings
 
 ## Reality notes
+
+- T03 control frames put PSK on the wire only as AEAD `pskSeal` after Accept. Remembered SSIDs here still must not store passphrase in Drift.
+
