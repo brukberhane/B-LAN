@@ -15,6 +15,7 @@ class MainActivity : FlutterActivity() {
     private val sharingChannelName = "com.brukb.blan/sharing"
     private var multicastLock: WifiManager.MulticastLock? = null
     private var sharingChannel: MethodChannel? = null
+    private var proximityPlugin: com.brukb.blan.proximity.ProximityPlugin? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -27,6 +28,10 @@ class MainActivity : FlutterActivity() {
                 sharingChannel?.invokeMethod("stopSharing", null)
             }
         }
+        proximityPlugin = com.brukb.blan.proximity.ProximityPlugin(
+            applicationContext,
+            flutterEngine.dartExecutor.binaryMessenger,
+        )
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -169,6 +174,12 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        proximityPlugin?.dispose()
+        proximityPlugin = null
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     private fun resolveDeviceName(context: Context): String {

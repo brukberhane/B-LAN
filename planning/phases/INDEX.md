@@ -32,7 +32,7 @@ LAN share, mDNS, pinned HTTPS, and trust already exist in `lib/`. This index doe
 | T03 | [Sealed control frames](./T03-control-frames.md) | ✅ | T02 | T04 | L3 | No radio |
 | T04 | [Wi-Fi secrets and settings](./T04-wifi-secrets.md) | ✅ | T03 | T05 | L2 | PSK not in SQLite |
 | T05 | [Radio ports and fakes](./T05-radio-ports.md) | ✅ | T04 | T06 | L4 | Interfaces |
-| T06 | [Android radios](./T06-android-radios.md) | Pending | T05 | T07 | L6 | Hotspot, then Wi-Fi Direct |
+| T06 | [Android radios](./T06-android-radios.md) | ✅ | T05 | T07 | L6 | Hotspot, then Wi-Fi Direct |
 | T07 | [Android Shizuku](./T07-android-shizuku.md) | Pending | T06 | T08 | L6 | Personal PSK only |
 | T08 | [Linux radios](./T08-linux-radios.md) | Pending | T07 | T09 | L6 | NetworkManager |
 | T09 | [macOS radios](./T09-macos-radios.md) | Pending | T08 | T10 | L6 | Mocked until a Mac |

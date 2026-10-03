@@ -104,3 +104,19 @@ What this spoke does not cover:
 | Peer sees a mutated sealing field after the sender edits the map post-send | Frame was forwarded by reference | Copy the JSON map on send. Treat the control port as an opaque pipe — do not strip `x25519` or re-sign |
 
 <!-- last-verified: 2026-10 -->
+
+### `Android BLE classes written from memory do not compile`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| `Unresolved reference` on advertise/GATT classes after writing radio Kotlin in one pass | Framework class names were guessed from plausible names: `AdvertisingSet*` (not `AdvertiseSet*`), legacy `startAdvertising` takes `(settings, data, scanResponse, callback)`, `setLegacy` is SystemApi-only, p2p manager comes from `getSystemService(WIFI_P2P_SERVICE)` (no public `getInstance`) | Write one radio subsystem, then build — do not batch five. When the error names a class, check the real signature in the Android SDK docs instead of renaming blindly |
+
+<!-- last-verified: 2026-10 -->
+
+### `GATT fallback link dies after the first frame`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Every write returns `GATT_INVALID_ATTRIBUTE_LENGTH` / link silent after connect | Client chunked at a size above the effective payload: default ATT MTU is 23 → 20 usable bytes | `requestMtu(247)` after service discovery, track it in `onMtuChanged`, chunk at `mtu - 3` with a 20-byte floor. Cap reassembled frame length (e.g. 64 KB) and drop the peer buffer on overflow — a hostile length prefix must not crash the binder callback |
+
+<!-- last-verified: 2026-10 -->

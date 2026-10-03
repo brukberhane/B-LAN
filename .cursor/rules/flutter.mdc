@@ -72,3 +72,27 @@ What this spoke does not cover:
 | iOS branch has no assertions | Runner cannot launch on this Linux host | Write the platform code and expected tests against a mock channel. Mark the cases that need a device as Mac-only. Do not delete the expected assertions. |
 
 <!-- last-verified: 2026-10 -->
+
+### `Channel reply never arrives or debug build asserts`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Dart `await invokeMethod` hangs; debug logs show a threading violation | Method-channel handler dispatched the reply from a worker/pool thread — `MethodChannel.Result` must be touched on the platform main thread | Wrap every off-main `result.success/error` in a main-handler post. Heavy radio/socket work goes on the pool; only the reply hops back |
+
+<!-- last-verified: 2026-10 -->
+
+### `EventChannel has no test harness`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Native-side streams are untested on Linux | Repo had zero EventChannel mocks | Use `TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockStreamHandler(EventChannel(...), MockStreamHandler.inline(onListen: ...))`; the sink arg pushes events with `.success(...)`. Clear every handler in `tearDown` or tests bleed into each other |
+
+<!-- last-verified: 2026-10 -->
+
+### `Apk compiles, old devices crash at runtime`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| `NoSuchMethodError` on a handset below a certain API level, build and analyze green | Kotlin compiles against compileSdk: `flutter analyze` runs no Android Lint, so post-minSdk calls are invisible to the gates | Guard every method newer than minSdk with `Build.VERSION.SDK_INT` — known traps: GATT/hotspot-era Wi-Fi APIs (`WifiNetworkSpecifier` 29+, 3-arg `requestNetwork` 28+), `WifiP2pManager.Channel.close()` 27+, `canUseFullScreenIntent` 29+, FSI settings intent 34+. Below the guard, reply the channel error code instead |
+
+<!-- last-verified: 2026-10 -->
