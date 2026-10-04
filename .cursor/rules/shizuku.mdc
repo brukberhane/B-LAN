@@ -48,3 +48,19 @@ What this spoke does not cover:
 | Grant succeeds and the passphrase is null | That permission is not the Wi-Fi secret capability | Call the privileged WifiManager methods on the Shizuku binder. Android 11+ shell uid is what can see them. |
 
 <!-- last-verified: 2026-10 -->
+
+### `Shizuku permission is granted and the PSK is still null`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| `getPrivilegedConnectedNetwork` returns null in the app process, or the user-service bind always times out | Hidden WifiManager getters only answer the shell uid. A wait posted onto the main looper never sees `onServiceConnected`, because that callback needs the same looper | Run the getters inside a Shizuku user service. Wait for the bind on a worker thread. Unbind when the read finishes and on dispose, even if binder listeners were never registered |
+
+<!-- last-verified: 2026-10 -->
+
+### `One failed consent dialog never asks again`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| The allow/deny sheet never appeared, and later attempts skip it | A missing activity was completed as an explicit No and persisted | Return a channel error when the dialog is not shown. Persist only Allow and Not now |
+
+<!-- last-verified: 2026-10 -->

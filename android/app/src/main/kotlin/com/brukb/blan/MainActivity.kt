@@ -195,4 +195,16 @@ class MainActivity : FlutterActivity() {
         }
         return Build.MODEL.trim()
     }
+
+    override fun onResume() {
+        super.onResume()
+        com.brukb.blan.proximity.ShizukuBridge.activity = this
+    }
+
+    override fun onPause() {
+        if (com.brukb.blan.proximity.ShizukuBridge.activity == this) {
+            com.brukb.blan.proximity.ShizukuBridge.activity = null
+        }
+        super.onPause()
+    }
 }

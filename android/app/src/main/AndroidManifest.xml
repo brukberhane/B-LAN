@@ -74,6 +74,10 @@
             android:name=".proximity.InviteActionReceiver"
             android:exported="false" />
 
+        <service
+            android:name=".proximity.WifiPskService"
+            android:exported="true" />
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

@@ -50,6 +50,7 @@ class ProximityPlugin(
     )
 
     private val wifi = WifiRadios(context)
+    private val shizuku = ShizukuBridge(context)
 
     private var scanSink: EventChannel.EventSink? = null
     private var inboundSink: EventChannel.EventSink? = null
@@ -309,12 +310,59 @@ class ProximityPlugin(
                 result.success(null)
             }
 
+            "shizukuFacts" -> result.success(shizuku.facts())
+
+            "shizukuStartListening" -> {
+                shizuku.startListening()
+                result.success(null)
+            }
+
+            "shizukuStopListening" -> {
+                shizuku.stopListening()
+                result.success(null)
+            }
+
+            "shizukuState" -> result.success(shizuku.state())
+
+            "shizukuRequestPermission" -> radioPool.execute {
+                val reply = try {
+                    shizuku.requestPermission()
+                } catch (_: Exception) {
+                    mapOf("result" to "error", "message" to "Failed to request Shizuku permission")
+                }
+                main.post { result.success(reply) }
+            }
+
+            "confirmShizukuUse" -> shizuku.confirm(ShizukuBridge.activity) { allowed ->
+                main.post {
+                    if (allowed == null) {
+                        result.error(
+                            "noActivity",
+                            "Shizuku consent needs a resumed activity",
+                            null,
+                        )
+                    } else {
+                        result.success(allowed)
+                    }
+                }
+            }
+
+            "readPersonalPsk" -> radioPool.execute {
+                val creds = try {
+                    shizuku.readPersonalPsk()
+                } catch (_: Exception) {
+                    null
+                }
+                main.post { result.success(creds) }
+            }
+
             else -> result.notImplemented()
         }
     }
 
     fun dispose() {
         InviteBus.sink = null
+        shizuku.stopListening()
         ble.shutdown()
         wifi.shutdown()
         control.shutdown()

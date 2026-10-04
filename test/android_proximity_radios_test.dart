@@ -247,13 +247,55 @@ void main() {
     await sub.cancel();
   });
 
-  test('readCurrentPersonalPsk returns null without a channel hop', () async {
+  test('readCurrentPersonalPsk maps the privileged reply and nothing else', () async {
+    replies['readPersonalPsk'] = {
+      'ssid': 'Home',
+      'passphrase': 'sekret',
+      'security': 'wpa3-sae',
+    };
+    final radios = AndroidProximityRadios();
+    final network = await radios.readCurrentPersonalPsk();
+    expect(network?.ssid, 'Home');
+    expect(network?.passphrase, 'sekret');
+    expect(network?.security, WifiSecurity.wpa3Sae);
+    expect(calls.map((call) => call.method), ['readPersonalPsk']);
+  });
+
+  test('readCurrentPersonalPsk null reply stays null', () async {
+    replies['readPersonalPsk'] = null;
     final radios = AndroidProximityRadios();
     expect(await radios.readCurrentPersonalPsk(), isNull);
-    expect(
-      calls.where((c) => c.method == 'readCurrentPersonalPsk'),
-      isEmpty,
+  });
+
+  test('shizuku facts recognize Shevery ahead of official Shizuku', () async {
+    replies['shizukuFacts'] = {
+      'known': [
+        {
+          'name': 'com.hamondev.shevery',
+          'installed': true,
+          'permissions': ['moe.shizuku.manager.permission.API_V23'],
+        },
+        {
+          'name': 'moe.shizuku.privileged.api',
+          'installed': true,
+          'permissions': ['moe.shizuku.manager.permission.MANAGER'],
+        },
+      ],
+      'candidates': [],
+    };
+    final consent = AndroidShizukuConsent();
+    expect(await consent.detectedPackage(), 'com.hamondev.shevery');
+  });
+
+  test('confirm channel error is not a stored No', () async {
+    messenger.setMockMethodCallHandler(
+      const MethodChannel(channelName),
+      (call) async {
+        throw PlatformException(code: 'noActivity');
+      },
     );
+    final consent = AndroidShizukuConsent();
+    expect(consent.confirm(), throwsA(isA<PlatformException>()));
   });
 
   test('inbound events map to ControlLink with transport', () async {

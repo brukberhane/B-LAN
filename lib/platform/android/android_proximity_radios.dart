@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:blan/core/proximity/proximity_radios.dart';
 import 'package:blan/core/proximity/proximity_types.dart';
+import 'package:blan/core/security/shizuku_detect.dart';
 import 'package:blan/core/security/remembered_wifi.dart';
 import 'package:flutter/services.dart';
 
@@ -12,7 +13,8 @@ import 'package:flutter/services.dart';
 /// Error contract: Kotlin replies `Map{error: <code>}` on radio failure;
 /// hotspot / Wi-Fi Direct codes map to [PrivateNetworkException]. The join
 /// passphrase crosses the channel in memory only — never logged, never
-/// persisted. `readCurrentPersonalPsk` stays null until T07 (Shizuku).
+/// persisted. `readCurrentPersonalPsk` is the raw privileged read. Ask-once
+/// lives in `ShizukuPskGate`, not this method.
 class AndroidProximityRadios
     implements
         BlePresencePort,
@@ -178,7 +180,26 @@ class AndroidProximityRadios
   // --- OsPassphrasePort (T07 wires Shizuku; null this task) ---------------
 
   @override
-  Future<OsWifiNetwork?> readCurrentPersonalPsk() async => null;
+  Future<OsWifiNetwork?> readCurrentPersonalPsk() async {
+    final reply = await _channel.invokeMethod<Object?>('readPersonalPsk');
+    if (reply is! Map) {
+      return null;
+    }
+    final ssid = reply['ssid'];
+    final passphrase = reply['passphrase'];
+    final security = reply['security'];
+    if (ssid is! String || passphrase is! String || security is! String) {
+      return null;
+    }
+    if (ssid.isEmpty || passphrase.isEmpty) {
+      return null;
+    }
+    return OsWifiNetwork(
+      ssid: ssid,
+      passphrase: passphrase,
+      security: WifiSecurity.fromWire(security),
+    );
+  }
 
   // --- internals ----------------------------------------------------------
 
@@ -298,5 +319,76 @@ class AndroidInvitePresenter {
     await _sub?.cancel();
     _sub = null;
     await _controller.close();
+  }
+}
+
+/// Binder state, permission request, consent dialog, and package detection
+/// over the proximity channel. Detection rules stay in `shizuku_detect.dart`.
+class AndroidShizukuConsent {
+  static const _channel = MethodChannel('com.brukb.blan/proximity');
+
+  Future<String> state() async {
+    final value = await _channel.invokeMethod<String>('shizukuState');
+    return value ?? 'unknown';
+  }
+
+  Future<Map<String, Object?>> requestPermission() async {
+    final reply = await _channel.invokeMethod<Object?>('shizukuRequestPermission');
+    if (reply is Map) {
+      return reply.cast<String, Object?>();
+    }
+    return const {'result': 'error'};
+  }
+
+  /// Allow / Not now. Throws when the dialog was not shown, so a missing
+  /// activity is not stored as an explicit No.
+  Future<bool> confirm() async {
+    final value = await _channel.invokeMethod<bool>('confirmShizukuUse');
+    if (value == null) {
+      throw StateError('Shizuku consent was not shown');
+    }
+    return value;
+  }
+
+  Future<void> startListening() async =>
+      _channel.invokeMethod<void>('shizukuStartListening');
+
+  Future<void> stopListening() async =>
+      _channel.invokeMethod<void>('shizukuStopListening');
+
+  Future<String?> detectedPackage() async {
+    final reply = await _channel.invokeMethod<Object?>('shizukuFacts');
+    if (reply is! Map) {
+      return null;
+    }
+    return detectShizukuPackage(
+      known: _facts(reply['known']),
+      candidates: _facts(reply['candidates']),
+    );
+  }
+
+  List<ShizukuPackageFact> _facts(Object? raw) {
+    if (raw is! List) {
+      return const [];
+    }
+    return [
+      for (final item in raw)
+        if (item is Map)
+          ShizukuPackageFact(
+            name: item['name'] as String? ?? '',
+            installed: item['installed'] as bool? ?? true,
+            permissions: _strings(item['permissions']),
+            authorities: _strings(item['authorities']),
+            providerNames: _strings(item['providerNames']),
+            receiverNames: _strings(item['receiverNames']),
+          ),
+    ];
+  }
+
+  List<String> _strings(Object? raw) {
+    if (raw is! List) {
+      return const [];
+    }
+    return [for (final item in raw) if (item is String) item];
   }
 }

@@ -266,6 +266,16 @@ class AppDatabase extends _$AppDatabase {
     return raw == '1';
   }
 
+  /// `null` = never asked. Missing row is `''` from [getSetting].
+  /// [nearbyShizukuAllowed] substitutes `'0'`, so it cannot drive ask-once.
+  Future<bool?> nearbyShizukuChoice() async {
+    final raw = await getSetting('nearby_shizuku_allowed');
+    if (raw.isEmpty) {
+      return null;
+    }
+    return raw == '1';
+  }
+
   Future<void> setNearbyShizukuAllowed(bool enabled) async {
     await setSetting('nearby_shizuku_allowed', enabled ? '1' : '0');
   }

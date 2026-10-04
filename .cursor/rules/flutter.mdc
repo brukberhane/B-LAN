@@ -81,6 +81,14 @@ What this spoke does not cover:
 
 <!-- last-verified: 2026-10 -->
 
+### `Binder callback never arrives`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Privileged call returns null after a multi-second wait, or the app ANRs | The wait was posted onto the main looper, and the callback that should release it is delivered there too | Wait on a worker. Post only the channel reply. Do not block the main thread on a binder or permission callback the main looper must run |
+
+<!-- last-verified: 2026-10 -->
+
 ### `EventChannel has no test harness`
 
 | Symptom | Cause | Fix |
