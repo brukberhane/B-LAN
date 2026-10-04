@@ -5,7 +5,7 @@ import 'package:blan/platform/stub_platform_services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('windows browse-only shows manual connect hint', () async {
+  test('unsupported advertise shows manual connect hint', () async {
     final report = await buildPlatformHealthReport(
       serverRunning: true,
       advertising: false,

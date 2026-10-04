@@ -8,7 +8,7 @@ alwaysApply: false
 
 ## Scope
 
-- Bonsoir advertise/browse and the Windows `multicast_dns` browse path
+- Bonsoir advertise and browse on every desktop, including Windows (WinDNS)
 - Service type `_blan._tcp`, peer HTTPS port 59488
 - Subnet filter and `/hello` reachability used by nearby badges
 
@@ -22,6 +22,7 @@ What this spoke does not cover:
 1. mDNS stays the same-LAN path. Nearby must not disable advertise/browse.
 2. TXT stays `peerId`, `pv`, `nick`, `tls`, `scheme`, optional `browserHttpPort`. Do not put a fingerprint or a Wi-Fi password in TXT.
 3. A Same LAN badge requires an advertised IPv4 on a local subnet and a successful `/hello`. Anything else is not Same LAN.
+4. Every desktop advertises through Bonsoir. Do not special-case one OS into browse-only because an older note said the plugin could not broadcast. Check the platform plugin first.
 
 ## External docs
 
@@ -35,7 +36,7 @@ What this spoke does not cover:
 
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
-| Other platforms see this machine; Windows does not appear | Windows browse-only. This process does not advertise. | Document the limit. Manual connect remains the way to reach a Windows host. Do not pretend Bonsoir advertise works there. |
+| Other platforms see this machine; Windows does not appear | Firewall blocked UDP 5353, or Bonsoir broadcast failed to start. Windows uses the same Bonsoir path (`DnsServiceRegister` / WinDNS). | Check the advertise log and the private-network firewall prompt. Manual connect remains if multicast is blocked. Do not put Windows back on a browse-only early return. |
 
 <!-- last-verified: 2026-10 -->
 

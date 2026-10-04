@@ -42,9 +42,9 @@ Last automated run: 2026-07-02 — `flutter test` 124 tests pass on Linux dev ho
 
 | Check | Type | Status |
 |-------|------|--------|
-| Browse discovers Linux/macOS peer | manual | pending |
-| Windows not auto-discovered; manual connect in | manual | pending |
-| Browse-only limitation shown in UI | auto + manual | auto pass (2026-07-02) |
+| Browse discovers a Linux, macOS, or Windows peer | manual | pending |
+| This Windows machine is auto-discovered (Bonsoir / WinDNS advertise) | manual | pending |
+| Firewall prompt on first advertise; allow private networks | manual | pending |
 
 ## Android
 

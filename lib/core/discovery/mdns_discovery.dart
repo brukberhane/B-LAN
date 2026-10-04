@@ -8,7 +8,6 @@ import 'package:logging/logging.dart';
 import '../protocol/constants.dart';
 import '../protocol/models.dart';
 import 'mdns_service_name.dart';
-import 'lan_mdns_browse.dart';
 
 class MdnsDiscovery {
   MdnsDiscovery();
@@ -20,7 +19,6 @@ class MdnsDiscovery {
   BonsoirBroadcast? _broadcast;
   BonsoirDiscovery? _discovery;
   StreamSubscription<BonsoirDiscoveryEvent>? _discoverySub;
-  LanMdnsBrowse? _lanBrowse;
 
   String? _localPeerId;
   final Map<String, DiscoveredPeer> _peers = {};
@@ -30,7 +28,7 @@ class MdnsDiscovery {
   bool get isAdvertising =>
       _broadcast != null && !(_broadcast?.isStopped ?? true);
 
-  bool get supportsAdvertising => !kIsWeb && !Platform.isWindows;
+  bool get supportsAdvertising => !kIsWeb;
 
   void removePeer(String peerId) => _peers.remove(peerId);
 
@@ -45,11 +43,6 @@ class MdnsDiscovery {
 
     if (kIsWeb) {
       _log.info('mDNS disabled on web');
-      return;
-    }
-
-    if (Platform.isWindows) {
-      await _startLanBrowse();
       return;
     }
 
@@ -109,13 +102,6 @@ class MdnsDiscovery {
     await _discovery!.start();
 
     _log.info('mDNS browse active ($mdnsServiceType)');
-  }
-
-  Future<void> _startLanBrowse() async {
-    _lanBrowse = LanMdnsBrowse(localPeerId: _localPeerId);
-    _lanBrowse!.onPeerFound = _registerPeer;
-    await _lanBrowse!.start();
-    _log.info('multicast_dns browse active ($mdnsServiceType)');
   }
 
   void _onBonsoirEvent(BonsoirDiscoveryEvent event) {
@@ -232,8 +218,6 @@ class MdnsDiscovery {
     _discovery = null;
     await _broadcast?.stop();
     _broadcast = null;
-    await _lanBrowse?.stop();
-    _lanBrowse = null;
     _peers.clear();
     _localPeerId = null;
   }

@@ -493,13 +493,9 @@ The next work should focus on turning the transfer MVP into a usable product rat
 
 ### Windows
 
-1. Keep current browse-only support as MVP unless Bonsoir advertise works.
-2. Investigate Windows advertising options:
-   - Bonsoir native support.
-   - Custom mDNS responder.
-   - Manual-peer-first fallback.
-3. Do not add fragile advertise code unless two Windows instances can discover each other.
-4. Add UI copy: "Windows can browse peers; advertise may require manual connect" if still true.
+1. Advertise and browse through Bonsoir (`DnsServiceRegister` / WinDNS), same as the other desktops. Done 2026-10-04.
+2. Confirm two Windows instances discover each other on a device. Firewall may prompt for private networks.
+3. Manual connect remains the fallback when multicast is blocked.
 
 ### Android
 
@@ -581,7 +577,7 @@ This phase must include a full walk through implemented backend capability and m
 
 6. Platform-specific UI:
    - Android: notification permission state, multicast lock status where useful, SAF share limitations, foreground-service explanation.
-   - Windows: browse-only/advertise limitation if still true.
+   - Windows: firewall prompt if advertise fails. Advertise is on.
    - Linux: Avahi/Bonjour dependency guidance if discovery fails.
    - Web: manual-connect-only mode and no sharing/server/discovery.
 
@@ -820,7 +816,7 @@ This phase must include a full walk through implemented backend capability and m
 
 - Linux to Linux.
 - Linux to Android.
-- Windows browse/manual connect.
+- Windows advertise and browse (Bonsoir / WinDNS), plus manual connect if multicast is blocked.
 - Flutter web to Linux desktop peer.
 - Android background scan/download.
 
@@ -1294,13 +1290,13 @@ This phase must include a full walk through implemented backend capability and m
 
 - `docs/platform-test-matrix.md` has nearly all real-device rows pending.
 - Platform capabilities exist, but some are static claims rather than measured runtime status.
-- Windows advertise is unsupported; Android SAF and notifications need device validation.
+- Windows advertise uses Bonsoir (WinDNS) and still needs a two-machine check. Android SAF and notifications need device validation.
 - No tray/background integration or startup option exists.
 
 ### Implementation
 
 1. Manual matrix execution:
-   - Run Linux-to-Linux, Linux-to-Android, Windows browse/manual connect, Flutter web-to-Linux, Android background scan/download.
+   - Run Linux-to-Linux, Linux-to-Android, Windows advertise plus browse, Flutter web-to-Linux, Android background scan/download.
    - Record date, OS versions, app commit, pass/fail, and notes in `docs/platform-test-matrix.md`.
    - Split "documented limitation" from "failed unexpectedly".
 
@@ -1310,9 +1306,9 @@ This phase must include a full walk through implemented backend capability and m
    - Add "copy LAN URL" using an actual LAN address, not only loopback.
 
 3. Windows:
-   - Decide between: browse-only as supported MVP, custom mDNS advertise, or manual-connect-first UX.
-   - If browse-only remains: make inbound manual connect setup obvious.
-   - Document firewall prompt behavior.
+   - Advertise and browse through Bonsoir (WinDNS). Do not return to a browse-only skip.
+   - On a device, confirm two Windows instances see each other.
+   - Document the firewall prompt. Manual connect remains if multicast is blocked.
 
 4. Android:
    - Validate persisted SAF grants after restart.

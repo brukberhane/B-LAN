@@ -89,6 +89,14 @@ What this spoke does not cover:
 
 <!-- last-verified: 2026-10 -->
 
+### `Event listen reports a missing plugin`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| The first `listen` on an event channel logs a missing plugin, while method calls on the sibling channel succeed | The runner registered the method channel and never the event channel | Register the event channel and accept `listen` with an empty stream when the radio sends no events |
+
+<!-- last-verified: 2026-10 -->
+
 ### `EventChannel has no test harness`
 
 | Symptom | Cause | Fix |

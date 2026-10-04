@@ -4,18 +4,13 @@ import 'package:flutter/foundation.dart';
 
 /// Human-readable platform capability summary for settings and docs alignment.
 abstract final class PlatformCapabilities {
-  static const windowsAdvertiseLimitation =
-      'Windows can discover and browse LAN peers but does not advertise '
-      'itself yet. Use manual connect on other devices.';
-
   static bool get isWeb => kIsWeb;
 
   static bool get supportsLocalSharing => !kIsWeb;
 
   static bool get supportsMdnsDiscovery => !kIsWeb;
 
-  static bool get supportsMdnsAdvertising =>
-      !kIsWeb && !Platform.isWindows;
+  static bool get supportsMdnsAdvertising => !kIsWeb;
 
   static bool get supportsFilesystemWatcher =>
       !kIsWeb &&
@@ -56,7 +51,6 @@ abstract final class PlatformCapabilities {
         CapabilityRow(
           'LAN advertise',
           supportsMdnsAdvertising,
-          note: Platform.isWindows ? 'Browse peers; add manually' : null,
         ),
         CapabilityRow(
           'Browse remote peers',
@@ -91,7 +85,11 @@ abstract final class PlatformCapabilities {
       );
     }
     if (Platform.isWindows) {
-      notes.add(windowsAdvertiseLimitation);
+      notes.add(
+        'Windows advertises and browses through Bonsoir (WinDNS). Allow B-LAN '
+        'on private networks when the firewall prompts. Manual connect remains '
+        'if multicast is blocked.',
+      );
     }
     if (Platform.isLinux) {
       notes.add(

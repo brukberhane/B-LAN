@@ -78,3 +78,5 @@ iOS platform code for the T05 ports, and tests that assert the expected behavior
 ## Learnings
 
 ## Reality notes
+
+- T10 (2026-10-04): Windows mDNS advertise is Bonsoir, same as the other desktops. Do not copy a browse-only early return. Windows radios are a Win32 success-envelope stub (`bleUnavailable`, `hotspotFailed`, `wifiDirectFailed`), not a real BLE stack.

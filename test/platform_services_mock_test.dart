@@ -49,10 +49,11 @@ class _DeniedNotificationsPlatform implements PlatformServices {
 }
 
 void main() {
-  test('windows advertise limitation text', () {
+  test('lan advertise is supported off the web', () {
+    expect(PlatformCapabilities.supportsMdnsAdvertising, isTrue);
     expect(
-      PlatformCapabilities.windowsAdvertiseLimitation,
-      contains('manual connect'),
+      PlatformCapabilities.limitationNotes().join('\n'),
+      isNot(contains('does not advertise')),
     );
   });
 

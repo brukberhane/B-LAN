@@ -125,7 +125,7 @@ flutter run -d linux
 | -------- | ----- | --------- | --------- |
 | Linux | Yes | Yes | Yes. Bonsoir + Avahi |
 | macOS | Yes | Yes | Yes |
-| Windows | Yes | Yes | No. Browse and manual connect |
+| Windows | Yes | Yes | Yes. Bonsoir via WinDNS |
 | Android | SAF or filesystem | Yes | Yes. Foreground service while sharing |
 | Web | No | No | No. Manual connect with a browser token |
 

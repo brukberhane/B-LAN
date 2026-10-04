@@ -9,7 +9,8 @@ import '../protocol/constants.dart';
 import '../protocol/models.dart';
 import 'mdns_service_name.dart';
 
-/// Raw mDNS browse via multicast_dns. Windows browse-only (no advertise).
+/// Raw mDNS browse via multicast_dns. Live discovery uses Bonsoir, including
+/// Windows (`DnsServiceRegister`). This client stays for the TXT parser test.
 class LanMdnsBrowse {
   LanMdnsBrowse({this.localPeerId});
 

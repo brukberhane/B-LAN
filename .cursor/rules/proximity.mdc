@@ -155,6 +155,14 @@ What this spoke does not cover:
 
 <!-- last-verified: 2026-10 -->
 
+### `Host chain misses a typed private-network failure`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Hotspot or Wi-Fi Direct failure surfaces as a platform exception instead of the typed port error | The native reply used the channel error path | Reply a success map whose error field names the failure. Map that field to the typed port error. Reserve the channel error path for a missing window or a truly unknown method |
+
+<!-- last-verified: 2026-10 -->
+
 ### `Apple scan never matches the Android advert`
 
 | Symptom | Cause | Fix |
