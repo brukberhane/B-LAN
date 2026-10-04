@@ -86,6 +86,7 @@ Host toolchain at bootstrap: Flutter 3.47.2, Dart 3.13.2, stable channel. A newe
 | Android BLE / Bluetooth | Nearby presence and control channel | [BLE overview](https://developer.android.com/develop/connectivity/bluetooth/ble/ble-overview) | [proximity.mdc](.cursor/rules/proximity.mdc) |
 | Android Wi-Fi | Local-only hotspot, Wi-Fi Direct, join | [Local-only hotspot](https://developer.android.com/develop/connectivity/wifi/localonlyhotspot) | [android-wifi.mdc](.cursor/rules/android-wifi.mdc) |
 | Shizuku / Shevery | Privileged read of a personal Wi-Fi passphrase (`dev.rikka.shizuku:api` and `:provider` 13.1.5) | [RikkaApps/Shizuku](https://github.com/RikkaApps/Shizuku) | [shizuku.mdc](.cursor/rules/shizuku.mdc) |
+| dbus 0.7.15 | Linux BlueZ on the system bus (BLE advert, scan, GATT). NetworkManager itself is `nmcli`, no sudo | [pub.dev/dbus](https://pub.dev/packages/dbus) | [proximity.mdc](.cursor/rules/proximity.mdc) |
 
 ## 🔁 Building with [Turboplan](https://github.com/commoddity/turboplan)
 
@@ -137,6 +138,7 @@ Protocol v1: `GET /hello`, `POST /session`, shares, entries, manifests, chunks, 
 - WPA2-Personal and WPA3-Personal only. No enterprise Wi-Fi.
 - Passphrases go in the platform secure store when it exists. They are not SQLite columns, logs, or BLE payloads.
 - Android cannot read the current Wi-Fi password without Shizuku (ADB or root) on Android 11+. `WRITE_SECURE_SETTINGS` does not do it.
+- Linux reads the current personal PSK from NetworkManager with no sudo. Polkit may prompt. An iwd-only machine, enterprise network, or missing `nmcli` returns empty.
 
 ## 📜 License
 

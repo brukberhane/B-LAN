@@ -37,6 +37,8 @@ What this spoke does not cover:
 **Docs (if stuck):** https://developer.android.com/develop/connectivity/bluetooth/ble/ble-overview
 
 - Bluetooth classic sockets: https://developer.android.com/develop/connectivity/bluetooth
+- Linux BlueZ GATT / LE advertising: https://github.com/bluez/bluez/tree/master/doc
+- Dart D-Bus client (`dbus` 0.7.15): https://pub.dev/packages/dbus
 - last consulted: 2026-10
 
 ## Problem classes
@@ -118,5 +120,37 @@ What this spoke does not cover:
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
 | Every write returns `GATT_INVALID_ATTRIBUTE_LENGTH` / link silent after connect | Client chunked at a size above the effective payload: default ATT MTU is 23 → 20 usable bytes | `requestMtu(247)` after service discovery, track it in `onMtuChanged`, chunk at `mtu - 3` with a 20-byte floor. Cap reassembled frame length (e.g. 64 KB) and drop the peer buffer on overflow — a hostile length prefix must not crash the binder callback |
+
+<!-- last-verified: 2026-10 -->
+
+### `Live personal PSK read is always empty`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A scripted `wpa-psk:secret` fixture passes, but a real connected personal network returns null | Terse list rows are colon-joined and escape `:` as `\:` and `\` as `\\`. A multi-field connection show is one `property:value` line, so the first line's left side is the property name, not the security mode | Split on unescaped colons, unescape, then match the `.key-mgmt` and `.psk` suffixes. A missing tool, enterprise mode, or empty secret returns null. Do not throw, and do not log that stdout |
+
+<!-- last-verified: 2026-10 -->
+
+### `GATT lookup fails on a fresh scan handle`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Connect throws that the characteristic is missing immediately after a scan | The scan path has no GATT children until the device is connected and its services are resolved | Connect first (already-connected counts as success), wait until services are resolved, then look up the characteristic under that device path |
+
+<!-- last-verified: 2026-10 -->
+
+### `Server control writes never reach the session`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| The peripheral accepts writes, but no inbound link appears, or a second frame in the same chunk waits forever | Frames were pushed onto a broadcast stream with no listener, and one write can hold more than one length-prefixed frame | Take the peer from the write options, emit one inbound link per peer, and drain until a frame is incomplete. Drop the peer buffer on a hostile length |
+
+<!-- last-verified: 2026-10 -->
+
+### `Next advertisement fails because the object is already exported`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A failed advertisement registration makes every later start fail with the object already registered | The object was exported locally, the remote register then threw, and stop returned immediately because it had no handle | Unregister the local object on that failure and again on stop |
 
 <!-- last-verified: 2026-10 -->

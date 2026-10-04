@@ -104,3 +104,11 @@ What this spoke does not cover:
 | `NoSuchMethodError` on a handset below a certain API level, build and analyze green | Kotlin compiles against compileSdk: `flutter analyze` runs no Android Lint, so post-minSdk calls are invisible to the gates | Guard every method newer than minSdk with `Build.VERSION.SDK_INT` — known traps: GATT/hotspot-era Wi-Fi APIs (`WifiNetworkSpecifier` 29+, 3-arg `requestNetwork` 28+), `WifiP2pManager.Channel.close()` 27+, `canUseFullScreenIntent` 29+, FSI settings intent 34+. Below the guard, reply the channel error code instead |
 
 <!-- last-verified: 2026-10 -->
+
+### `Presenting a closed window crashes`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A later present call uses a freed window instead of returning a missing-window channel error | The window pointer was stored with no destroy signal | Clear that pointer from the window's destroy handler before any later present |
+
+<!-- last-verified: 2026-10 -->

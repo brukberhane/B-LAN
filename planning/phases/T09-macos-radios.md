@@ -78,3 +78,5 @@ macOS implementation of the T05 ports, plus expected tests. Radio and keychain c
 ## Learnings
 
 ## Reality notes
+
+- T08 shipped shared ids in `lib/core/proximity/proximity_ids.dart`. Keep them aligned with `ProximityIds.kt`. Do not shell out to `nmcli` or reuse the GTK channel `com.brukb.blan/linux`. macOS PSK is the keychain, with a user prompt, and null on failure.
