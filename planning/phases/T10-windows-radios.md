@@ -77,3 +77,6 @@ Windows implementation of the T05 ports at best effort: BLE presence, control ch
 ## Learnings
 
 ## Reality notes
+
+- T09 binds the same four ports on `com.brukb.blan/macos`. Hotspot and Wi-Fi Direct return `PrivateNetworkException` when the OS has no API. Do that again here. Do not copy the macOS keychain CLI or the sandbox removal. Shared ids stay in `lib/core/proximity/proximity_ids.dart`.
+

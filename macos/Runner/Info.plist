@@ -28,6 +28,8 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>B-LAN uses Bluetooth to find nearby devices and open a control channel.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>B-LAN discovers and shares files with peers on your local network.</string>
 	<key>NSBonjourServices</key>

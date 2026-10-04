@@ -112,3 +112,27 @@ What this spoke does not cover:
 | A later present call uses a freed window instead of returning a missing-window channel error | The window pointer was stored with no destroy signal | Clear that pointer from the window's destroy handler before any later present |
 
 <!-- last-verified: 2026-10 -->
+
+### `Parked channel result is dropped`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| `await invokeMethod` never returns after stop, or when the radio is already off | The native side stored the result and cleared it, or waited for a state callback that will not change | Invoke that result before clearing it. If the radio is already in a terminal failure, reply the error immediately |
+
+<!-- last-verified: 2026-10 -->
+
+### `Swift call copied from an Objective-C header does not compile`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| No member for a name that the header lists, or a class method "has been renamed" | An Objective-C method imports as a Swift call with parentheses. A Swift 3 rename in the SDK is the name that compiles | Read the SDK header, then typecheck the call. Use the rename the compiler prints |
+
+<!-- last-verified: 2026-10 -->
+
+### `Host-only health row missing on this machine`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| `firstWhere` throws because a Linux-only health row is absent | The test reads `dart:io` `Platform` and this host is another OS | Return before the assertion when that OS is not the current one. Keep the assertion for the OS that adds the row |
+
+<!-- last-verified: 2026-10 -->

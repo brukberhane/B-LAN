@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:blan/core/platform/platform_health.dart';
 import 'package:blan/platform/stub_platform_services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +20,10 @@ void main() {
   });
 
   test('linux avahi inactive is warning', () async {
+    // Avahi is added only when Platform.isLinux. Other hosts have no row to assert.
+    if (!Platform.isLinux) {
+      return;
+    }
     final report = await buildPlatformHealthReport(
       serverRunning: true,
       advertising: true,

@@ -154,3 +154,11 @@ What this spoke does not cover:
 | A failed advertisement registration makes every later start fail with the object already registered | The object was exported locally, the remote register then threw, and stop returned immediately because it had no handle | Unregister the local object on that failure and again on stop |
 
 <!-- last-verified: 2026-10 -->
+
+### `Apple scan never matches the Android advert`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A 31-byte manufacturer payload is invisible to a CoreBluetooth scan, or the hit is two bytes long | Android's manufacturer getter strips the company id. CoreBluetooth keeps it, little-endian, in front of the payload | Advertise `D9 FD` then the 31 bytes for company id `0xFDA9`. On scan, require those two bytes and pass the rest through. Do not shorten the packed advert |
+
+<!-- last-verified: 2026-10 -->
