@@ -1,8 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/persistence/database.dart';
 import '../core/platform/lan_addresses.dart';
 import '../core/platform/platform_health.dart';
+import '../core/proximity/proximity_orchestrator.dart';
+import '../core/proximity/proximity_types.dart';
 import '../core/security/device_identity.dart';
 import '../core/services/app_service.dart';
 
@@ -14,6 +17,10 @@ final appServiceProvider = Provider<AppService>((ref) {
   final db = ref.watch(databaseProvider);
   return AppService(db);
 });
+
+final nearbyOrchestratorProvider = Provider<ProximityOrchestrator?>((ref) => null);
+
+final pendingInviteProvider = Provider<ValueNotifier<InvitePrompt?>?>((ref) => null);
 
 final sharesProvider = StreamProvider((ref) {
   final db = ref.watch(databaseProvider);

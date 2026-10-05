@@ -176,3 +176,27 @@ What this spoke does not cover:
 | Channel methods are missing after launch, or launch has no view controller to register against | The iOS template creates the engine later, on the implicit-engine callback | Register there. The messenger is on the application registrar, not a window controller |
 
 <!-- last-verified: 2026-10 -->
+
+### `Idle post-frame work never runs`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A dialog or follow-up scheduled for the end of the frame never appears until some other widget rebuilds | The callback waits for a frame, and an idle app does not schedule one | After registering the callback, request a frame |
+
+<!-- last-verified: 2026-10 -->
+
+### `Off-frame rebuild is invisible to a bare pump`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A widget test sets state from a stream between pumps, then `pump()` still shows the old tree | The frame timer has not elapsed, so the scheduled rebuild does not draw | `pump` a positive duration so the test clock runs that frame |
+
+<!-- last-verified: 2026-10 -->
+
+### `Listener misses the value already stored`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A prompt or result that arrived before the screen was built never opens | The subscription only hears later changes | When attaching the listener, also handle the current value |
+
+<!-- last-verified: 2026-10 -->

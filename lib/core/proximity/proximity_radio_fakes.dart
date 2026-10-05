@@ -148,6 +148,7 @@ class FakePrivateNetworkPort implements PrivateNetworkPort {
   bool failWifiDirect;
   /// When set, thrown after the call is recorded (for walker filter tests).
   Object? hotspotError;
+  void Function()? afterHotspotUp;
   final List<String> calls = [];
   String? lastJoinPassphrase;
   bool? lastJoinLocalOnly;
@@ -164,6 +165,7 @@ class FakePrivateNetworkPort implements PrivateNetworkPort {
     if (failHotspot) {
       throw const PrivateNetworkException(HostMethod.hotspot);
     }
+    afterHotspotUp?.call();
     return const HotspotCredentials(
       ssid: 'fake-hotspot',
       passphrase: _token,

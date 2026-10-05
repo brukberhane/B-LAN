@@ -100,6 +100,8 @@ class _AppBootstrapState extends ConsumerState<AppBootstrap>
       overrides: [
         databaseProvider.overrideWithValue(widget.database),
         appServiceProvider.overrideWithValue(_service!),
+        nearbyOrchestratorProvider.overrideWithValue(_service!.proximity),
+        pendingInviteProvider.overrideWithValue(_service!.pendingInvite),
       ],
       child: const BlanApp(),
     );

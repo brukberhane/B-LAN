@@ -44,15 +44,16 @@ class ProximityOrchestrator {
   final DateTime Function() now;
   Future<OsWifiNetwork?> Function() readPersonalPsk;
   Future<void> Function(String host, int port) openLan;
-  Future<void> Function(String nick, String code)? presentInvite;
+  Future<void> Function(InvitePrompt prompt)? presentInvite;
   final Future<void> Function(String peerId)? trustPeer;
   Future<void> Function()? refreshLoad;
-  final Duration idle;
+  Duration idle;
   bool membersCanInvite;
   String localFingerprint;
 
   int associatedClients = 0;
   int transfersInFlight = 0;
+  bool get isPrivateNetworkUp => _privateUpSince != null;
   String? advertError;
   TrustDecision? lastTrust;
   bool? lastCanAdmit;
@@ -69,10 +70,12 @@ class ProximityOrchestrator {
 
   bool _visible = false;
   int _advertRetries = 0;
+  StreamSubscription<ControlLink>? _inboundSub;
   DateTime? _privateUpSince;
   HotspotCredentials? _hosted;
   final _inviteNicks = <String, String>{};
   final _plans = <String, List<HostStep>>{};
+  final _prompts = <String, InvitePrompt>{};
 
   static ProximityOrchestrator production(AppDatabase db) {
     if (kIsWeb) {
@@ -89,9 +92,11 @@ class ProximityOrchestrator {
       queue: InviteQueue(),
       codec: null,
       now: DateTime.now,
-      presentInvite: (nick, code) {
+      presentInvite: (prompt) {
         if (androidInvite != null) {
-          return androidInvite.showInvite(nick: nick, code: code).then((_) {});
+          return androidInvite
+              .showInvite(nick: prompt.nick, code: prompt.code)
+              .then((_) {});
         }
         return _present();
       },
@@ -133,6 +138,7 @@ class ProximityOrchestrator {
     }
     await _startAdvert();
     await control.startListening();
+    _listenInbound();
     if (foreground) {
       await ble.startScan();
     } else {
@@ -154,6 +160,8 @@ class ProximityOrchestrator {
 
   Future<void> stopRadios({required bool keepPrivateNetwork}) async {
     await refreshLoad?.call();
+    await _inboundSub?.cancel();
+    _inboundSub = null;
     await ble.stopAdvert();
     await ble.stopScan();
     await control.stopListening();
@@ -174,9 +182,14 @@ class ProximityOrchestrator {
 
   void checkIdle(DateTime at) {
     final previous = queue.active?.id;
+    final expiredPlan = _plans[queue.active?.code];
     final expired = queue.tick(at);
     if (expired != null) {
       lastTrust = onInviteRejected();
+      final activeLink = link;
+      if (expiredPlan != null && activeLink != null && codec != null) {
+        unawaited(_failOwned(expiredPlan, activeLink, session));
+      }
       _presentActive(previous);
     }
     final since = _privateUpSince;
@@ -247,6 +260,44 @@ class ProximityOrchestrator {
     );
   }
 
+  Future<void> bindPeer({
+    required AttemptDevice remote,
+    required String peerHandle,
+  }) async {
+    if (localDevice == null) {
+      throw StateError('local device unset');
+    }
+    remoteDevice = remote;
+    link = await _connect(peerHandle);
+  }
+
+  Future<AttemptEndReason> startPrivateAttempt({
+    required AttemptDevice remote,
+    required String peerHandle,
+  }) async {
+    await bindPeer(remote: remote, peerHandle: peerHandle);
+    final local = localDevice;
+    final activeLink = link;
+    if (local == null || activeLink == null) {
+      throw StateError('local device unset');
+    }
+    return runHostPlan(
+      local: local,
+      remote: remote,
+      extraMembers: extraMembers,
+      link: activeLink,
+      session: session,
+    );
+  }
+
+  Future<AttemptEndReason> skipPassword({
+    required AttemptDevice remote,
+    required String peerHandle,
+  }) async {
+    await bindPeer(remote: remote, peerHandle: peerHandle);
+    return passwordMiss();
+  }
+
   Future<AttemptEndReason> runHostPlan({
     required AttemptDevice local,
     required AttemptDevice remote,
@@ -279,7 +330,11 @@ class ProximityOrchestrator {
         }
         _hosted = recorder.last;
         _privateUpSince = now();
-        await _finishHosted(step, link, session);
+        final delivered = await _finishHosted(step, link, session);
+        if (!delivered) {
+          await _releaseStep(step);
+          continue;
+        }
         return AttemptEndReason.running;
       }
       final remoteBody = await _waitRemote(link, session, step);
@@ -418,6 +473,15 @@ class ProximityOrchestrator {
     if (body is ControlInviteBody) {
       _inviteNicks[body.code] = body.nick;
       _plans[body.code] = body.hostPlan;
+      final prompt = InvitePrompt(
+        nick: body.nick,
+        code: body.code,
+        hostPlan: body.hostPlan,
+        useLanMine: body.useLanMine,
+        useLanTheirs: body.useLanTheirs,
+        usePrivateNetwork: body.usePrivateNetwork,
+      );
+      _prompts[body.code] = prompt;
       final request = InviteRequest(
         id: body.code,
         initiatorFingerprint: session.peerFingerprint ?? '',
@@ -428,7 +492,7 @@ class ProximityOrchestrator {
       final wasActive = queue.active?.id;
       queue.enqueue(request);
       if (queue.active?.id == request.id && queue.active?.id != wasActive) {
-        await presentInvite?.call(body.nick, body.code);
+        await presentInvite?.call(prompt);
       }
       return;
     }
@@ -483,7 +547,11 @@ class ProximityOrchestrator {
       }
       _hosted = recorder.last;
       _privateUpSince = now();
-      await _finishHosted(step, link, session);
+      final delivered = await _finishHosted(step, link, session);
+      if (!delivered) {
+        await _releaseStep(step);
+        continue;
+      }
       return;
     }
   }
@@ -504,18 +572,34 @@ class ProximityOrchestrator {
     }
   }
 
-  Future<void> _finishHosted(
+  void _listenInbound() {
+    _inboundSub ??= control.inbound.listen((link) {
+      unawaited(onInbound(link));
+    });
+  }
+
+  Future<void> _releaseStep(HostStep step) async {
+    _hosted = null;
+    _privateUpSince = null;
+    if (step.method == HostMethod.wifiDirect) {
+      await network.stopWifiDirect();
+    } else {
+      await network.stopHotspot();
+    }
+  }
+
+  Future<bool> _finishHosted(
     HostStep step,
     ControlLink link,
     ControlSession session,
   ) async {
     if (codec == null) {
-      return;
+      return true;
     }
     final creds = _hosted;
     if (creds == null || !session.accepted) {
       await _sendFailure(step, link, session);
-      return;
+      return false;
     }
     final kind = step.method == HostMethod.wifiDirect
         ? PrivateNetworkKind.wifiDirect
@@ -533,7 +617,7 @@ class ProximityOrchestrator {
         );
     if (!deliver) {
       await _sendFailure(step, link, session);
-      return;
+      return false;
     }
     if (associatedClients < 1) {
       associatedClients = 1;
@@ -550,6 +634,7 @@ class ProximityOrchestrator {
         session: session,
       ),
     );
+    return true;
   }
 
   Future<void> _sendFailure(
@@ -575,7 +660,11 @@ class ProximityOrchestrator {
     if (present == null) {
       return;
     }
-    unawaited(present(_inviteNicks[active.code] ?? '', active.code));
+    final prompt = _prompts[active.code];
+    if (prompt == null) {
+      return;
+    }
+    unawaited(present(prompt));
   }
 
   Future<void> _stopPrivate() async {
@@ -584,6 +673,7 @@ class ProximityOrchestrator {
     associatedClients = 0;
     await network.stopHotspot();
     await network.stopWifiDirect();
+    await network.leaveJoined();
   }
 
   Future<void> _send(ControlLink link, Map<String, dynamic> frame) async {

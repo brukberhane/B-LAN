@@ -150,6 +150,7 @@ void main() {
       harness.network.calls.where((call) => call == 'stopHotspot').length,
       2,
     );
+    expect(harness.network.calls, contains('leaveJoined'));
   });
 
   test('grouped scan connects and does not start a hotspot', () async {
@@ -214,7 +215,7 @@ void main() {
       link: harness.pair.a,
       session: harness.orch.session,
     );
-    expect(reason, AttemptEndReason.running);
+    expect(reason, AttemptEndReason.hostChainExhausted);
     expect(harness.sent.map((frame) => frame['type']), ['hostFailed']);
     expect(
       harness.sent.any((frame) => frame.toString().contains('t05-psk-token')),
@@ -242,6 +243,173 @@ void main() {
     );
   });
 
+  test('undelivered hotspot continues through Wi-Fi Direct', () async {
+    final harness = _Harness();
+    final remote = await _codec();
+    await _prime(harness, remote);
+    final pending = harness.orch.runHostPlan(
+      local: const AttemptDevice(
+        id: 'local',
+        kind: ProximityDeviceKind.android,
+      ),
+      remote: const AttemptDevice(
+        id: 'remote',
+        kind: ProximityDeviceKind.android,
+      ),
+      link: harness.pair.a,
+      session: harness.orch.session,
+    );
+    await Future<void>.delayed(Duration.zero);
+    await _fail(remote, harness.pair.b, 'remote', HostMethod.hotspot);
+    await Future<void>.delayed(Duration.zero);
+    await _fail(remote, harness.pair.b, 'remote', HostMethod.wifiDirect);
+    expect(await pending, AttemptEndReason.hostChainExhausted);
+    expect(
+      harness.network.calls.where((call) => call == 'startHotspot').length,
+      1,
+    );
+    expect(
+      harness.network.calls.where((call) => call == 'startWifiDirect').length,
+      1,
+    );
+    expect(
+      harness.sent.where((frame) => frame['type'] == 'hostFailed').length,
+      2,
+    );
+  });
+
+  test('undelivered accept host releases and tries the next local step', () async {
+    final harness = _Harness();
+    final remote = await _codec();
+    await _prime(harness, remote);
+    harness.orch.localDevice = const AttemptDevice(
+      id: 'local',
+      kind: ProximityDeviceKind.android,
+    );
+    harness.network.afterHotspotUp = () {
+      harness.orch.session.accepted = false;
+    };
+    final inbound = harness.orch.onInbound(harness.pair.a);
+    await Future<void>.delayed(Duration.zero);
+    await harness.pair.b.send(
+      await remote.$1.encode(
+        const ControlInviteBody(
+          nick: 'Ada',
+          code: '123456',
+          hostPlan: [
+            HostStep(hostId: 'local', method: HostMethod.hotspot),
+            HostStep(hostId: 'local', method: HostMethod.wifiDirect),
+          ],
+          useLanMine: false,
+          useLanTheirs: false,
+          usePrivateNetwork: true,
+        ),
+        session: remote.$3,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await harness.orch.applyInviteResult('accept');
+    expect(harness.network.calls, contains('startHotspot'));
+    expect(harness.network.calls, contains('stopHotspot'));
+    expect(harness.network.calls, contains('startWifiDirect'));
+    expect(harness.network.calls, contains('stopWifiDirect'));
+    expect(
+      harness.network.calls.indexOf('stopHotspot'),
+      lessThan(harness.network.calls.indexOf('startWifiDirect')),
+    );
+    expect(
+      harness.sent.where((frame) => frame['type'] == 'hostFailed').length,
+      2,
+    );
+    expect(harness.orch.isPrivateNetworkUp, isFalse);
+    await harness.pair.b.close();
+    await inbound;
+  });
+
+  test('listening reads an inbound invite', () async {
+    final harness = _Harness();
+    final local = await _codec();
+    final remote = await _codec();
+    harness.orch.codec = local.$1;
+    await harness.orch.setVisible(true, foreground: true);
+    final pair = FakeControlPair.connect();
+    harness.control.emitInbound(pair.a);
+    await Future<void>.delayed(Duration.zero);
+    await pair.b.send(
+      await remote.$1.encode(
+        ControlHelloBody(
+          peerId: 'remote',
+          nick: 'remote',
+          publicKeyBase64: remote.$2.publicKeyBase64,
+        ),
+        session: remote.$3,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await pair.b.send(
+      await remote.$1.encode(
+        const ControlInviteBody(
+          nick: 'Ada',
+          code: '123456',
+          hostPlan: [HostStep(hostId: 'local', method: HostMethod.hotspot)],
+          useLanMine: false,
+          useLanTheirs: false,
+          usePrivateNetwork: true,
+        ),
+        session: remote.$3,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(harness.orch.queue.active?.code, '123456');
+  });
+
+  test('invite timeout sends hostFailed for the expired plan', () async {
+    final harness = _Harness();
+    final local = await _codec();
+    final remote = await _codec();
+    harness.orch.codec = local.$1;
+    harness.orch.localDevice = const AttemptDevice(
+      id: 'local',
+      kind: ProximityDeviceKind.android,
+    );
+    harness.orch.link = harness.pair.a;
+    final inbound = harness.orch.onInbound(harness.pair.a);
+    await Future<void>.delayed(Duration.zero);
+    await harness.pair.b.send(
+      await remote.$1.encode(
+        ControlHelloBody(
+          peerId: 'remote',
+          nick: 'remote',
+          publicKeyBase64: remote.$2.publicKeyBase64,
+        ),
+        session: remote.$3,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await harness.pair.b.send(
+      await remote.$1.encode(
+        const ControlInviteBody(
+          nick: 'Ada',
+          code: '123456',
+          hostPlan: [HostStep(hostId: 'local', method: HostMethod.hotspot)],
+          useLanMine: false,
+          useLanTheirs: false,
+          usePrivateNetwork: true,
+        ),
+        session: remote.$3,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    harness.orch.checkIdle(harness.clock.add(const Duration(seconds: 60)));
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      harness.sent.where((frame) => frame['type'] == 'hostFailed').length,
+      1,
+    );
+    await harness.pair.b.close();
+    await inbound;
+  });
+
   test('hello then invite shows the real code and accept hosts', () async {
     final harness = _Harness();
     final local = await _codec();
@@ -252,8 +420,8 @@ void main() {
       kind: ProximityDeviceKind.android,
     );
     final shown = <String>[];
-    harness.orch.presentInvite = (nick, code) async {
-      shown.add('$nick:$code');
+    harness.orch.presentInvite = (prompt) async {
+      shown.add('${prompt.nick}:${prompt.code}');
     };
     final inbound = harness.orch.onInbound(harness.pair.a);
     await Future<void>.delayed(Duration.zero);

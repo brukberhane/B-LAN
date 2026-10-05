@@ -39,7 +39,7 @@ LAN share, mDNS, pinned HTTPS, and trust already exist in `lib/`. This index doe
 | T10 | [Windows radios](./T10-windows-radios.md) | ✅ | T09 | T11 | L6 | Best-effort radios. mDNS advertise on |
 | T11 | [iOS radios](./T11-ios-radios.md) | ✅ | T10 | T12 | L6 | Simulator build on this Mac |
 | T12 | [Orchestrator](./T12-proximity-orchestrator.md) | ✅ | T11 | T13 | L4 | Existing HTTPS |
-| T13 | [Nearby UI](./T13-nearby-ui.md) | Pending | T12 | T14 | L7 | Peers + Settings |
+| T13 | [Nearby UI](./T13-nearby-ui.md) | ✅ | T12 | T14 | L7 | Peers + Settings |
 | T14 | [E2E proof](./T14-e2e.md) | Pending | T13 | — | L8 | Fakes here, devices manual |
 
 ## Layer legend

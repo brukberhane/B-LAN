@@ -9,6 +9,7 @@ import '../../app/providers.dart';
 import '../../core/platform/platform_capabilities.dart';
 import 'security_settings_section.dart';
 import 'downloads_location_section.dart';
+import 'nearby_settings_section.dart';
 import 'platform_sections.dart';
 import '../browse/browse_page.dart';
 import '../../core/persistence/database.dart';
@@ -222,6 +223,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             const DownloadsLocationSection(),
             const Divider(height: 32),
             const LanPeerFilterSection(),
+            const Divider(height: 32),
+            const NearbySettingsSection(),
             const Divider(height: 32),
             const PlatformTroubleshootingSection(),
           ],

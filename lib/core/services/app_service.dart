@@ -30,6 +30,7 @@ import '../security/browser_token_store.dart';
 import '../security/composite_secret_store.dart';
 import '../security/device_identity.dart';
 import '../security/peer_session_store.dart';
+import '../security/remembered_wifi.dart';
 import '../security/secret_store.dart';
 import '../security/tls_identity.dart';
 import '../transfers/download_queue.dart';
@@ -96,6 +97,7 @@ class AppService {
   late final DownloadQueue downloadQueue;
   late final SearchService searchService;
   final searchIndexStatus = ValueNotifier(const SearchIndexState());
+  final pendingInvite = ValueNotifier<InvitePrompt?>(null);
   Future<void>? _searchIndexTask;
   final _log = Logger('AppService');
   final _uuid = const Uuid();
@@ -105,6 +107,8 @@ class AppService {
   ShareWatcher? _shareWatcher;
   Timer? _reconcileTimer;
   Timer? _stalePeerRetryTimer;
+  Timer? _nearbyIdleTimer;
+  bool _resumed = true;
   static const _reconcileInterval = Duration(minutes: 30);
   static const _stalePeerRetryInterval = Duration(seconds: 45);
   final _peerHandshakesInFlight = <String, Future<void>>{};
@@ -232,6 +236,8 @@ class AppService {
       return;
     }
     _log.info('Stopping LAN sharing');
+    _nearbyIdleTimer?.cancel();
+    _nearbyIdleTimer = null;
     await _syncProximityLoad();
     await proximity?.stopRadios(
       keepPrivateNetwork:
@@ -285,12 +291,49 @@ class AppService {
   }
 
   void onAppResumed() {
+    _resumed = true;
     unawaited(_refreshSharingForeground());
     unawaited(proximity?.onForeground());
   }
 
   void onAppPaused() {
+    _resumed = false;
     unawaited(proximity?.onBackground());
+  }
+
+  Future<void> setNearbyVisible(bool visible) async {
+    await db.setNearbyVisible(visible);
+    await proximity?.setVisible(visible, foreground: _resumed);
+  }
+
+  Future<void> setNearbyIdleMinutes(int minutes) async {
+    await db.setNearbyIdleMinutes(minutes);
+    proximity?.idle = Duration(minutes: minutes);
+  }
+
+  Future<void> setNearbyMembersCanInvite(bool allowed) async {
+    await db.setNearbyMembersCanInvite(allowed);
+    proximity?.membersCanInvite = allowed;
+  }
+
+  Future<void> disbandNearby() => proximity?.disband() ?? Future<void>.value();
+
+  Future<void> rememberWifi({
+    required String ssid,
+    required WifiSecurity security,
+    required String passphrase,
+    required bool remember,
+  }) {
+    final secrets = _secrets;
+    if (secrets == null) {
+      return Future<void>.value();
+    }
+    return RememberedWifiStore(db, secrets).save(
+      ssid: ssid,
+      security: security,
+      passphrase: passphrase,
+      remember: remember,
+    );
   }
 
   Future<void> _startProximity({
@@ -327,9 +370,31 @@ class AppService {
       groupId: const [0, 0, 0, 0],
     ).pack();
     orch.scanResponseBytes = () => utf8.encode(shown);
+    orch.idle = Duration(minutes: await db.nearbyIdleMinutes());
+    orch.membersCanInvite = await db.nearbyMembersCanInvite();
+    final platformPresent = orch.presentInvite;
+    orch.presentInvite = (prompt) async {
+      pendingInvite.value = prompt;
+      final androidPaused = !kIsWeb && Platform.isAndroid && !_resumed;
+      if (androidPaused || kIsWeb || !Platform.isAndroid) {
+        await platformPresent?.call(prompt);
+      }
+    };
+    _nearbyIdleTimer ??= Timer.periodic(const Duration(seconds: 30), (_) {
+      unawaited(_tickNearbyIdle());
+    });
     if (await db.nearbyVisible()) {
       await orch.start(foreground: true);
     }
+  }
+
+  Future<void> _tickNearbyIdle() async {
+    final orch = proximity;
+    if (orch == null) {
+      return;
+    }
+    await _syncProximityLoad();
+    orch.checkIdle(DateTime.now());
   }
 
   Future<void> _openLanFromProximity(String host, int port) async {
@@ -417,6 +482,9 @@ class AppService {
     _stalePeerRetryTimer = null;
     _reconcileTimer?.cancel();
     _reconcileTimer = null;
+    _nearbyIdleTimer?.cancel();
+    _nearbyIdleTimer = null;
+    pendingInvite.dispose();
     _shareWatcher?.dispose();
     _shareWatcher = null;
     _backgroundSharing?.setSharingStopHandler(null);

@@ -8,6 +8,7 @@ import '../../core/platform/lan_addresses.dart';
 import '../../core/platform/platform_capabilities.dart';
 import '../../core/security/peer_identity.dart';
 import '../../core/ui/format.dart';
+import 'nearby_section.dart';
 import '../browse/browse_page.dart';
 
 class PeersPage extends ConsumerWidget {
@@ -38,23 +39,30 @@ class PeersPage extends ConsumerWidget {
       ),
       body: peers.when(
         data: (rows) {
-          if (rows.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  _emptyPeersMessage(filterEnabled: filterEnabled),
-                  textAlign: TextAlign.center,
-                ),
+          return CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: NearbySection(peers: rows, subnets: localSubnets),
               ),
-            );
-          }
-          return Column(
-            children: [
               if (!filterEnabled)
-                _SubnetFilterOffBanner(subnets: localSubnets),
-              Expanded(
-                child: ListView.separated(
+                SliverToBoxAdapter(
+                  child: _SubnetFilterOffBanner(subnets: localSubnets),
+                ),
+              if (rows.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        _emptyPeersMessage(filterEnabled: filterEnabled),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                SliverList.separated(
                   itemCount: rows.length,
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, index) {
@@ -174,7 +182,6 @@ class PeersPage extends ConsumerWidget {
                     );
                   },
                 ),
-              ),
             ],
           );
         },

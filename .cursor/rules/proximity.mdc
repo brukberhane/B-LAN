@@ -183,7 +183,7 @@ What this spoke does not cover:
 
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
-| Two devices sit in the remote-host wait, and an all-fail never ends | Each chain lists the peer first, and a local success returns with no frame | Do not reorder the chain. The owner of the step hosts it and, before returning, sends the sealed secret after accept or a failure frame when the secret cannot be sealed. The invitee runs only the steps it owns when it accepts |
+| Two devices sit in the remote-host wait, and an all-fail never ends | Each chain lists the peer first, or a failure frame returns as success so the next owned step never speaks. A timeout also presents the next invite and sends nothing | Do not reorder the chain. Send a sealed secret after accept, or a failure frame. A failure frame continues the chain. Return only after a secret or after every remaining step has spoken. If the secret was not sent, stop that radio before the next step. The accept-owned loop does this too. Timeout sends the same failure frames as a decline. The invitee runs the steps it owns when it accepts |
 
 <!-- last-verified: 2026-10 -->
 
@@ -203,10 +203,26 @@ What this spoke does not cover:
 
 <!-- last-verified: 2026-10 -->
 
+### `Server link is never read`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| The radio accepts a peer and the invite never queues | Listening opened the socket and nobody subscribed the inbound stream | When listening starts, subscribe inbound and drain each link |
+
+<!-- last-verified: 2026-10 -->
+
+### `Answer clears the invite that was just promoted`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| The next invite never opens after Accept or Decline | The UI nulls the prompt slot after the handler that already stored the next prompt | Clear the slot only when it still holds the prompt being answered, and do that before the handler runs |
+
+<!-- last-verified: 2026-10 -->
+
 ### `Idle stop leaves the session hosting`
 
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
-| Idle fires, the radio stops, and the next check still thinks a network is up. Or a live transfer is torn down because the client count was never written | Stop calls were not the disband path, and in-use counts were stale | Use the same teardown as disband, including clearing hosted state. Refresh transfer and client counts before idle or shutdown. A join or a delivered secret counts as a client |
+| Idle fires, the radio stops, and the next check still thinks a network is up. A joiner stays on the peer network. Or a live transfer is torn down because the client count was never written | Stop calls were not the disband path, teardown never left the joined network, or in-use counts were stale | Use the same teardown as disband: clear hosted state and leave the joined network. Refresh transfer and client counts before idle or shutdown. A join or a delivered secret counts as a client |
 
 <!-- last-verified: 2026-10 -->

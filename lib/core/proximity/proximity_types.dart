@@ -64,6 +64,23 @@ class LinkSheetOptions {
   final bool showShortCode;
 }
 
+class InvitePrompt {
+  const InvitePrompt({
+    required this.nick,
+    required this.code,
+    required this.hostPlan,
+    required this.useLanMine,
+    required this.useLanTheirs,
+    required this.usePrivateNetwork,
+  });
+  final String nick;
+  final String code;
+  final List<HostStep> hostPlan;
+  final bool useLanMine;
+  final bool useLanTheirs;
+  final bool usePrivateNetwork;
+}
+
 class AttemptDevice {
   const AttemptDevice({
     required this.id,
