@@ -44,11 +44,13 @@ class AndroidProximityRadios
   Future<void> startAdvert({
     required List<int> payload,
     required List<int> scanResponse,
+    bool dualLegacy = true,
   }) async {
     assertAdvertPayload(payload);
     await _invoke('startAdvert', {
       'payload': Uint8List.fromList(payload),
       'scanResponse': Uint8List.fromList(scanResponse),
+      'dualAdvert': dualLegacy,
     });
   }
 
@@ -65,9 +67,15 @@ class AndroidProximityRadios
   Stream<BleScanHit> get scans {
     _scanSub ??= _scans.receiveBroadcastStream().listen((event) {
       final map = (event as Map).cast<String, Object?>();
+      var advert = (map['advert'] as Uint8List).toList();
+      // The legacy advert set sends only the first 16 bytes; the rest is
+      // zero padding in the packed format.
+      if (advert.length == 16) {
+        advert = [...advert, ...List<int>.filled(15, 0)];
+      }
       _scanController.add(
         BleScanHit(
-          advert: (map['advert'] as Uint8List).toList(),
+          advert: advert,
           scanResponse: (map['scanResponse'] as Uint8List?)?.toList() ?? const [],
           peerHandle: map['peerHandle'] as String,
         ),
@@ -201,6 +209,15 @@ class AndroidProximityRadios
     );
   }
 
+  @override
+  Future<String?> readCurrentSsid() async {
+    final reply = await _channel.invokeMethod<Object?>('currentSsid');
+    if (reply is! String || reply.isEmpty || reply == '<unknown ssid>') {
+      return null;
+    }
+    return reply;
+  }
+
   // --- internals ----------------------------------------------------------
 
   static const _linkIdKey = '__linkId';
@@ -304,10 +321,21 @@ class AndroidInvitePresenter {
       _channel.invokeMethod<void>('requestInvitePermissions');
 
   /// Shows the invite; returns `'dialog'` or `'notification'`.
-  Future<String> showInvite({required String nick, required String code}) async {
+  Future<String> showInvite({
+    required String nick,
+    required String code,
+    bool foreground = false,
+    bool useLanTheirs = false,
+    bool useLanMine = false,
+    bool usePrivateNetwork = false,
+  }) async {
     final reply = await _channel.invokeMethod<Object?>('showInvite', {
       'nick': nick,
       'code': code,
+      'foreground': foreground,
+      'useLanTheirs': useLanTheirs,
+      'useLanMine': useLanMine,
+      'usePrivateNetwork': usePrivateNetwork,
     });
     if (reply is Map && reply['error'] != null) {
       throw StateError('invite failed: ${reply['error']}');

@@ -41,6 +41,22 @@ What this spoke does not cover:
 
 <!-- last-verified: 2026-10 -->
 
+### `Invite host dies when leaving that tab`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Accept UI only works while that tab is visible; other tabs never show it | The shell built only the selected page, so the invite host was disposed | Keep tab bodies mounted (indexed stack). Offstage children still tick — widget tests that pump the shell must replace it with an empty box or pump past timers before the next case |
+
+<!-- last-verified: 2026-10 -->
+
+### `Background BLE dies without connectedDevice`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Nearby scan/advert or GATT stops as soon as the activity is not in the foreground, even with a sharing service | The foreground service type was only `dataSync` | Add `connectedDevice` (with `dataSync`) on the sharing service and in the manifest |
+
+<!-- last-verified: 2026-10 -->
+
 ### `Apk build fails after a Flutter SDK bump`
 
 | Symptom | Cause | Fix |

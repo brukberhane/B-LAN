@@ -20,7 +20,15 @@ final appServiceProvider = Provider<AppService>((ref) {
 
 final nearbyOrchestratorProvider = Provider<ProximityOrchestrator?>((ref) => null);
 
+/// Peer ids whose BLE advert matches the mDNS row. Those hits are not shown twice.
+final nearbyLanPeerIdsProvider = StateProvider<Set<String>>((ref) => const {});
+
+/// Nearby rows that are still on screen. Hides the empty-peers message.
+final nearbyHitCountProvider = StateProvider<int>((ref) => 0);
+
 final pendingInviteProvider = Provider<ValueNotifier<InvitePrompt?>?>((ref) => null);
+
+final pendingLanPasswordProvider = Provider<ValueNotifier<InvitePrompt?>?>((ref) => null);
 
 final sharesProvider = StreamProvider((ref) {
   final db = ref.watch(databaseProvider);

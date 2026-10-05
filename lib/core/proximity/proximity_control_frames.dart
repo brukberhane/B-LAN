@@ -14,15 +14,20 @@ class ControlHelloBody {
     required this.peerId,
     required this.nick,
     required this.publicKeyBase64,
+    this.wifiSsid,
   });
   final String peerId;
   final String nick;
   final String publicKeyBase64;
 
+  /// Peer's current Wi-Fi name. Not a secret; omitted when unknown.
+  final String? wifiSsid;
+
   Map<String, dynamic> toJson() => {
     'peerId': peerId,
     'nick': nick,
     'publicKeyBase64': publicKeyBase64,
+    if (wifiSsid != null && wifiSsid!.isNotEmpty) 'wifiSsid': wifiSsid,
   };
 
   factory ControlHelloBody.fromJson(Map<String, dynamic> json) =>
@@ -30,6 +35,7 @@ class ControlHelloBody {
         peerId: json['peerId'] as String,
         nick: json['nick'] as String,
         publicKeyBase64: json['publicKeyBase64'] as String,
+        wifiSsid: json['wifiSsid'] as String?,
       );
 }
 

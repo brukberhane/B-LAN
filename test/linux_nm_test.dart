@@ -48,6 +48,14 @@ void main() {
     expect(runner.argv[1], contains('abc'));
   });
 
+  test('currentSsid is the active wifi name with no secret query', () async {
+    final runner = ScriptedRunner(const [
+      CommandResult(0, 'Home:abc:802-11-wireless:wlan0\n', ''),
+    ]);
+    expect(await LinuxNm(runner).currentSsid(), 'Home');
+    expect(runner.argv, hasLength(1));
+  });
+
   test('escaped colon in the name stays in the ssid', () async {
     final runner = ScriptedRunner(const [
       CommandResult(0, 'Home\\:net:abc:802-11-wireless:wlan0\n', ''),

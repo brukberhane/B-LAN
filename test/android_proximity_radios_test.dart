@@ -55,6 +55,19 @@ void main() {
     final call = calls.singleWhere((c) => c.method == 'startAdvert');
     expect(call.arguments['payload'], Uint8List.fromList(payload));
     expect(call.arguments['scanResponse'], Uint8List.fromList(scanResponse));
+    expect(call.arguments['dualAdvert'], isTrue);
+  });
+
+  test('startAdvert forwards the dual advert switch', () async {
+    final radios = AndroidProximityRadios();
+    await radios.startAdvert(
+      payload: payload,
+      scanResponse: scanResponse,
+      dualLegacy: false,
+    );
+
+    final call = calls.singleWhere((c) => c.method == 'startAdvert');
+    expect(call.arguments['dualAdvert'], isFalse);
   });
 
   test('startAdvert asserts 31 bytes before any channel hop', () async {
@@ -88,6 +101,31 @@ void main() {
     expect(hits.single.peerHandle, 'AA:BB:CC:DD:EE:FF');
     expect(hits.single.advert, payload);
     expect(hits.single.scanResponse, scanResponse);
+    await sub.cancel();
+  });
+
+  test('16-byte legacy advert event pads to 31', () async {
+    MockStreamHandlerEventSink? sink;
+    messenger.setMockStreamHandler(
+      scansEvent,
+      MockStreamHandler.inline(onListen: (_, events) => sink = events),
+    );
+    final radios = AndroidProximityRadios();
+    final hits = <BleScanHit>[];
+    final sub = radios.scans.listen(hits.add);
+    await pumpEventQueue();
+    final trimmed = payload.sublist(0, 16);
+    sink!.success({
+      'peerHandle': 'AA:BB:CC:DD:EE:FF',
+      'advert': Uint8List.fromList(trimmed),
+      'scanResponse': Uint8List.fromList(scanResponse),
+    });
+    await pumpEventQueue();
+
+    expect(hits.single.advert, hasLength(31));
+    expect(hits.single.advert.sublist(0, 16), trimmed);
+    expect(hits.single.advert.sublist(16), List<int>.filled(15, 0));
+    expect(ProximityAdvert.unpack(hits.single.advert).port, 59488);
     await sub.cancel();
   });
 
@@ -212,13 +250,39 @@ void main() {
     expect(path, 'dialog');
     expect(
       calls.singleWhere((c) => c.method == 'showInvite').arguments,
-      {'nick': 'Ada', 'code': '123456'},
+      {
+        'nick': 'Ada',
+        'code': '123456',
+        'foreground': false,
+        'useLanTheirs': false,
+        'useLanMine': false,
+        'usePrivateNetwork': false,
+      },
     );
 
     inviteSink!.success('accept');
     await pumpEventQueue();
     expect(results, ['accept']);
     await sub.cancel();
+  });
+
+  test('invite presenter passes the intent flags', () async {
+    replies['showInvite'] = 'dialog';
+    final presenter = AndroidInvitePresenter();
+
+    await presenter.showInvite(
+      nick: 'Ada',
+      code: '123456',
+      useLanTheirs: true,
+      usePrivateNetwork: true,
+    );
+
+    final args =
+        calls.singleWhere((c) => c.method == 'showInvite').arguments
+            as Map<Object?, Object?>;
+    expect(args['useLanTheirs'], isTrue);
+    expect(args['useLanMine'], isFalse);
+    expect(args['usePrivateNetwork'], isTrue);
   });
 
   test('invite presenter falls back to notification and declines', () async {
@@ -261,10 +325,22 @@ void main() {
     expect(calls.map((call) => call.method), ['readPersonalPsk']);
   });
 
-  test('readCurrentPersonalPsk null reply stays null', () async {
-    replies['readPersonalPsk'] = null;
-    final radios = AndroidProximityRadios();
-    expect(await radios.readCurrentPersonalPsk(), isNull);
+  test('readCurrentPersonalPsk with empty passphrase stays null', () async {
+    replies['readPersonalPsk'] = {
+      'ssid': 'HomeNet',
+      'passphrase': '',
+      'security': 'wpa2-psk',
+    };
+    expect(await AndroidProximityRadios().readCurrentPersonalPsk(), isNull);
+  });
+
+  test('readCurrentSsid maps a name and drops unknown', () async {
+    replies['currentSsid'] = 'HomeNet';
+    expect(await AndroidProximityRadios().readCurrentSsid(), 'HomeNet');
+    replies['currentSsid'] = '<unknown ssid>';
+    expect(await AndroidProximityRadios().readCurrentSsid(), isNull);
+    replies['currentSsid'] = '';
+    expect(await AndroidProximityRadios().readCurrentSsid(), isNull);
   });
 
   test('shizuku facts recognize Shevery ahead of official Shizuku', () async {

@@ -20,6 +20,8 @@ class PeersPage extends ConsumerWidget {
     final filterEnabled = ref.watch(peerSubnetFilterProvider).valueOrNull ?? true;
     final localSubnets =
         ref.watch(lanSubnetsProvider).valueOrNull ?? const <Ipv4Subnet>[];
+    final nearbyIds = ref.watch(nearbyLanPeerIdsProvider);
+    final nearbyHits = ref.watch(nearbyHitCountProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -48,7 +50,7 @@ class PeersPage extends ConsumerWidget {
                 SliverToBoxAdapter(
                   child: _SubnetFilterOffBanner(subnets: localSubnets),
                 ),
-              if (rows.isEmpty)
+              if (rows.isEmpty && nearbyHits == 0)
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
@@ -67,22 +69,12 @@ class PeersPage extends ConsumerWidget {
                   separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final peer = rows[index];
-                    final warning =
-                        PeerIdentityStatus.isWarning(peer.identityStatus);
                     final offSubnet = !filterEnabled &&
                         !hostSharesLocalSubnet(peer.host, localSubnets);
                     return ListTile(
-                      leading: Icon(
-                        peer.identityStatus ==
-                                PeerIdentityStatus.identityChanged
-                            ? Icons.warning_amber
-                            : peer.identityStatus ==
-                                    PeerIdentityStatus.suspicious
-                                ? Icons.gpp_bad_outlined
-                                : peer.manual
-                                    ? Icons.link
-                                    : Icons.wifi,
-                        color: warning ? Colors.orange : null,
+                      leading: _peerLeading(
+                        peer,
+                        onNearby: nearbyIds.contains(peer.id),
                       ),
                       title: Row(
                         children: [
@@ -189,6 +181,29 @@ class PeersPage extends ConsumerWidget {
         error: (error, _) => Center(child: Text('Error: $error')),
       ),
     );
+  }
+
+  Widget _peerLeading(Peer peer, {required bool onNearby}) {
+    if (peer.identityStatus == PeerIdentityStatus.identityChanged) {
+      return const Icon(Icons.warning_amber, color: Colors.orange);
+    }
+    if (peer.identityStatus == PeerIdentityStatus.suspicious) {
+      return const Icon(Icons.gpp_bad_outlined, color: Colors.orange);
+    }
+    if (peer.manual) {
+      return const Icon(Icons.link);
+    }
+    if (onNearby) {
+      return const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.wifi),
+          SizedBox(width: 2),
+          Icon(Icons.bluetooth),
+        ],
+      );
+    }
+    return const Icon(Icons.wifi);
   }
 
   String _emptyPeersMessage({required bool filterEnabled}) {
@@ -311,7 +326,7 @@ class PeersPage extends ConsumerWidget {
       ref.invalidate(peersProvider);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('LAN advertise and scan refreshed')),
+          const SnackBar(content: Text('LAN and nearby scan refreshed')),
         );
       }
     } catch (error) {

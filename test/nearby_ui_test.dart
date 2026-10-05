@@ -15,6 +15,7 @@ import 'package:blan/core/proximity/proximity_types.dart';
 import 'package:blan/core/protocol/constants.dart';
 import 'package:blan/core/security/device_identity.dart';
 import 'package:blan/core/security/peer_identity.dart';
+import 'package:blan/core/security/remembered_wifi.dart';
 import 'package:blan/core/security/secret_store.dart';
 import 'package:blan/core/services/app_service.dart';
 import 'package:blan/features/peers/nearby_section.dart';
@@ -61,9 +62,170 @@ void main() {
     ble.emit(_hit('Cid', const [0, 0, 0, 0], 0));
     await tester.pump(const Duration(milliseconds: 16));
 
-    expect(find.text('Same LAN'), findsOneWidget);
-    expect(find.text('Other LAN'), findsOneWidget);
-    expect(find.text('BLE only'), findsOneWidget);
+    expect(find.text('Ada'), findsOneWidget);
+    expect(find.text('Same LAN · 01020304'), findsOneWidget);
+    expect(find.text('Other LAN · 01020304'), findsOneWidget);
+    expect(find.text('BLE only · 01020304'), findsOneWidget);
+    expect(find.byIcon(Icons.bluetooth), findsNWidgets(3));
+
+    await orch.setVisible(true, foreground: true);
+    await orch.refreshRadio();
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(find.text('Ada'), findsNothing);
+    expect(find.text('Bea'), findsNothing);
+    expect(find.text('Cid'), findsNothing);
+  });
+
+  testWidgets('dual advert hits render as one row', (tester) async {
+    final ble = FakeBlePresencePort();
+    final orch = _orch(ble);
+
+    await tester.pumpWidget(
+      _scope(
+        orch: orch,
+        addresses: const ['10.0.0.8'],
+        child: MaterialApp(
+          home: Scaffold(
+            body: NearbySection(
+              peers: const [],
+              subnets: const [
+                Ipv4Subnet(address: '10.0.0.1', prefixLength: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final advert = ProximityAdvert(
+      hasWifi: true,
+      ipv4: const [10, 0, 0, 8],
+      port: 59488,
+      shortPeerId: const [1, 2, 3, 4],
+      role: AdvertRole.none,
+      groupId: const [0, 0, 0, 0],
+    ).pack();
+    // Same device, two advert sets: the extended hit carries the nick, the
+    // legacy hit arrives later with an empty scan response.
+    ble.emit(
+      BleScanHit(
+        advert: advert,
+        scanResponse: utf8.encode('Ada'),
+        peerHandle: 'AA:AA:AA:AA:AA:AA',
+      ),
+    );
+    ble.emit(
+      BleScanHit(
+        advert: advert,
+        scanResponse: const [],
+        peerHandle: 'BB:BB:BB:BB:BB:BB',
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(find.byIcon(Icons.bluetooth), findsOneWidget);
+    expect(find.text('Ada'), findsOneWidget);
+  });
+
+  testWidgets('same device on another local address is same LAN', (tester) async {
+    final ble = FakeBlePresencePort();
+    final orch = _orch(ble);
+    final peer = _peer(
+      host: '192.168.69.45',
+      port: 59488,
+      id: '01020304-0000-4000-8000-000000000001',
+    );
+
+    await tester.pumpWidget(
+      _scope(
+        orch: orch,
+        addresses: const ['192.168.69.104'],
+        child: MaterialApp(
+          home: Scaffold(
+            body: NearbySection(
+              peers: [peer],
+              subnets: const [
+                Ipv4Subnet(address: '192.168.69.104', prefixLength: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    ble.emit(_hit('B-Yoga-7-Pro', const [192, 168, 69, 241], 59488));
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(find.text('B-Yoga-7-Pro'), findsNothing);
+    expect(find.text('Nearby'), findsNothing);
+  });
+
+  testWidgets('matched peer row shows wifi and bluetooth', (tester) async {
+    final ble = FakeBlePresencePort();
+    final orch = _orch(ble);
+    final peer = _peer(
+      host: '192.168.69.45',
+      port: 59488,
+      id: '01020304-0000-4000-8000-000000000001',
+      identityStatus: PeerIdentityStatus.normal,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          peersProvider.overrideWith((ref) => Stream.value([peer])),
+          nearbyOrchestratorProvider.overrideWithValue(orch),
+          lanAddressesProvider.overrideWith((ref) async => const ['192.168.69.104']),
+          lanSubnetsProvider.overrideWith(
+            (ref) async => const [
+              Ipv4Subnet(address: '192.168.69.104', prefixLength: 24),
+            ],
+          ),
+        ],
+        child: const MaterialApp(home: PeersPage()),
+      ),
+    );
+    await tester.pump();
+    ble.emit(_hit('B-Yoga-7-Pro', const [192, 168, 69, 241], 59488));
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(find.text('B-Yoga-7-Pro'), findsNothing);
+    expect(find.byIcon(Icons.wifi), findsOneWidget);
+    expect(find.byIcon(Icons.bluetooth), findsOneWidget);
+    expect(find.text('Same LAN · 01020304'), findsNothing);
+  });
+
+  testWidgets('empty peers copy hides when a nearby row is showing', (
+    tester,
+  ) async {
+    final ble = FakeBlePresencePort();
+    final orch = _orch(ble);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          peersProvider.overrideWith((ref) => Stream.value(const <Peer>[])),
+          nearbyOrchestratorProvider.overrideWithValue(orch),
+          lanAddressesProvider.overrideWith((ref) async => const ['10.0.0.8']),
+          lanSubnetsProvider.overrideWith(
+            (ref) async => const [
+              Ipv4Subnet(address: '10.0.0.1', prefixLength: 24),
+            ],
+          ),
+        ],
+        child: const MaterialApp(home: PeersPage()),
+      ),
+    );
+    await tester.pump();
+    expect(find.textContaining('No peers yet'), findsOneWidget);
+
+    ble.emit(_hit('B-Yoga-7-Pro', const [192, 168, 69, 241], 59488));
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(find.text('B-Yoga-7-Pro'), findsOneWidget);
+    expect(find.textContaining('No peers yet'), findsNothing);
   });
 
   testWidgets('mDNS menu still trusts and the rail has no nearby destination', (
@@ -112,6 +274,56 @@ void main() {
     expect(find.text('Peers'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Nearby is blocked'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 50));
+  });
+
+  testWidgets('invite sheet shows on Shares without opening Peers', (tester) async {
+    final orch = _orch(FakeBlePresencePort());
+    final pending = ValueNotifier<InvitePrompt?>(
+      const InvitePrompt(
+        nick: 'Ada',
+        code: '111111',
+        hostPlan: [],
+        useLanMine: false,
+        useLanTheirs: false,
+        usePrivateNetwork: true,
+      ),
+    );
+    addTearDown(pending.dispose);
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          appServiceProvider.overrideWith(
+            (ref) => AppService(db, platform: _NoopPlatform()),
+          ),
+          nearbyOrchestratorProvider.overrideWithValue(orch),
+          pendingInviteProvider.overrideWithValue(pending),
+          sharesProvider.overrideWith((ref) => Stream.value([])),
+          peersProvider.overrideWith((ref) => Stream.value([])),
+          downloadsProvider.overrideWith((ref) => Stream.value([])),
+          uploadsProvider.overrideWith((ref) => Stream.value([])),
+          downloadsDirectoryProvider.overrideWith(
+            (ref) async => '/tmp/blan-downloads',
+          ),
+          serverRunningProvider.overrideWithValue(false),
+          discoveryAdvertisingProvider.overrideWithValue(false),
+          discoverySupportsAdvertisingProvider.overrideWithValue(true),
+        ],
+        child: const MaterialApp(home: AppShell()),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Shares'), findsWidgets);
+    expect(find.text('Ada'), findsOneWidget);
+    expect(find.text('111111'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 50));
   });
 
   testWidgets('password skip starts one local hotspot', (tester) async {
@@ -143,7 +355,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
     await tester.tap(find.text('Bea'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(TextButton, 'Use my LAN'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Use my LAN'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Skip'));
     await tester.pumpAndSettle();
@@ -151,6 +363,157 @@ void main() {
     expect(network.calls.where((call) => call == 'startHotspot').length, 1);
     expect(network.calls, isNot(contains('startWifiDirect')));
     expect(network.calls.join(), isNot(contains('t05-psk-token')));
+  });
+
+  testWidgets('initiator sheet highlights hotspot and offers their network', (
+    tester,
+  ) async {
+    final ble = FakeBlePresencePort();
+    final orch = _orch(ble);
+    await tester.pumpWidget(
+      _scope(
+        orch: orch,
+        addresses: const ['10.0.0.8'],
+        child: const MaterialApp(
+          home: Scaffold(body: NearbySection(peers: [], subnets: [])),
+        ),
+      ),
+    );
+    await tester.pump();
+    ble.emit(_hit('Fold', const [192, 168, 1, 3], 59488));
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.tap(find.text('Fold'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('HostStep'), findsNothing);
+    expect(find.text('Decline'), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Private network'), findsOneWidget);
+    expect(
+      find.widgetWithText(OutlinedButton, 'Use their network'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('usual choice'), findsOneWidget);
+  });
+
+  testWidgets('row keeps the newest hit for a device', (tester) async {
+    final ble = FakeBlePresencePort();
+    final orch = _orch(ble);
+
+    await tester.pumpWidget(
+      _scope(
+        orch: orch,
+        addresses: const ['10.0.0.8'],
+        child: const MaterialApp(
+          home: Scaffold(body: NearbySection(peers: [], subnets: [])),
+        ),
+      ),
+    );
+    await tester.pump();
+    // Same device identity, rotated address: the newest nick-bearing hit
+    // must own the row so the address is never stale.
+    ble.emit(_hit('Ada', const [10, 0, 0, 8], 59488));
+    ble.emit(_hit('Ada Live', const [10, 0, 0, 8], 59488));
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(find.byIcon(Icons.bluetooth), findsOneWidget);
+    expect(find.text('Ada Live'), findsOneWidget);
+    expect(find.text('Ada'), findsNothing);
+  });
+
+  testWidgets('use my lan confirms the auto-read password before joining', (
+    tester,
+  ) async {
+    final ble = FakeBlePresencePort();
+    final network = FakePrivateNetworkPort();
+    final orch = _orch(
+      ble,
+      network: network,
+      psk: const OsWifiNetwork(
+        ssid: 'Home',
+        passphrase: 'pw-home',
+        security: WifiSecurity.wpa2Psk,
+      ),
+    );
+    orch.localDevice = const AttemptDevice(
+      id: 'local',
+      kind: ProximityDeviceKind.desktop,
+    );
+
+    await tester.pumpWidget(
+      _scope(
+        orch: orch,
+        addresses: const ['10.0.0.8'],
+        child: MaterialApp(
+          home: Scaffold(
+            body: NearbySection(
+              peers: const [],
+              subnets: const [],
+              remoteKind: ProximityDeviceKind.ios,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    ble.emit(_hit('Bea', const [192, 168, 9, 9], 9, hasWifi: true));
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.tap(find.text('Bea'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Use my LAN'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Home'), findsOneWidget);
+    expect(network.calls, isNot(contains('join:Home')));
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(network.calls, isNot(contains('join:Home')));
+
+    await tester.tap(find.text('Bea'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Use my LAN'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Join'));
+    await tester.pumpAndSettle();
+
+    expect(network.calls, contains('join:Home'));
+    expect(network.lastJoinPassphrase, 'pw-home');
+  });
+
+  testWidgets('their network failure surfaces a dialog', (tester) async {
+    final ble = FakeBlePresencePort();
+    final orch = _orch(ble, control: _FailConnectControl());
+    final local = await _codec();
+    orch.codec = local.$1;
+    orch.localDevice = const AttemptDevice(
+      id: 'local',
+      kind: ProximityDeviceKind.desktop,
+    );
+
+    await tester.pumpWidget(
+      _scope(
+        orch: orch,
+        addresses: const ['10.0.0.8'],
+        child: const MaterialApp(
+          home: Scaffold(body: NearbySection(peers: [], subnets: [])),
+        ),
+      ),
+    );
+    await tester.pump();
+    ble.emit(_hit('Fold', const [192, 168, 1, 3], 59488));
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.tap(find.text('Fold'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.widgetWithText(OutlinedButton, 'Use their network'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nearby failed'), findsOneWidget);
+    expect(find.textContaining("Couldn't reach the device"), findsOneWidget);
+
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('disband asks once', (tester) async {
@@ -272,7 +635,7 @@ void main() {
         ),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('Ada'), findsOneWidget);
     expect(find.text('111111'), findsOneWidget);
   });
@@ -281,23 +644,12 @@ void main() {
     final orch = _orch(FakeBlePresencePort());
     final pending = ValueNotifier<InvitePrompt?>(null);
     addTearDown(pending.dispose);
-    orch.presentInvite = (prompt) async {
+    orch.presentInvite = (prompt, {required bool foreground}) async {
       pending.value = prompt;
     };
     final local = await _codec();
     final remote = await _codec();
     orch.codec = local.$1;
-    await local.$1.decode(
-      await remote.$1.encode(
-        ControlHelloBody(
-          peerId: 'remote',
-          nick: 'remote',
-          publicKeyBase64: remote.$2.publicKeyBase64,
-        ),
-        session: remote.$3,
-      ),
-      session: orch.session,
-    );
 
     await tester.pumpWidget(
       _scope(
@@ -308,10 +660,21 @@ void main() {
         ),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     final pair = FakeControlPair.connect();
     final inbound = orch.onInbound(pair.a);
+    await pair.b.send(
+      await remote.$1.encode(
+        ControlHelloBody(
+          peerId: 'remote',
+          nick: 'remote',
+          publicKeyBase64: remote.$2.publicKeyBase64,
+        ),
+        session: remote.$3,
+      ),
+    );
+    await tester.pump();
     Future<void> invite(String nick, String code) async {
       await pair.b.send(
         await remote.$1.encode(
@@ -330,8 +693,7 @@ void main() {
     }
 
     await invite('Bea', '222222');
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pumpAndSettle();
     expect(find.text('Bea'), findsOneWidget);
     await invite('Cid', '333333');
 
@@ -343,20 +705,98 @@ void main() {
     await pair.b.close();
     await inbound;
   });
+
+  testWidgets('wifi password dialog prefills the current ssid', (tester) async {
+    final orch = _orch(FakeBlePresencePort());
+    orch.readCurrentSsid = () async => 'HomeNet';
+    final pending = ValueNotifier<InvitePrompt?>(
+      const InvitePrompt(
+        nick: 'Ada',
+        code: '111111',
+        hostPlan: [],
+        useLanMine: false,
+        useLanTheirs: true,
+        usePrivateNetwork: false,
+      ),
+    );
+    addTearDown(pending.dispose);
+
+    await tester.pumpWidget(
+      _scope(
+        orch: orch,
+        pending: pending,
+        child: const MaterialApp(
+          home: Scaffold(body: NearbySection(peers: [], subnets: [])),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Accept'));
+    await tester.pumpAndSettle();
+    expect(find.text('Wi-Fi password'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField).first).controller?.text,
+      'HomeNet',
+    );
+  });
+
+  testWidgets('wifi password Join stays off until a passphrase is typed', (
+    tester,
+  ) async {
+    final orch = _orch(FakeBlePresencePort());
+    orch.readCurrentSsid = () async => 'HomeNet';
+    final pending = ValueNotifier<InvitePrompt?>(
+      const InvitePrompt(
+        nick: 'Ada',
+        code: '111111',
+        hostPlan: [],
+        useLanMine: false,
+        useLanTheirs: true,
+        usePrivateNetwork: false,
+      ),
+    );
+    addTearDown(pending.dispose);
+
+    await tester.pumpWidget(
+      _scope(
+        orch: orch,
+        pending: pending,
+        child: const MaterialApp(
+          home: Scaffold(body: NearbySection(peers: [], subnets: [])),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Accept'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextButton>(find.widgetWithText(TextButton, 'Join')).onPressed,
+      isNull,
+    );
+    await tester.enterText(find.byType(TextField).last, 'secret');
+    await tester.pump();
+    expect(
+      tester.widget<TextButton>(find.widgetWithText(TextButton, 'Join')).onPressed,
+      isNotNull,
+    );
+  });
 }
 
 ProximityOrchestrator _orch(
   FakeBlePresencePort ble, {
   FakePrivateNetworkPort? network,
+  ControlChannelPort? control,
+  OsWifiNetwork? psk,
 }) {
   return ProximityOrchestrator(
     ble: ble,
-    control: FakeControlChannelPort(),
+    control: control ?? FakeControlChannelPort(),
     network: network ?? FakePrivateNetworkPort(),
     queue: InviteQueue(),
     codec: null,
     now: DateTime.now,
-    readPersonalPsk: () async => null,
+    readPersonalPsk: () async => psk,
     openLan: (_, _) async {},
   );
 }
@@ -400,16 +840,21 @@ BleScanHit _hit(
   );
 }
 
-Peer _peer({required String host, required int port}) {
+Peer _peer({
+  required String host,
+  required int port,
+  String id = 'peer-1',
+  String identityStatus = PeerIdentityStatus.identityChanged,
+}) {
   return Peer(
-    id: 'peer-1',
+    id: id,
     nick: 'remote',
     host: host,
     port: port,
     scheme: peerSchemeHttps,
     fingerprint: 'abcd1234',
     trusted: false,
-    identityStatus: PeerIdentityStatus.identityChanged,
+    identityStatus: identityStatus,
     lastSeen: DateTime.now(),
     manual: false,
     stale: false,
@@ -466,4 +911,23 @@ Future<(ControlFrameCodec, DeviceIdentityData, ControlSession)> _codec() async {
   final identity = DeviceIdentity(InMemorySecretStore(secure: true));
   final data = await identity.ensureIdentity();
   return (ControlFrameCodec(identity), data, ControlSession());
+}
+
+class _FailConnectControl implements ControlChannelPort {
+  @override
+  Stream<ControlLink> get inbound => const Stream.empty();
+
+  @override
+  Future<ControlLink> connect(
+    String peerHandle, {
+    required ControlTransport transport,
+  }) async {
+    throw StateError('proximity radio failed: connectFailed');
+  }
+
+  @override
+  Future<void> startListening() async {}
+
+  @override
+  Future<void> stopListening() async {}
 }

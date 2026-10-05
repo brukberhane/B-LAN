@@ -10,18 +10,18 @@ alwaysApply: false
 
 - Local-only hotspot (`WifiManager.startLocalOnlyHotspot` / `startLocalOnlyHotspotWithConfiguration`)
 - Wi-Fi Direct group fallback (`WifiP2pManager`)
-- Joining a shared LAN or hotspot (`WifiNetworkSuggestion`, `WifiNetworkSpecifier`)
+- Joining a shared LAN or hotspot (`WifiNetworkSuggestion`, `WifiNetworkSpecifier`, privileged STA connect)
 
 What this spoke does not cover:
 
 - When to host → `proximity.mdc`
-- Reading a saved home PSK → `shizuku.mdc`
+- Reading a saved home PSK, and privileged STA connect → `shizuku.mdc`
 
 ## Invariants
 
 1. Private network means a local-only hotspot first. It has no internet. Close the reservation on idle or Disband.
 2. Wi-Fi Direct runs only after that device's hotspot fails, and only on Android. The group owner is the only admitter.
-3. Joining a local-only network uses `WifiNetworkSpecifier` so concurrent-STA phones can keep their other Wi-Fi. Joining a normal LAN uses the system suggestion / add-network approval. The app does not switch Wi-Fi silently.
+3. Local-only join uses `WifiNetworkSpecifier` **without** `INTERNET`, then binds the process to that network so concurrent-STA phones can keep their other Wi-Fi. A specifier request that keeps `INTERNET` is rejected and never shows a picker. LAN join is a real STA switch: privileged connect when Shizuku is ready on the joiner, else a saved suggestion plus the system Wi-Fi panel, waiting until the current SSID matches. Suggestion Join does not migrate a phone already on a healthy STA. Do not call specifier for a normal LAN.
 4. Warn before spin-up that the host's current Wi-Fi may pause. Do not migrate an in-flight transfer onto a new group owner mid-session. Host failure handling is spin-up only.
 5. Permissions: `CHANGE_WIFI_STATE`, and `NEARBY_WIFI_DEVICES` with `neverForLocation` when the app targets API 33+. Location is the pre-33 substitute, not an extra track.
 
@@ -31,6 +31,7 @@ What this spoke does not cover:
 
 - Wi-Fi Direct: https://developer.android.com/develop/connectivity/wifi/wifi-direct
 - Specifier: https://developer.android.com/reference/android/net/wifi/WifiNetworkSpecifier
+- Suggestion: https://developer.android.com/develop/connectivity/wifi/wifi-suggest
 - last consulted: 2026-10
 
 ## Problem classes
@@ -56,5 +57,37 @@ What this spoke does not cover:
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
 | App launched the DPP QR intent and still has no PSK | That intent renders a code for a passphrase the caller already passed in | Do not use it to extract. Show our own QR only after the PSK is known. Extraction is Shizuku or typed entry. |
+
+<!-- last-verified: 2026-10 -->
+
+### `Specifier with internet never connects`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| LAN join times out; no system picker; `Couldn't reach the device` | `WifiNetworkSpecifier` is local-only. A request that still asks for `INTERNET` is rejected | Remove `INTERNET` for specifier (hotspot / Wi-Fi Direct). For a normal LAN, do not use specifier |
+
+<!-- last-verified: 2026-10 -->
+
+### `Suggestion Join leaves the current STA`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| User taps the suggestion Join notification and stays on the old SSID | Suggestion saves/approves. A healthy validated STA is not displaced | Privileged connect when Shizuku is ready on the joiner. Else open the system Wi-Fi panel and wait until the current SSID matches |
+
+<!-- last-verified: 2026-10 -->
+
+### `App modal hides the system Wi-Fi sheet`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Specifier or Settings panel never appears; taps hit the in-app waiting dialog | Join ran while a Flutter modal still owned the window | Dismiss the waiting UI before the native join. Then specifier, panel, or privileged connect |
+
+<!-- last-verified: 2026-10 -->
+
+### `Privileged connect snaps back to the previous STA`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Target SSID associates, then the phone returns to the old network within seconds | Network selection prefers the previous validated-internet STA | Known, not pinned yet. Candidate: disable auto-join on the previous network for the session and restore it on leave. Do not leave auto-join off if the process dies |
 
 <!-- last-verified: 2026-10 -->

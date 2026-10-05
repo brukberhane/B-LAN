@@ -29,7 +29,7 @@ What this spoke does not cover:
 7. Control channel is classic Bluetooth, else BLE GATT. Frames are signed with Ed25519. Derived X25519 used to seal PSKs is not a second stored identity; its public value rides in the signed hello. No system Bluetooth pairing dialog and no Nearby Connections. Secrets ride only after Accept.
 8. File bytes stay on the existing pinned HTTPS client, aimed at the address delivered on the control channel.
 9. The visible switch does not keep an empty hotspot up. Idle default is 3 minutes after the last client leaves. Disband is manual and asks once. A transfer counts as in use.
-10. Legacy BLE advert payload is 31 bytes. Advert carries flags, IPv4, port, short peer id, role, group id. Nick goes in the scan response. Never a fingerprint or a password.
+10. BLE advert payload is 31 bytes: flags, IPv4, port, short peer id, role, group id; bytes 16–30 are zero padding. Android advertises two sets: one extended non-scannable packet with the full payload and the nick as service data, plus one legacy set with the first 16 payload bytes and the nick in its scan response (some controllers, e.g. Intel AX211 on BlueZ 5.87, never deliver the extended aux packet). Receivers accept 31 or 16 bytes and pad 16 to 31 before unpack. Never a fingerprint or a password. iOS still sends only a local name, because it cannot send manufacturer data.
 11. iOS gets real platform code. Unit tests mock the channel. A simulator launch does not prove Bluetooth.
 
 ## External docs
@@ -163,6 +163,22 @@ What this spoke does not cover:
 
 <!-- last-verified: 2026-10 -->
 
+### `Phones see the desktop and not each other`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A phone lists the desktop nearby and never lists another phone | The phone advert put the 31-byte payload in the advert and the nick in a scan response. The other phone's scanner kept the scan response and dropped it, because that record had no 31-byte manufacturer payload. A desktop advert that puts both fields in one packet still shows up | Put the nick service data on the same advertising packet as the manufacturer data. Do not mark that set scannable, and do not pass a scan response. Leave iOS on the local name. Linux and Mac already send both fields together |
+
+<!-- last-verified: 2026-10 -->
+
+### `Desktop sees one phone but not the other`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| The desktop lists one Android nearby and never the other, while the phones list each other | The missing phone's extended advert `AUX_ADV_IND` never reaches the desktop controller (seen on Intel AX211 + BlueZ 5.87; not provable without `sudo btmon`), so BlueZ never gets manufacturer data for that address | Android runs a second legacy-mode advert set with the first 16 payload bytes and the nick in the scan response. Every receiver accepts 16 or 31 byte manufacturer data and pads 16 to 31 before unpack |
+
+<!-- last-verified: 2026-10 -->
+
 ### `Apple scan never matches the Android advert`
 
 | Symptom | Cause | Fix |
@@ -224,5 +240,29 @@ What this spoke does not cover:
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
 | Idle fires, the radio stops, and the next check still thinks a network is up. A joiner stays on the peer network. Or a live transfer is torn down because the client count was never written | Stop calls were not the disband path, teardown never left the joined network, or in-use counts were stale | Use the same teardown as disband: clear hosted state and leave the joined network. Refresh transfer and client counts before idle or shutdown. A join or a delivered secret counts as a client |
+
+<!-- last-verified: 2026-10 -->
+
+### `GATT notify never delivers a frame`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Connect succeeds, writes go out, incoming frames never arrive | CCCD was written without enabling the local notification flag, or the reverse | Enable local notifications **and** write the CCCD. Both are required |
+
+<!-- last-verified: 2026-10 -->
+
+### `GATT client looks like an inbound server`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Both phones show accept, or hello ping-pongs on the same tap | The GATT/RFCOMM **client** announced an inbound link when its connect succeeded | Only the server path emits inbound. The client is outbound |
+
+<!-- last-verified: 2026-10 -->
+
+### `Second hello on the same link is ignored`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Retry after a finished invite never shows accept on the target | Hello was marked answered for the life of the link | Skip a duplicate hello only while an invite is still active on that link. After the queue is idle, answer again |
 
 <!-- last-verified: 2026-10 -->

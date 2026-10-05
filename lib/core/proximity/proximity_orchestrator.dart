@@ -44,12 +44,19 @@ class ProximityOrchestrator {
   final DateTime Function() now;
   Future<OsWifiNetwork?> Function() readPersonalPsk;
   Future<void> Function(String host, int port) openLan;
-  Future<void> Function(InvitePrompt prompt)? presentInvite;
+  Future<void> Function(InvitePrompt prompt, {required bool foreground})?
+  presentInvite;
+
+  /// Fires when accepting "use their network" needs a PSK the OS gate could
+  /// not supply. The UI must stage an offer and re-run the accept.
+  Future<void> Function(InvitePrompt prompt)? needsLanPassword;
+  Future<String?> Function()? readCurrentSsid;
   final Future<void> Function(String peerId)? trustPeer;
   Future<void> Function()? refreshLoad;
   Duration idle;
   bool membersCanInvite;
   String localFingerprint;
+  String localNick = '';
 
   int associatedClients = 0;
   int transfersInFlight = 0;
@@ -65,14 +72,34 @@ class ProximityOrchestrator {
   ControlLink? link;
   ControlSession session = ControlSession();
 
+  /// One session per inbound link: several initiators may connect at once,
+  /// and each hello must not stomp the others' verification keys.
+  final _linkSessions = <ControlLink, ControlSession>{};
+
+  /// Invite code → the inbound link it arrived on, so replies and secrets
+  /// go back over the initiator's own link with that initiator's session.
+  final _inviteLinks = <String, ControlLink>{};
+
   List<int> Function() advertBytes = _defaultAdvert;
   List<int> Function() scanResponseBytes = _defaultScan;
 
+  /// Also send the legacy-mode advert set when the platform supports it.
+  bool dualLegacyAdvert = true;
+
   bool _visible = false;
+  bool _foreground = false;
+  final _scanResets = StreamController<void>.broadcast();
+
+  /// Fires when a refresh drops the current scan so the list can refill.
+  Stream<void> get scanResets => _scanResets.stream;
   int _advertRetries = 0;
   StreamSubscription<ControlLink>? _inboundSub;
   DateTime? _privateUpSince;
   HotspotCredentials? _hosted;
+  OsWifiNetwork? _lanOffer;
+  var _sentHello = false;
+  final _helloReplied = <ControlLink>{};
+  var _cancelAttempt = false;
   final _inviteNicks = <String, String>{};
   final _plans = <String, List<HostStep>>{};
   final _prompts = <String, InvitePrompt>{};
@@ -92,10 +119,17 @@ class ProximityOrchestrator {
       queue: InviteQueue(),
       codec: null,
       now: DateTime.now,
-      presentInvite: (prompt) {
+      presentInvite: (prompt, {required bool foreground}) {
         if (androidInvite != null) {
           return androidInvite
-              .showInvite(nick: prompt.nick, code: prompt.code)
+              .showInvite(
+                nick: prompt.nick,
+                code: prompt.code,
+                foreground: foreground,
+                useLanTheirs: prompt.useLanTheirs,
+                useLanMine: prompt.useLanMine,
+                usePrivateNetwork: prompt.usePrivateNetwork,
+              )
               .then((_) {});
         }
         return _present();
@@ -117,6 +151,10 @@ class ProximityOrchestrator {
       },
       openLan: (_, _) async {},
     );
+    orch.readCurrentSsid = psk.readCurrentSsid;
+    if (consent != null) {
+      unawaited(consent.startListening());
+    }
     if (androidInvite != null) {
       androidInvite.inviteResults.listen((result) {
         unawaited(orch.applyInviteResult(result));
@@ -131,30 +169,68 @@ class ProximityOrchestrator {
 
   Future<void> setVisible(bool visible, {required bool foreground}) async {
     _visible = visible;
+    _foreground = foreground;
     if (!visible) {
       await ble.stopAdvert();
       await ble.stopScan();
       return;
     }
     await _startAdvert();
-    await control.startListening();
-    _listenInbound();
+    debugPrint('blan-prox: advert up');
+    try {
+      await control.startListening();
+      debugPrint('blan-prox: listening');
+      _listenInbound();
+    } catch (error) {
+      debugPrint('blan-prox: listen error $error');
+      _noteRadio(error);
+    }
     if (foreground) {
-      await ble.startScan();
+      try {
+        await ble.startScan();
+        debugPrint('blan-prox: scanning');
+      } catch (error) {
+        debugPrint('blan-prox: scan error $error');
+        _noteRadio(error);
+      }
     } else {
       await ble.stopScan();
     }
   }
 
   Future<void> onForeground() async {
+    _foreground = true;
     if (_visible) {
       await ble.startScan();
     }
   }
 
   Future<void> onBackground() async {
+    _foreground = false;
     if (_visible) {
       await ble.stopScan();
+    }
+  }
+
+  /// Restart the advert and the scan. Same idea as an mDNS re-browse.
+  Future<void> refreshRadio() async {
+    if (!_visible) {
+      return;
+    }
+    await _startAdvert();
+    if (!_foreground) {
+      return;
+    }
+    _scanResets.add(null);
+    try {
+      await ble.stopScan();
+    } catch (error) {
+      _noteRadio(error);
+    }
+    try {
+      await ble.startScan();
+    } catch (error) {
+      _noteRadio(error);
     }
   }
 
@@ -182,13 +258,17 @@ class ProximityOrchestrator {
 
   void checkIdle(DateTime at) {
     final previous = queue.active?.id;
+    final expiredCode = queue.active?.code;
     final expiredPlan = _plans[queue.active?.code];
     final expired = queue.tick(at);
     if (expired != null) {
       lastTrust = onInviteRejected();
-      final activeLink = link;
+      final activeLink = expiredCode == null ? null : _inviteLinks[expiredCode];
+      final activeSession = activeLink == null
+          ? session
+          : _linkSessions[activeLink] ?? session;
       if (expiredPlan != null && activeLink != null && codec != null) {
-        unawaited(_failOwned(expiredPlan, activeLink, session));
+        unawaited(_failOwned(expiredPlan, activeLink, activeSession));
       }
       _presentActive(previous);
     }
@@ -234,6 +314,11 @@ class ProximityOrchestrator {
     if (!isAbort(event)) {
       throw ArgumentError(event);
     }
+    _cancelAttempt = true;
+    final active = link;
+    if (active != null) {
+      await active.close();
+    }
     return switch (event) {
       UserAbort.sheetCancel => AttemptEndReason.abortedSheetCancel,
       UserAbort.codeDecline => AttemptEndReason.abortedCodeDecline,
@@ -268,7 +353,84 @@ class ProximityOrchestrator {
       throw StateError('local device unset');
     }
     remoteDevice = remote;
+    _sentHello = false;
+    _helloReplied.clear();
+    // Fresh session per attempt: the previous attempt's peer keys and
+    // accepted flag must not leak into a new invitation.
+    session = ControlSession();
     link = await _connect(peerHandle);
+  }
+
+  void stageLanOffer(OsWifiNetwork network) {
+    _lanOffer = network;
+  }
+
+  /// Ask [remote] to share the Wi-Fi it is already on, then join that network.
+  Future<AttemptEndReason> requestTheirLan({
+    required AttemptDevice remote,
+    required String peerHandle,
+    required String code,
+    VoidCallback? onBeforeJoin,
+  }) async {
+    _cancelAttempt = false;
+    if (codec == null) {
+      throw StateError('codec not bound');
+    }
+    await bindPeer(remote: remote, peerHandle: peerHandle);
+    final activeLink = link;
+    if (activeLink == null) {
+      throw StateError('local device unset');
+    }
+    await _sendHello(activeLink);
+    var invited = false;
+    try {
+      await for (final frame in activeLink.incoming) {
+        if (_cancelAttempt) {
+          return AttemptEndReason.abortedSheetCancel;
+        }
+        final body = await _requireCodec().decode(frame, session: session);
+        if (body is ControlHelloBody && !invited) {
+          invited = true;
+          await _send(
+            activeLink,
+            await _requireCodec().encode(
+              ControlInviteBody(
+                nick: localNick.isEmpty ? localDevice!.id : localNick,
+                code: code,
+                hostPlan: const [],
+                useLanMine: false,
+                useLanTheirs: true,
+                usePrivateNetwork: false,
+              ),
+              session: session,
+            ),
+          );
+        } else if (body is ControlDeclineBody) {
+          return AttemptEndReason.abortedCodeDecline;
+        } else if (body is ControlSecretBody && body.kind == 'lan') {
+          onBeforeJoin?.call();
+          if (onBeforeJoin != null) {
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+          }
+          await network.join(
+            ssid: body.ssid,
+            passphrase: body.psk,
+            security: WifiSecurity.fromWire(body.security),
+            localOnly: false,
+          );
+          return AttemptEndReason.running;
+        }
+      }
+    } catch (_) {
+      if (_cancelAttempt) {
+        return AttemptEndReason.abortedSheetCancel;
+      }
+      rethrow;
+    }
+    if (_cancelAttempt) {
+      return AttemptEndReason.abortedSheetCancel;
+    }
+    return AttemptEndReason.hostChainExhausted;
   }
 
   Future<AttemptEndReason> startPrivateAttempt({
@@ -356,9 +518,13 @@ class ProximityOrchestrator {
   }
 
   Future<void> onInbound(ControlLink link) async {
-    this.link = link;
-    await for (final frame in link.incoming) {
-      await _handleFrame(link, frame);
+    final linkSession = _linkSessions.putIfAbsent(link, ControlSession.new);
+    try {
+      await for (final frame in link.incoming) {
+        await _handleFrame(link, linkSession, frame);
+      }
+    } catch (error) {
+      debugPrint('blan-prox: inbound link dropped: $error');
     }
   }
 
@@ -369,11 +535,21 @@ class ProximityOrchestrator {
     }
     final previous = active.id;
     final plan = _plans[active.code];
-    final activeLink = link;
+    final prompt = _prompts[active.code];
+    final activeLink = _inviteLinks[active.code] ?? link;
+    final activeSession =
+        activeLink == null ? session : _linkSessions[activeLink] ?? session;
     if (result == 'accept') {
+      if (prompt != null && prompt.useLanTheirs && _lanOffer == null) {
+        // Native / background accept has no staged offer. Hand the prompt
+        // to the UI for Shizuku / typed entry instead of popping a second
+        // accept dialog or a silent Shizuku consent sheet.
+        await needsLanPassword?.call(prompt);
+        return;
+      }
       lastTrust = onInviteAccepted(
         localFingerprint: localFingerprint,
-        remoteFingerprint: session.peerFingerprint ?? '',
+        remoteFingerprint: activeSession.peerFingerprint ?? '',
       );
       queue.acceptActive();
       final peerId = knownPeerId;
@@ -385,18 +561,20 @@ class ProximityOrchestrator {
           activeLink,
           await _requireCodec().encode(
             const ControlAcceptBody(),
-            session: session,
+            session: activeSession,
           ),
         );
         if (plan != null) {
-          await _hostOwned(plan, activeLink, session);
+          await _hostOwned(plan, activeLink, activeSession);
         }
+        await _sendLanOffer(activeLink, activeSession);
       }
     } else if (result == 'decline') {
+      _lanOffer = null;
       lastTrust = onInviteRejected();
       queue.declineActive();
       if (activeLink != null && plan != null) {
-        await _failOwned(plan, activeLink, session);
+        await _failOwned(plan, activeLink, activeSession);
       }
     }
     _presentActive(previous);
@@ -423,11 +601,18 @@ class ProximityOrchestrator {
     return AttemptEndReason.running;
   }
 
+  void _noteRadio(Object error) {
+    final text = error.toString();
+    final current = advertError;
+    advertError = current == null || current.isEmpty ? text : '$current\n$text';
+  }
+
   Future<void> _startAdvert() async {
     try {
       await ble.startAdvert(
         payload: advertBytes(),
         scanResponse: scanResponseBytes(),
+        dualLegacy: dualLegacyAdvert,
       );
       advertError = null;
     } catch (error) {
@@ -436,13 +621,16 @@ class ProximityOrchestrator {
   }
 
   Future<ControlLink> _connect(String peerHandle) async {
+    // Scan handles are always LE addresses (rotating RPAs): classic RFCOMM
+    // cannot route them, so GATT goes first and RFCOMM is the fallback for
+    // peers that expose a classic address.
     try {
       return await control.connect(
         peerHandle,
-        transport: ControlTransport.rfcomm,
+        transport: ControlTransport.gatt,
       );
     } on StateError {
-      return control.connect(peerHandle, transport: ControlTransport.gatt);
+      return control.connect(peerHandle, transport: ControlTransport.rfcomm);
     }
   }
 
@@ -465,14 +653,21 @@ class ProximityOrchestrator {
     throw StateError('control link closed');
   }
 
-  Future<void> _handleFrame(ControlLink link, Map<String, dynamic> frame) async {
-    final body = await _requireCodec().decode(frame, session: session);
+  Future<void> _handleFrame(
+    ControlLink link,
+    ControlSession linkSession,
+    Map<String, dynamic> frame,
+  ) async {
+    final body = await _requireCodec().decode(frame, session: linkSession);
     if (body is ControlHelloBody) {
+      debugPrint('blan-prox: inbound hello link=$link');
+      await _replyHello(link, linkSession);
       return;
     }
     if (body is ControlInviteBody) {
       _inviteNicks[body.code] = body.nick;
       _plans[body.code] = body.hostPlan;
+      _inviteLinks[body.code] = link;
       final prompt = InvitePrompt(
         nick: body.nick,
         code: body.code,
@@ -484,7 +679,7 @@ class ProximityOrchestrator {
       _prompts[body.code] = prompt;
       final request = InviteRequest(
         id: body.code,
-        initiatorFingerprint: session.peerFingerprint ?? '',
+        initiatorFingerprint: linkSession.peerFingerprint ?? '',
         targetFingerprint: localFingerprint,
         code: body.code,
         enqueuedAt: now(),
@@ -492,14 +687,14 @@ class ProximityOrchestrator {
       final wasActive = queue.active?.id;
       queue.enqueue(request);
       if (queue.active?.id == request.id && queue.active?.id != wasActive) {
-        await presentInvite?.call(prompt);
+        await presentInvite?.call(prompt, foreground: _foreground);
       }
       return;
     }
     if (body is ControlAcceptBody) {
       lastTrust = onInviteAccepted(
         localFingerprint: localFingerprint,
-        remoteFingerprint: session.peerFingerprint ?? '',
+        remoteFingerprint: linkSession.peerFingerprint ?? '',
       );
       final peerId = knownPeerId;
       if (peerId != null) {
@@ -507,7 +702,7 @@ class ProximityOrchestrator {
       }
       final plan = _plans[queue.active?.code];
       if (plan != null) {
-        await _hostOwned(plan, link, session);
+        await _hostOwned(plan, link, linkSession);
       }
       return;
     }
@@ -517,7 +712,7 @@ class ProximityOrchestrator {
       lastTrust = onInviteRejected();
       queue.declineActive();
       if (plan != null) {
-        await _failOwned(plan, link, session);
+        await _failOwned(plan, link, linkSession);
       }
       _presentActive(previous);
     }
@@ -637,6 +832,95 @@ class ProximityOrchestrator {
     return true;
   }
 
+  /// Responder path: a peer's hello always gets our hello back, over that
+  /// peer's own link and session. The initiator-only [_sentHello] guard
+  /// must never suppress this reply. While an invite is active, extra hellos
+  /// are ignored so the two ends cannot ping-pong. After the invite finishes,
+  /// a new hello must be answered or a retry never sends invite.
+  Future<void> _replyHello(ControlLink link, ControlSession linkSession) async {
+    if (codec == null || localDevice == null) {
+      debugPrint(
+        'blan-prox: hello reply skipped codec=${codec != null} '
+        'local=${localDevice != null}',
+      );
+      return;
+    }
+    if (_helloReplied.contains(link) && queue.active != null) {
+      debugPrint('blan-prox: hello reply skipped invite-active');
+      return;
+    }
+    final identity = await _requireCodec().identity.ensureIdentity();
+    _helloReplied.add(link);
+    await _send(
+      link,
+      await _requireCodec().encode(
+        ControlHelloBody(
+          peerId: localDevice!.id,
+          nick: localNick.isEmpty ? localDevice!.id : localNick,
+          publicKeyBase64: identity.publicKeyBase64,
+          wifiSsid: await _wifiSsid(),
+        ),
+        session: linkSession,
+      ),
+    );
+  }
+
+  Future<void> _sendHello(ControlLink link) async {
+    if (_sentHello || codec == null || localDevice == null) {
+      debugPrint(
+        'blan-prox: hello skipped sent=$_sentHello codec=${codec != null} '
+        'local=${localDevice != null}',
+      );
+      return;
+    }
+    final identity = await _requireCodec().identity.ensureIdentity();
+    _sentHello = true;
+    await _send(
+      link,
+      await _requireCodec().encode(
+        ControlHelloBody(
+          peerId: localDevice!.id,
+          nick: localNick.isEmpty ? localDevice!.id : localNick,
+          publicKeyBase64: identity.publicKeyBase64,
+          wifiSsid: await _wifiSsid(),
+        ),
+        session: session,
+      ),
+    );
+  }
+
+  Future<String?> _wifiSsid() async {
+    try {
+      final ssid = await readCurrentSsid?.call();
+      if (ssid == null || ssid.isEmpty) {
+        return null;
+      }
+      return ssid;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _sendLanOffer(ControlLink link, ControlSession session) async {
+    final offer = _lanOffer;
+    _lanOffer = null;
+    if (offer == null || codec == null) {
+      return;
+    }
+    await _send(
+      link,
+      await _requireCodec().encode(
+        ControlSecretBody(
+          ssid: offer.ssid,
+          psk: offer.passphrase,
+          security: offer.security.wire,
+          kind: 'lan',
+        ),
+        session: session,
+      ),
+    );
+  }
+
   Future<void> _sendFailure(
     HostStep step,
     ControlLink link,
@@ -664,7 +948,7 @@ class ProximityOrchestrator {
     if (prompt == null) {
       return;
     }
-    unawaited(present(prompt));
+    unawaited(present(prompt, foreground: _foreground));
   }
 
   Future<void> _stopPrivate() async {
@@ -692,6 +976,12 @@ class ProximityOrchestrator {
     }
     return bound;
   }
+
+  /// Session bound to an inbound link. Tests use it to prime or manipulate
+  /// a specific initiator's session.
+  @visibleForTesting
+  ControlSession sessionFor(ControlLink link) =>
+      _linkSessions.putIfAbsent(link, ControlSession.new);
 
   static Object _platformRadios() {
     if (Platform.isAndroid) {

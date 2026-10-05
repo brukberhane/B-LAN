@@ -261,6 +261,18 @@ class AppDatabase extends _$AppDatabase {
     await setSetting('nearby_members_can_invite', enabled ? '1' : '0');
   }
 
+  /// Also send a legacy-mode advert set (Android dual advert). Default off:
+  /// extended-only is the proven config; the legacy set exists as an
+  /// emergency toggle for receivers whose firmware drops extended packets.
+  Future<bool> nearbyDualAdvert() async {
+    final raw = await getSetting('nearby_dual_advert', defaultValue: '0');
+    return raw != '0';
+  }
+
+  Future<void> setNearbyDualAdvert(bool enabled) async {
+    await setSetting('nearby_dual_advert', enabled ? '1' : '0');
+  }
+
   Future<bool> nearbyShizukuAllowed() async {
     final raw = await getSetting('nearby_shizuku_allowed', defaultValue: '0');
     return raw == '1';

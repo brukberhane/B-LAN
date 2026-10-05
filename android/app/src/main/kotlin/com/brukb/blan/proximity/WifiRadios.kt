@@ -2,11 +2,13 @@ package com.brukb.blan.proximity
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.wifi.WifiConfiguration
+import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.net.wifi.WifiNetworkSpecifier
 import android.net.wifi.WifiNetworkSuggestion
@@ -14,6 +16,8 @@ import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.provider.Settings
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -203,10 +207,31 @@ class WifiRadios(private val context: Context) {
 
     fun join(ssid: String, passphrase: String, security: String, localOnly: Boolean) {
         if (localOnly) {
-            joinLocalOnly(ssid, passphrase, security)
-        } else {
-            suggestNetwork(ssid, passphrase, security)
+            joinSpecifier(ssid, passphrase, security)
+            return
         }
+        joinLan(ssid, passphrase, security)
+    }
+
+    /** Save PSK, open the system Wi-Fi panel, wait until the STA SSID matches. */
+    private fun joinLan(ssid: String, passphrase: String, security: String) {
+        try {
+            suggestNetwork(ssid, passphrase, security)
+        } catch (_: RadioException) {
+            android.util.Log.w("blan-ctl", "lan suggestion persist failed")
+        }
+        android.util.Log.i("blan-ctl", "lan wifi panel")
+        val intent = Intent(Settings.Panel.ACTION_WIFI).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+        val deadline = SystemClock.elapsedRealtime() + 60_000L
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (currentSsid() == ssid) {
+                android.util.Log.i("blan-ctl", "lan ssid match")
+                return
+            }
+            Thread.sleep(400)
+        }
+        throw RadioException("joinFailed")
     }
 
     private val connectivityManager =
@@ -219,7 +244,11 @@ class WifiRadios(private val context: Context) {
     @Volatile
     private var suggestion: WifiNetworkSuggestion? = null
 
-    private fun joinLocalOnly(ssid: String, passphrase: String, security: String) {
+    private fun joinSpecifier(
+        ssid: String,
+        passphrase: String,
+        security: String,
+    ) {
         // WifiNetworkSpecifier is API 29+; the 3-arg requestNetwork (timeout)
         // is API 28+. Older devices cannot join a local-only network.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -241,23 +270,29 @@ class WifiRadios(private val context: Context) {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 joinedNetwork = network
+                try {
+                    connectivityManager.bindProcessToNetwork(network)
+                } catch (_: Exception) {
+                }
+                android.util.Log.i("blan-ctl", "joinSpecifier onAvailable")
                 available.countDown()
             }
 
             override fun onUnavailable() {
+                android.util.Log.w("blan-ctl", "joinSpecifier onUnavailable")
                 available.countDown()
             }
         }
         joinedCallback = callback
-        connectivityManager.requestNetwork(request, callback, 30_000)
-        if (!available.await(35, TimeUnit.SECONDS) || joinedNetwork == null) {
+        android.util.Log.i("blan-ctl", "joinSpecifier")
+        connectivityManager.requestNetwork(request, callback, 60_000)
+        if (!available.await(65, TimeUnit.SECONDS) || joinedNetwork == null) {
             leaveJoined()
             throw RadioException("joinFailed")
         }
     }
 
     private fun suggestNetwork(ssid: String, passphrase: String, security: String) {
-        leaveJoined()
         val builder = WifiNetworkSuggestion.Builder().setSsid(ssid)
         if (security == "wpa3-sae") {
             builder.setWpa3Passphrase(passphrase)
@@ -266,13 +301,20 @@ class WifiRadios(private val context: Context) {
         }
         val suggestion = builder.build()
         val result = wifiManager.addNetworkSuggestions(listOf(suggestion))
-        if (result != WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS) {
+        android.util.Log.i("blan-ctl", "suggestNetwork status=$result")
+        if (result != WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS &&
+            result != WifiManager.STATUS_NETWORK_SUGGESTIONS_ERROR_ADD_DUPLICATE
+        ) {
             throw RadioException("joinFailed")
         }
         this.suggestion = suggestion
     }
 
     fun leaveJoined() {
+        try {
+            connectivityManager.bindProcessToNetwork(null)
+        } catch (_: Exception) {
+        }
         joinedCallback?.let { cb ->
             joinedCallback = null
             joinedNetwork = null
@@ -286,6 +328,30 @@ class WifiRadios(private val context: Context) {
                 wifiManager.removeNetworkSuggestions(listOf(s))
             } catch (_: Exception) {}
         }
+    }
+
+    /** Connected SSID, or null when unknown / off / redacted. Never a passphrase. */
+    @SuppressLint("MissingPermission")
+    fun currentSsid(): String? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val network = connectivityManager.activeNetwork
+            val caps = connectivityManager.getNetworkCapabilities(network)
+            val info = caps?.transportInfo as? WifiInfo
+            sanitizeSsid(info?.ssid)?.let { return it }
+        }
+        @Suppress("DEPRECATION")
+        return sanitizeSsid(wifiManager.connectionInfo?.ssid)
+    }
+
+    private fun sanitizeSsid(raw: String?): String? {
+        if (raw.isNullOrEmpty()) return null
+        val ssid = if (raw.length >= 2 && raw.startsWith("\"") && raw.endsWith("\"")) {
+            raw.substring(1, raw.length - 1)
+        } else {
+            raw
+        }
+        if (ssid.isEmpty() || ssid == "<unknown ssid>") return null
+        return ssid
     }
 
     data class Creds(val ssid: String, val passphrase: String, val security: String)

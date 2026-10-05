@@ -57,6 +57,7 @@ class ShizukuBridge(private val context: Context) {
     }
 
     fun state(): String {
+        startListening()
         return try {
             if (!Shizuku.pingBinder()) {
                 return if (providerInstalled()) "dead" else "notInstalled"
@@ -135,27 +136,59 @@ class ShizukuBridge(private val context: Context) {
         }
     }
 
-    fun readPersonalPsk(): Map<String, String>? {
-        if (!Shizuku.pingBinder() ||
+    fun readPersonalPsk(ssidHint: String? = null): Map<String, String>? {
+        val raw = callUserService(8) { service -> service.readPersonal(ssidHint.orEmpty()) }
+        val got = parsePersonal(raw)
+        android.util.Log.i(
+            "blan-ctl",
+            "shizuku read ssid=${got?.get("ssid") ?: "-"} psk=${if (got?.get("passphrase").isNullOrEmpty()) "no" else "yes"}",
+        )
+        return got
+    }
+
+    /** Privileged STA switch. Passphrase stays in the binder call; never logged. */
+    fun connectPersonal(ssid: String, passphrase: String, security: String): Boolean {
+        if (ssid.isEmpty() || passphrase.isEmpty()) {
+            return false
+        }
+        val reply = callUserService(40) { service ->
+            service.connectPersonal(ssid, passphrase, security)
+        }
+        val ok = reply == "ok"
+        android.util.Log.i("blan-ctl", "shizuku connect ssid=$ssid ok=$ok")
+        return ok
+    }
+
+    private fun <T> callUserService(timeoutSec: Long, block: (IWifiPsk) -> T): T? {
+        if (!ensureBinder() ||
             Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED
         ) {
+            val ping = try {
+                Shizuku.pingBinder()
+            } catch (_: Exception) {
+                false
+            }
+            android.util.Log.i(
+                "blan-ctl",
+                "shizuku call skipped ping=$ping state=${state()}",
+            )
             return null
         }
         val latch = CountDownLatch(1)
-        val holder = AtomicReference<Map<String, String>?>()
+        val holder = AtomicReference<T?>()
         val args = Shizuku.UserServiceArgs(
             ComponentName(context, WifiPskService::class.java),
         )
             .daemon(false)
             .processNameSuffix("psk")
             .debuggable(isDebuggable())
-            .version(1)
+            .version(6)
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
                 try {
-                    val raw = IWifiPsk.Stub.asInterface(service).readPersonal()
-                    holder.set(parsePersonal(raw))
-                } catch (_: Exception) {
+                    holder.set(block(IWifiPsk.Stub.asInterface(service)))
+                } catch (error: Exception) {
+                    android.util.Log.w("blan-ctl", "shizuku user-service call failed: $error")
                     holder.set(null)
                 } finally {
                     latch.countDown()
@@ -169,12 +202,15 @@ class ShizukuBridge(private val context: Context) {
         userConnection = connection
         return try {
             Shizuku.bindUserService(args, connection)
-            if (!latch.await(8, TimeUnit.SECONDS)) {
+            val ok = latch.await(timeoutSec, TimeUnit.SECONDS)
+            if (!ok) {
+                android.util.Log.w("blan-ctl", "shizuku user-service bind timeout")
                 null
             } else {
                 holder.get()
             }
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            android.util.Log.w("blan-ctl", "shizuku bind failed: $error")
             null
         } finally {
             unbind()
@@ -211,6 +247,30 @@ class ShizukuBridge(private val context: Context) {
         }
     }
 
+    /** Binder attach is triggered by the sticky listener; wait off the main thread. */
+    private fun ensureBinder(): Boolean {
+        fun ping(): Boolean = try {
+            Shizuku.pingBinder()
+        } catch (_: Exception) {
+            false
+        }
+        if (ping()) {
+            return true
+        }
+        startListening()
+        repeat(10) {
+            if (ping()) {
+                return true
+            }
+            try {
+                Thread.sleep(100)
+            } catch (_: InterruptedException) {
+                return ping()
+            }
+        }
+        return ping()
+    }
+
     private fun parsePersonal(raw: String?): Map<String, String>? {
         if (raw.isNullOrEmpty()) {
             return null
@@ -219,7 +279,7 @@ class ShizukuBridge(private val context: Context) {
         val ssid = json.optString("ssid")
         val passphrase = json.optString("passphrase")
         val security = json.optString("security")
-        if (ssid.isEmpty() || passphrase.isEmpty() || security.isEmpty()) {
+        if (ssid.isEmpty() || security.isEmpty()) {
             return null
         }
         return mapOf("ssid" to ssid, "passphrase" to passphrase, "security" to security)

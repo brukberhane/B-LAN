@@ -3,6 +3,7 @@ package com.brukb.blan.proximity
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -39,13 +40,18 @@ class ProximityPlugin(
     private val control = ControlRadio(
         context,
         onInboundLink = { linkId, transport ->
+            Log.i("blan-ctl", "inbound link id=$linkId transport=$transport")
             main.post { inboundSink?.success(mapOf("linkId" to linkId, "transport" to transport)) }
         },
         onFrame = { linkId, json ->
+            Log.i(
+                "blan-ctl",
+                "frame link=$linkId bytes=${json.take(120)}",
+            )
             main.post { frameSink?.success(mapOf("linkId" to linkId, "frameJson" to json)) }
         },
-        onLinkClosed = { _ ->
-            // Link closure is surfaced by Dart when a send/read fails; nothing to push yet.
+        onLinkClosed = { linkId ->
+            Log.i("blan-ctl", "link closed id=$linkId")
         },
     )
 
@@ -119,12 +125,13 @@ class ProximityPlugin(
             "startAdvert" -> {
                 val payload = call.argument<ByteArray>("payload")
                 val scanResponse = call.argument<ByteArray>("scanResponse")
+                val dualAdvert = call.argument<Boolean>("dualAdvert") ?: true
                 if (payload == null || scanResponse == null) {
                     result.success(mapOf("error" to "badArgs"))
                     return
                 }
                 try {
-                    ble.startAdvert(payload, scanResponse)
+                    ble.startAdvert(payload, scanResponse, dualAdvert)
                     result.success(null)
                 } catch (error: Exception) {
                     result.success(mapOf("error" to "advertFailed"))
@@ -157,11 +164,14 @@ class ProximityPlugin(
                     result.success(mapOf("error" to "badArgs"))
                     return
                 }
+                Log.i("blan-ctl", "connect to $peerHandle transport=$transport")
                 radioPool.execute {
                     try {
                         val link = control.connect(peerHandle, transport)
+                        Log.i("blan-ctl", "connect ok linkId=${link.id}")
                         main.post { result.success(link.id) }
                     } catch (error: Exception) {
+                        Log.w("blan-ctl", "connect failed: $error", error)
                         main.post { result.success(mapOf("error" to "connectFailed")) }
                     }
                 }
@@ -170,8 +180,10 @@ class ProximityPlugin(
             "startListening" -> {
                 try {
                     control.startListening()
+                    Log.i("blan-ctl", "listening (rfcomm + gatt server)")
                     result.success(null)
                 } catch (error: Exception) {
+                    Log.w("blan-ctl", "listen failed: $error", error)
                     result.success(mapOf("error" to "listenFailed"))
                 }
             }
@@ -193,6 +205,7 @@ class ProximityPlugin(
                         control.sendFrame(linkId, frameJson)
                         main.post { result.success(null) }
                     } catch (error: Exception) {
+                        Log.w("blan-ctl", "send failed link=$linkId: $error", error)
                         main.post { result.success(mapOf("error" to "sendFailed")) }
                     }
                 }
@@ -271,6 +284,14 @@ class ProximityPlugin(
                 }
                 radioPool.execute {
                     try {
+                        if (!localOnly && shizuku.connectPersonal(ssid, passphrase, security)) {
+                            Log.i("blan-ctl", "lan shizuku connect ok")
+                            main.post { result.success(null) }
+                            return@execute
+                        }
+                        if (!localOnly) {
+                            Log.w("blan-ctl", "lan shizuku connect miss, wifi panel")
+                        }
                         wifi.join(ssid, passphrase, security, localOnly)
                         main.post { result.success(null) }
                     } catch (error: WifiRadios.RadioException) {
@@ -291,8 +312,16 @@ class ProximityPlugin(
             "showInvite" -> {
                 val nick = call.argument<String>("nick") ?: "Unknown peer"
                 val code = call.argument<String>("code") ?: "------"
+                val foreground = call.argument<Boolean>("foreground") ?: false
+                val inviteIntent = InviteIntent(
+                    useLanTheirs = call.argument<Boolean>("useLanTheirs") ?: false,
+                    useLanMine = call.argument<Boolean>("useLanMine") ?: false,
+                    usePrivateNetwork =
+                        call.argument<Boolean>("usePrivateNetwork") ?: false,
+                )
                 try {
-                    val path = InvitePresenter.showInvite(context, nick, code)
+                    val path =
+                        InvitePresenter.showInvite(context, nick, code, foreground, inviteIntent)
                     result.success(path)
                 } catch (error: Exception) {
                     result.success(mapOf("error" to "inviteFailed"))
@@ -349,11 +378,26 @@ class ProximityPlugin(
 
             "readPersonalPsk" -> radioPool.execute {
                 val creds = try {
-                    shizuku.readPersonalPsk()
+                    shizuku.readPersonalPsk(wifi.currentSsid())
                 } catch (_: Exception) {
                     null
                 }
+                Log.i(
+                    "blan-ctl",
+                    "readPersonalPsk ssid=${creds?.get("ssid") ?: "-"} psk=${if (creds?.get("passphrase").isNullOrEmpty()) "no" else "yes"}",
+                )
                 main.post { result.success(creds) }
+            }
+
+            "currentSsid" -> radioPool.execute {
+                val ssid = try {
+                    wifi.currentSsid()
+                        ?: shizuku.readPersonalPsk(null)?.get("ssid")?.takeIf { it.isNotEmpty() }
+                } catch (_: Exception) {
+                    null
+                }
+                Log.i("blan-ctl", "currentSsid=${ssid ?: "-"}")
+                main.post { result.success(ssid) }
             }
 
             else -> result.notImplemented()

@@ -8,10 +8,11 @@ import '../../core/proximity/proximity_ids.dart';
 import '../../core/proximity/proximity_radios.dart';
 
 class BluezScanHit {
-  const BluezScanHit(this.path, this.manufacturer);
+  const BluezScanHit(this.path, this.manufacturer, [this.service = const []]);
 
   final String path;
   final List<int> manufacturer;
+  final List<int> service;
 }
 
 abstract class BluezSession {
@@ -159,6 +160,7 @@ class DBusBluezSession implements BluezSession {
   _BluezAdvert? _advert;
   DBusObjectPath? _adapter;
   final _scans = StreamController<BluezScanHit>.broadcast();
+  final _sightings = BluezSightings();
 
   @override
   Stream<BluezScanHit> get scans => _scans.stream;
@@ -264,6 +266,7 @@ class DBusBluezSession implements BluezSession {
     final client = await _bus();
     final adapter = await _adapterPath();
     _scanSub ??= _manager!.signals.listen(_onSignal);
+    await _seedKnownDevices();
     final remote = DBusRemoteObject(client, name: 'org.bluez', path: adapter);
     try {
       await remote.callMethod('org.bluez.Adapter1', 'SetDiscoveryFilter', [
@@ -278,7 +281,27 @@ class DBusBluezSession implements BluezSession {
         replySignature: DBusSignature(''),
       );
     } catch (error) {
+      if ('$error'.contains('InProgress')) {
+        return;
+      }
       throw StateError('bluez scan: $error');
+    }
+  }
+
+  Future<void> _seedKnownDevices() async {
+    final objects = await _manager!.getManagedObjects();
+    for (final entry in objects.entries) {
+      final device = entry.value['org.bluez.Device1'];
+      if (device == null) {
+        continue;
+      }
+      _emit(
+        entry.key.value,
+        manufacturer: device['ManufacturerData'],
+        touchManufacturer: device.containsKey('ManufacturerData'),
+        service: device['ServiceData'],
+        touchService: device.containsKey('ServiceData'),
+      );
     }
   }
 
@@ -307,21 +330,48 @@ class DBusBluezSession implements BluezSession {
   void _onSignal(DBusSignal signal) {
     if (signal is DBusObjectManagerInterfacesAddedSignal) {
       final device = signal.interfacesAndProperties['org.bluez.Device1'];
-      _emit(signal.changedPath.value, device?['ManufacturerData']);
+      if (device == null) {
+        return;
+      }
+      _emit(
+        signal.changedPath.value,
+        manufacturer: device['ManufacturerData'],
+        touchManufacturer: device.containsKey('ManufacturerData'),
+        service: device['ServiceData'],
+        touchService: device.containsKey('ServiceData'),
+      );
       return;
     }
     if (signal is DBusPropertiesChangedSignal &&
         signal.propertiesInterface == 'org.bluez.Device1') {
-      _emit(signal.path.value, signal.changedProperties['ManufacturerData']);
+      final changed = signal.changedProperties;
+      _emit(
+        signal.path.value,
+        manufacturer: changed['ManufacturerData'],
+        touchManufacturer: changed.containsKey('ManufacturerData'),
+        service: changed['ServiceData'],
+        touchService: changed.containsKey('ServiceData'),
+      );
     }
   }
 
-  void _emit(String path, DBusValue? manufacturer) {
-    final bytes = manufacturerPayload(manufacturer);
-    if (bytes == null || bytes.length != 31) {
-      return;
+  void _emit(
+    String path, {
+    DBusValue? manufacturer,
+    bool touchManufacturer = false,
+    DBusValue? service,
+    bool touchService = false,
+  }) {
+    final hit = _sightings.update(
+      path,
+      manufacturer: manufacturer,
+      touchManufacturer: touchManufacturer,
+      service: service,
+      touchService: touchService,
+    );
+    if (hit != null) {
+      _scans.add(hit);
     }
-    _scans.add(BluezScanHit(path, bytes));
   }
 
   @override
@@ -494,6 +544,19 @@ class DBusBluezGatt implements BluezGatt {
     if (characteristic == null) {
       throw StateError('gatt characteristic missing');
     }
+    // The peer's replies arrive as notifications; BlueZ only forwards them
+    // once StartNotify registers the client for the characteristic.
+    try {
+      await DBusRemoteObject(client, name: 'org.bluez', path: characteristic)
+          .callMethod(
+            'org.bluez.GattCharacteristic1',
+            'StartNotify',
+            const [],
+            replySignature: DBusSignature(''),
+          );
+    } catch (error) {
+      throw StateError('gatt notify: $error');
+    }
     final incoming = StreamController<Map<String, dynamic>>.broadcast();
     final buffer = FrameBuffer();
     final subscription = _manager!.signals.listen((signal) {
@@ -619,6 +682,44 @@ DBusObjectPath? characteristicUnder(
 
 bool _dbusBool(DBusValue? value) => value is DBusBoolean && value.value;
 
+/// Remembers manufacturer and service-data bytes per device. BlueZ often
+/// delivers those two properties in separate signals.
+class BluezSightings {
+  final _devices = <String, _BluezDevice>{};
+
+  BluezScanHit? update(
+    String path, {
+    DBusValue? manufacturer,
+    bool touchManufacturer = false,
+    DBusValue? service,
+    bool touchService = false,
+  }) {
+    final seen = _devices.putIfAbsent(path, _BluezDevice.new);
+    if (touchManufacturer) {
+      seen.manufacturer = manufacturerPayload(manufacturer);
+      final bytes = seen.manufacturer;
+      // The Android legacy advert set carries only the first 16 bytes; the
+      // rest is zero padding in the packed format.
+      if (bytes != null && bytes.length == 16) {
+        seen.manufacturer = [...bytes, ...List<int>.filled(15, 0)];
+      }
+    }
+    if (touchService) {
+      seen.service = serviceDataPayload(service) ?? const [];
+    }
+    final bytes = seen.manufacturer;
+    if (bytes == null || bytes.length != 31) {
+      return null;
+    }
+    return BluezScanHit(path, bytes, List<int>.from(seen.service));
+  }
+}
+
+class _BluezDevice {
+  List<int>? manufacturer;
+  List<int> service = const [];
+}
+
 List<int>? manufacturerPayload(DBusValue? value) {
   final dict = value is DBusVariant ? value.value : value;
   if (dict is! DBusDict) {
@@ -627,6 +728,27 @@ List<int>? manufacturerPayload(DBusValue? value) {
   for (final entry in dict.children.entries) {
     if (entry.key is! DBusUint16 ||
         entry.key.asUint16() != ProximityIds.manufacturerId) {
+      continue;
+    }
+    final inner = entry.value is DBusVariant
+        ? (entry.value as DBusVariant).value
+        : entry.value;
+    if (inner is DBusArray) {
+      return inner.asByteArray().toList();
+    }
+  }
+  return null;
+}
+
+List<int>? serviceDataPayload(DBusValue? value) {
+  final dict = value is DBusVariant ? value.value : value;
+  if (dict is! DBusDict) {
+    return null;
+  }
+  final want = ProximityIds.bleServiceUuid.toLowerCase();
+  for (final entry in dict.children.entries) {
+    final key = entry.key;
+    if (key is! DBusString || key.value.toLowerCase() != want) {
       continue;
     }
     final inner = entry.value is DBusVariant

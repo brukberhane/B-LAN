@@ -16,4 +16,7 @@ object ProximityIds {
     /** GATT fallback control channel. */
     val GATT_SERVICE_UUID: UUID = UUID.fromString("9f1c2b3a-4d5e-4f60-8a1b-2c3d4e5f6a7b")
     val GATT_CHARACTERISTIC_UUID: UUID = UUID.fromString("9f1c2b3a-4d5e-4f60-8a1b-2c3d4e5f6a7c")
+
+    /** Client Characteristic Configuration descriptor: enables notify. */
+    val CLIENT_CONFIG_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 }

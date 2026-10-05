@@ -47,6 +47,7 @@ class LinuxProximityRadios
   Future<void> startAdvert({
     required List<int> payload,
     required List<int> scanResponse,
+    bool dualLegacy = true,
   }) async {
     assertAdvertPayload(payload);
     await _session.advertise(manufacturer: payload, nick: scanResponse);
@@ -64,7 +65,7 @@ class LinuxProximityRadios
       _scans.add(
         BleScanHit(
           advert: hit.manufacturer,
-          scanResponse: const [],
+          scanResponse: hit.service,
           peerHandle: hit.path,
         ),
       );
@@ -123,6 +124,9 @@ class LinuxProximityRadios
 
   @override
   Future<OsWifiNetwork?> readCurrentPersonalPsk() => _nm.readPersonal();
+
+  @override
+  Future<String?> readCurrentSsid() => _nm.currentSsid();
 }
 
 class LinuxInvitePresenter {

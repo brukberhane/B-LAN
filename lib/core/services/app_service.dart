@@ -98,6 +98,7 @@ class AppService {
   late final SearchService searchService;
   final searchIndexStatus = ValueNotifier(const SearchIndexState());
   final pendingInvite = ValueNotifier<InvitePrompt?>(null);
+  final pendingLanPassword = ValueNotifier<InvitePrompt?>(null);
   Future<void>? _searchIndexTask;
   final _log = Logger('AppService');
   final _uuid = const Uuid();
@@ -316,6 +317,23 @@ class AppService {
     proximity?.membersCanInvite = allowed;
   }
 
+  Future<void> setNearbyDualAdvert(bool enabled) async {
+    await db.setNearbyDualAdvert(enabled);
+    final orch = proximity;
+    if (orch == null) {
+      return;
+    }
+    orch.dualLegacyAdvert = enabled;
+    await orch.refreshRadio();
+  }
+
+  /// Records the ask-once Shizuku answer. The nearby sheet performs the
+  /// asking; this persists it so the read gate does not ask again.
+  Future<void> setNearbyShizukuAllowed(bool allowed) =>
+      db.setNearbyShizukuAllowed(allowed);
+
+  Future<bool?> nearbyShizukuChoice() => db.nearbyShizukuChoice();
+
   Future<void> disbandNearby() => proximity?.disband() ?? Future<void>.value();
 
   Future<void> rememberWifi({
@@ -343,8 +361,10 @@ class AppService {
   }) async {
     final orch = proximity;
     if (orch == null) {
+      debugPrint('blan-prox: no orchestrator');
       return;
     }
+    debugPrint('blan-prox: startProximity begin');
     final identity = await DeviceIdentity(_secrets!).ensureIdentity();
     orch.codec = ControlFrameCodec(DeviceIdentity(_secrets!));
     orch.localFingerprint = identity.fingerprint;
@@ -369,22 +389,39 @@ class AppService {
       role: AdvertRole.none,
       groupId: const [0, 0, 0, 0],
     ).pack();
+    orch.localNick = shown;
     orch.scanResponseBytes = () => utf8.encode(shown);
     orch.idle = Duration(minutes: await db.nearbyIdleMinutes());
     orch.membersCanInvite = await db.nearbyMembersCanInvite();
+    orch.dualLegacyAdvert = await db.nearbyDualAdvert();
     final platformPresent = orch.presentInvite;
-    orch.presentInvite = (prompt) async {
-      pendingInvite.value = prompt;
-      final androidPaused = !kIsWeb && Platform.isAndroid && !_resumed;
-      if (androidPaused || kIsWeb || !Platform.isAndroid) {
-        await platformPresent?.call(prompt);
+    orch.presentInvite = (prompt, {required bool foreground}) async {
+      // Foreground Android uses the Flutter bottom sheet only. Native
+      // InviteActivity is the background / lock-screen path — showing both
+      // stacked two accept dialogs on the Fold.
+      if (!kIsWeb && Platform.isAndroid) {
+        if (foreground) {
+          pendingInvite.value = prompt;
+          return;
+        }
+        await platformPresent?.call(prompt, foreground: foreground);
+        return;
       }
+      pendingInvite.value = prompt;
+      await platformPresent?.call(prompt, foreground: foreground);
+    };
+    orch.needsLanPassword = (prompt) async {
+      pendingLanPassword.value = prompt;
     };
     _nearbyIdleTimer ??= Timer.periodic(const Duration(seconds: 30), (_) {
       unawaited(_tickNearbyIdle());
     });
     if (await db.nearbyVisible()) {
+      debugPrint('blan-prox: starting radio (foreground)');
       await orch.start(foreground: true);
+      debugPrint('blan-prox: radio started');
+    } else {
+      debugPrint('blan-prox: nearby not visible, radio not started');
     }
   }
 
@@ -485,6 +522,7 @@ class AppService {
     _nearbyIdleTimer?.cancel();
     _nearbyIdleTimer = null;
     pendingInvite.dispose();
+    pendingLanPassword.dispose();
     _shareWatcher?.dispose();
     _shareWatcher = null;
     _backgroundSharing?.setSharingStopHandler(null);
@@ -689,6 +727,7 @@ class AppService {
       );
     }
     await _retryStalePeers();
+    await proximity?.refreshRadio();
   }
 
   Future<void> trustPeer(String peerId) => db.trustPeer(peerId);

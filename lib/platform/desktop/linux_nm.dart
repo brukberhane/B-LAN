@@ -158,6 +158,25 @@ class LinuxNm {
     );
   }
 
+  Future<String?> currentSsid() async {
+    final active = await _runner.run('nmcli', const [
+      '-t',
+      '-f',
+      'NAME,UUID,TYPE,DEVICE',
+      'connection',
+      'show',
+      '--active',
+    ]);
+    if (!active.ok) {
+      return null;
+    }
+    final rows = parseActiveWifi(active.stdout);
+    if (rows.isEmpty || rows.first.name.isEmpty) {
+      return null;
+    }
+    return rows.first.name;
+  }
+
   Future<HotspotCredentials> startHotspot() async {
     final devices = await _runner.run('nmcli', const [
       '-t',

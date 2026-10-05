@@ -8,6 +8,7 @@ class FakeBlePresencePort implements BlePresencePort {
   final List<String> calls = [];
   List<int>? lastPayload;
   List<int>? lastScanResponse;
+  bool? lastDualLegacy;
   final _scans = StreamController<BleScanHit>.broadcast();
 
   @override
@@ -17,10 +18,12 @@ class FakeBlePresencePort implements BlePresencePort {
   Future<void> startAdvert({
     required List<int> payload,
     required List<int> scanResponse,
+    bool dualLegacy = true,
   }) async {
     assertAdvertPayload(payload);
     lastPayload = List<int>.from(payload);
     lastScanResponse = List<int>.from(scanResponse);
+    lastDualLegacy = dualLegacy;
     calls.add('startAdvert');
   }
 
@@ -107,6 +110,9 @@ class FakeControlPair {
 }
 
 class FakeControlChannelPort implements ControlChannelPort {
+  FakeControlChannelPort({this.failListen = false});
+
+  bool failListen;
   final List<String> calls = [];
   final _inbound = StreamController<ControlLink>.broadcast();
 
@@ -126,6 +132,9 @@ class FakeControlChannelPort implements ControlChannelPort {
   @override
   Future<void> startListening() async {
     calls.add('startListening');
+    if (failListen) {
+      throw StateError('proximity radio failed: listenFailed');
+    }
   }
 
   @override
@@ -223,5 +232,13 @@ class FakeOsPassphrasePort implements OsPassphrasePort {
   Future<OsWifiNetwork?> readCurrentPersonalPsk() async {
     calls.add('readCurrentPersonalPsk');
     return next;
+  }
+
+  String? nextSsid;
+
+  @override
+  Future<String?> readCurrentSsid() async {
+    calls.add('readCurrentSsid');
+    return nextSsid;
   }
 }

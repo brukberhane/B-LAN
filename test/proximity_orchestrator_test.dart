@@ -8,6 +8,7 @@ import 'package:blan/core/proximity/proximity_radio_fakes.dart';
 import 'package:blan/core/proximity/proximity_radios.dart';
 import 'package:blan/core/proximity/proximity_types.dart';
 import 'package:blan/core/security/device_identity.dart';
+import 'package:blan/core/security/remembered_wifi.dart';
 import 'package:blan/core/security/secret_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -157,14 +158,14 @@ void main() {
     final harness = _Harness();
     final hit = _hit(AdvertRole.owner, [1, 0, 0, 0]);
     await harness.orch.onScan(hit);
-    expect(harness.control.calls.single, contains('rfcomm'));
+    expect(harness.control.calls.single, contains('gatt'));
     expect(harness.orch.link, isNotNull);
     expect(harness.network.calls, isNot(contains('startHotspot')));
   });
 
-  test('RFCOMM failure retries GATT once', () async {
+  test('GATT failure retries RFCOMM once', () async {
     final ble = FakeBlePresencePort();
-    final control = _RfcommDown();
+    final control = _GattDown();
     final network = FakePrivateNetworkPort();
     final codec = await _codec();
     final orch = ProximityOrchestrator(
@@ -178,8 +179,8 @@ void main() {
       openLan: (_, _) async {},
     );
     await orch.onScan(_hit(AdvertRole.member, [2, 0, 0, 0]));
-    expect(control.calls, [contains('rfcomm'), contains('gatt')]);
-    expect(orch.link?.transport, ControlTransport.gatt);
+    expect(control.calls, [contains('gatt'), contains('rfcomm')]);
+    expect(orch.link?.transport, ControlTransport.rfcomm);
   });
 
   test('advert failure retries once', () async {
@@ -200,6 +201,70 @@ void main() {
     expect(ble.calls.where((call) => call == 'startAdvert').length, 2);
     await orch.retryAdvert();
     expect(ble.calls.where((call) => call == 'startAdvert').length, 2);
+  });
+
+  test('listen failure does not abort visibility', () async {
+    final ble = FakeBlePresencePort();
+    final control = FakeControlChannelPort(failListen: true);
+    final orch = ProximityOrchestrator(
+      ble: ble,
+      control: control,
+      network: FakePrivateNetworkPort(),
+      queue: InviteQueue(),
+      codec: null,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    await orch.setVisible(true, foreground: true);
+    expect(orch.advertError, contains('listenFailed'));
+    expect(ble.calls, contains('startScan'));
+    expect(control.calls, contains('startListening'));
+  });
+
+  test('refresh restarts advert and scan', () async {
+    final ble = FakeBlePresencePort();
+    final orch = ProximityOrchestrator(
+      ble: ble,
+      control: FakeControlChannelPort(),
+      network: FakePrivateNetworkPort(),
+      queue: InviteQueue(),
+      codec: null,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    final resets = <void>[];
+    final sub = orch.scanResets.listen(resets.add);
+    await orch.setVisible(true, foreground: true);
+    ble.calls.clear();
+    await orch.refreshRadio();
+    expect(ble.calls, ['startAdvert', 'stopScan', 'startScan']);
+    expect(resets, hasLength(1));
+    await orch.setVisible(true, foreground: false);
+    ble.calls.clear();
+    await orch.refreshRadio();
+    expect(ble.calls, ['startAdvert']);
+    await sub.cancel();
+  });
+
+  test('dual legacy advert flag reaches the radio', () async {
+    final ble = FakeBlePresencePort();
+    final orch = ProximityOrchestrator(
+      ble: ble,
+      control: FakeControlChannelPort(),
+      network: FakePrivateNetworkPort(),
+      queue: InviteQueue(),
+      codec: null,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    await orch.setVisible(true, foreground: true);
+    expect(ble.lastDualLegacy, isTrue);
+    orch.dualLegacyAdvert = false;
+    await orch.refreshRadio();
+    expect(ble.lastDualLegacy, isFalse);
   });
 
   test('local host sends a frame before it returns', () async {
@@ -281,13 +346,14 @@ void main() {
   test('undelivered accept host releases and tries the next local step', () async {
     final harness = _Harness();
     final remote = await _codec();
-    await _prime(harness, remote);
+    final linkSession = harness.orch.sessionFor(harness.pair.a);
+    await _prime(harness, remote, session: linkSession);
     harness.orch.localDevice = const AttemptDevice(
       id: 'local',
       kind: ProximityDeviceKind.android,
     );
     harness.network.afterHotspotUp = () {
-      harness.orch.session.accepted = false;
+      linkSession.accepted = false;
     };
     final inbound = harness.orch.onInbound(harness.pair.a);
     await Future<void>.delayed(Duration.zero);
@@ -420,7 +486,7 @@ void main() {
       kind: ProximityDeviceKind.android,
     );
     final shown = <String>[];
-    harness.orch.presentInvite = (prompt) async {
+    harness.orch.presentInvite = (prompt, {required bool foreground}) async {
       shown.add('${prompt.nick}:${prompt.code}');
     };
     final inbound = harness.orch.onInbound(harness.pair.a);
@@ -465,6 +531,10 @@ void main() {
     );
     await Future<void>.delayed(Duration.zero);
     expect(shown, ['Ada:123456']);
+    expect(
+      harness.sent.where((frame) => frame['type'] == 'hello'),
+      hasLength(1),
+    );
     await harness.orch.applyInviteResult('decline');
     expect(shown, ['Ada:123456', 'Bea:654321']);
     expect(harness.network.calls, isNot(contains('startHotspot')));
@@ -474,6 +544,60 @@ void main() {
     expect(
       harness.sent.any((frame) => frame.toString().contains('t05-psk-token')),
       isFalse,
+    );
+    await harness.pair.b.close();
+    await inbound;
+  });
+
+  test('hello after the invite is done is answered again', () async {
+    final harness = _Harness();
+    final local = await _codec();
+    final remote = await _codec();
+    harness.orch.codec = local.$1;
+    harness.orch.localDevice = const AttemptDevice(
+      id: 'local',
+      kind: ProximityDeviceKind.android,
+    );
+    harness.orch.presentInvite = (prompt, {required bool foreground}) async {};
+    final inbound = harness.orch.onInbound(harness.pair.a);
+    Future<void> sendHello() async {
+      await harness.pair.b.send(
+        await remote.$1.encode(
+          ControlHelloBody(
+            peerId: 'remote',
+            nick: 'remote',
+            publicKeyBase64: remote.$2.publicKeyBase64,
+          ),
+          session: remote.$3,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    await sendHello();
+    await harness.pair.b.send(
+      await remote.$1.encode(
+        const ControlInviteBody(
+          nick: 'Ada',
+          code: '111111',
+          hostPlan: [],
+          useLanMine: false,
+          useLanTheirs: false,
+          usePrivateNetwork: true,
+        ),
+        session: remote.$3,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      harness.sent.where((frame) => frame['type'] == 'hello'),
+      hasLength(1),
+    );
+    await harness.orch.applyInviteResult('decline');
+    await sendHello();
+    expect(
+      harness.sent.where((frame) => frame['type'] == 'hello'),
+      hasLength(2),
     );
     await harness.pair.b.close();
     await inbound;
@@ -503,6 +627,284 @@ void main() {
       );
     },
   );
+
+  test('their network joins the accepted Wi-Fi and hides the passphrase', () async {
+  final pair = FakeControlPair.connect();
+  final wire = <Map<String, dynamic>>[];
+  final wireSub = pair.b.incoming.listen(wire.add);
+  final initiatorNet = FakePrivateNetworkPort();
+  final local = await _codec();
+  final remote = await _codec();
+  final initiator = ProximityOrchestrator(
+    ble: FakeBlePresencePort(),
+    control: _HeldControl(pair.a),
+    network: initiatorNet,
+    queue: InviteQueue(),
+    codec: local.$1,
+    now: DateTime.now,
+    readPersonalPsk: () async => null,
+    openLan: (_, _) async {},
+  );
+  initiator.localDevice = const AttemptDevice(
+    id: 'local',
+    kind: ProximityDeviceKind.android,
+  );
+  initiator.localNick = 'S26';
+  final targetNet = FakePrivateNetworkPort();
+  final target = ProximityOrchestrator(
+    ble: FakeBlePresencePort(),
+    control: _HeldControl(pair.b),
+    network: targetNet,
+    queue: InviteQueue(),
+    codec: remote.$1,
+    now: DateTime.now,
+    readPersonalPsk: () async => null,
+    openLan: (_, _) async {},
+  );
+  target.localDevice = const AttemptDevice(
+    id: 'remote',
+    kind: ProximityDeviceKind.android,
+  );
+  target.localNick = 'Fold';
+  InvitePrompt? shown;
+  target.presentInvite = (prompt, {required bool foreground}) async {
+    shown = prompt;
+  };
+  final inbound = target.onInbound(pair.b);
+  var beforeJoin = 0;
+  final pending = initiator.requestTheirLan(
+    remote: const AttemptDevice(id: 'remote', kind: ProximityDeviceKind.android),
+    peerHandle: 'fold',
+    code: '445566',
+    onBeforeJoin: () => beforeJoin++,
+  );
+  for (var i = 0; shown == null && i < 40; i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
+  expect(shown?.code, '445566');
+  expect(shown?.useLanTheirs, isTrue);
+  target.stageLanOffer(
+    const OsWifiNetwork(
+      ssid: 'FoldWiFi',
+      passphrase: 'lane-secret',
+      security: WifiSecurity.wpa2Psk,
+    ),
+  );
+  await target.applyInviteResult('accept');
+  expect(await pending, AttemptEndReason.running);
+  expect(beforeJoin, 1);
+  expect(initiatorNet.calls, contains('join:FoldWiFi'));
+  expect(initiatorNet.lastJoinLocalOnly, isFalse);
+  expect(initiatorNet.lastJoinPassphrase, 'lane-secret');
+  expect(targetNet.calls, isNot(contains('startHotspot')));
+  expect(
+    wire.any((frame) => frame.toString().contains('lane-secret')),
+    isFalse,
+  );
+  await wireSub.cancel();
+    await pair.a.close();
+    await inbound;
+  });
+
+  test('two initiators keep separate sessions and replies use their own links', () async {
+    final pairA = FakeControlPair.connect();
+    final pairB = FakeControlPair.connect();
+    final wireA = <Map<String, dynamic>>[];
+    final wireB = <Map<String, dynamic>>[];
+    final wireASub = pairA.b.incoming.listen(wireA.add);
+    final wireBSub = pairB.b.incoming.listen(wireB.add);
+    final local = await _codec();
+    final a = await _codec();
+    final b = await _codec();
+    final control = FakeControlChannelPort();
+    final target = ProximityOrchestrator(
+      ble: FakeBlePresencePort(),
+      control: control,
+      network: FakePrivateNetworkPort(),
+      queue: InviteQueue(),
+      codec: local.$1,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    target.localDevice = const AttemptDevice(
+      id: 'target',
+      kind: ProximityDeviceKind.android,
+    );
+    final shown = <String>[];
+    target.presentInvite = (prompt, {required bool foreground}) async {
+      shown.add(prompt.code);
+    };
+    final inboundA = target.onInbound(pairA.a);
+    final inboundB = target.onInbound(pairB.a);
+    Future<void> sendInvite(
+      (ControlFrameCodec, DeviceIdentityData, ControlSession) remote,
+      FakeControlLink from,
+      String code,
+    ) async {
+      await from.send(
+        await remote.$1.encode(
+          ControlHelloBody(
+            peerId: 'remote-${remote.$2.fingerprint}',
+            nick: 'remote',
+            publicKeyBase64: remote.$2.publicKeyBase64,
+          ),
+          session: remote.$3,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      await from.send(
+        await remote.$1.encode(
+          ControlInviteBody(
+            nick: 'remote-$code',
+            code: code,
+            hostPlan: const [],
+            useLanMine: false,
+            useLanTheirs: true,
+            usePrivateNetwork: false,
+          ),
+          session: remote.$3,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    await sendInvite(a, pairA.b, '111111');
+    await sendInvite(b, pairB.b, '222222');
+    expect(shown, ['111111']);
+    expect(target.queue.active?.code, '111111');
+
+    await target.applyInviteResult('decline');
+    expect(shown, ['111111', '222222']);
+    expect(target.queue.active?.code, '222222');
+
+    target.stageLanOffer(
+      const OsWifiNetwork(
+        ssid: 'TargetWiFi',
+        passphrase: 'lane-secret',
+        security: WifiSecurity.wpa2Psk,
+      ),
+    );
+    await target.applyInviteResult('accept');
+    expect(
+      wireA.where((frame) => frame['type'] == 'accept' || frame['type'] == 'secret'),
+      isEmpty,
+    );
+    expect(wireB.where((frame) => frame['type'] == 'accept'), hasLength(1));
+    expect(
+      wireB.where((frame) => frame['type'] == 'secret' && frame['body']['kind'] == 'lan'),
+      hasLength(1),
+    );
+    await wireASub.cancel();
+    await wireBSub.cancel();
+    await pairA.b.close();
+    await pairB.b.close();
+    await inboundA;
+    await inboundB;
+  });
+
+  test('accept without a staged lan offer falls back to the psk gate', () async {
+    final pair = FakeControlPair.connect();
+    final wire = <Map<String, dynamic>>[];
+    final wireSub = pair.b.incoming.listen(wire.add);
+    final local = await _codec();
+    final remote = await _codec();
+    final target = ProximityOrchestrator(
+      ble: FakeBlePresencePort(),
+      control: FakeControlChannelPort(),
+      network: FakePrivateNetworkPort(),
+      queue: InviteQueue(),
+      codec: local.$1,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    target.localDevice = const AttemptDevice(
+      id: 'target',
+      kind: ProximityDeviceKind.android,
+    );
+    InvitePrompt? needed;
+    target.needsLanPassword = (prompt) async {
+      needed = prompt;
+    };
+    InvitePrompt? shown;
+    target.presentInvite = (prompt, {required bool foreground}) async {
+      shown = prompt;
+    };
+    final inbound = target.onInbound(pair.a);
+    await pair.b.send(
+      await remote.$1.encode(
+        ControlHelloBody(
+          peerId: 'remote',
+          nick: 'remote',
+          publicKeyBase64: remote.$2.publicKeyBase64,
+        ),
+        session: remote.$3,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    await pair.b.send(
+      await remote.$1.encode(
+        const ControlInviteBody(
+          nick: 'S26',
+          code: '445566',
+          hostPlan: [],
+          useLanMine: false,
+          useLanTheirs: true,
+          usePrivateNetwork: false,
+        ),
+        session: remote.$3,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(shown?.code, '445566');
+
+    await target.applyInviteResult('accept');
+    expect(needed?.code, '445566');
+    expect(target.queue.active?.code, '445566');
+    expect(wire.where((frame) => frame['type'] == 'accept'), isEmpty);
+
+    target.stageLanOffer(
+      const OsWifiNetwork(
+        ssid: 'TargetWiFi',
+        passphrase: 'lane-secret',
+        security: WifiSecurity.wpa2Psk,
+      ),
+    );
+    await target.applyInviteResult('accept');
+    expect(wire.where((frame) => frame['type'] == 'accept'), hasLength(1));
+    expect(
+      wire.where((frame) => frame['type'] == 'secret' && frame['body']['kind'] == 'lan'),
+      hasLength(1),
+    );
+    expect(target.queue.active, isNull);
+    await wireSub.cancel();
+    await pair.b.close();
+    await inbound;
+  });
+}
+
+class _HeldControl implements ControlChannelPort {
+  _HeldControl(this.link);
+  final ControlLink link;
+  final _inbound = StreamController<ControlLink>.broadcast();
+
+  @override
+  Stream<ControlLink> get inbound => _inbound.stream;
+
+  @override
+  Future<ControlLink> connect(
+    String peerHandle, {
+    required ControlTransport transport,
+  }) async {
+    return link;
+  }
+
+  @override
+  Future<void> startListening() async {}
+
+  @override
+  Future<void> stopListening() async {}
 }
 
 class _Harness {
@@ -543,25 +945,30 @@ class _FlakyBle extends FakeBlePresencePort {
   Future<void> startAdvert({
     required List<int> payload,
     required List<int> scanResponse,
+    bool dualLegacy = true,
   }) async {
     if (failsLeft > 0) {
       failsLeft--;
       calls.add('startAdvert');
       throw StateError('advert down');
     }
-    await super.startAdvert(payload: payload, scanResponse: scanResponse);
+    await super.startAdvert(
+      payload: payload,
+      scanResponse: scanResponse,
+      dualLegacy: dualLegacy,
+    );
   }
 }
 
-class _RfcommDown extends FakeControlChannelPort {
+class _GattDown extends FakeControlChannelPort {
   @override
   Future<ControlLink> connect(
     String peerHandle, {
     required ControlTransport transport,
   }) async {
-    if (transport == ControlTransport.rfcomm) {
+    if (transport == ControlTransport.gatt) {
       calls.add('connect:$peerHandle:${transport.name}');
-      throw StateError('rfcomm unavailable');
+      throw StateError('gatt unavailable');
     }
     return super.connect(peerHandle, transport: transport);
   }
@@ -590,8 +997,9 @@ Future<(ControlFrameCodec, DeviceIdentityData, ControlSession)> _codec() async {
 
 Future<void> _prime(
   _Harness harness,
-  (ControlFrameCodec, DeviceIdentityData, ControlSession) remote,
-) async {
+  (ControlFrameCodec, DeviceIdentityData, ControlSession) remote, {
+  ControlSession? session,
+}) async {
   final local = await _codec();
   harness.orch.codec = local.$1;
   final hello = await remote.$1.encode(
@@ -602,7 +1010,7 @@ Future<void> _prime(
     ),
     session: remote.$3,
   );
-  await local.$1.decode(hello, session: harness.orch.session);
+  await local.$1.decode(hello, session: session ?? harness.orch.session);
 }
 
 Future<void> _fail(

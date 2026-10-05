@@ -610,10 +610,16 @@ final class IosProximityPlugin: NSObject, CBPeripheralManagerDelegate, CBCentral
     guard let manufacturer = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data else {
       return
     }
-    guard manufacturer.count == 33, manufacturer[0] == 0xD9, manufacturer[1] == 0xFD else {
+    // 33 = 2-byte id + 31-byte payload (extended set); 18 = id + the first 16
+    // payload bytes (legacy set, the rest is zero padding).
+    guard (manufacturer.count == 33 || manufacturer.count == 18),
+          manufacturer[0] == 0xD9, manufacturer[1] == 0xFD else {
       return
     }
-    let payload = manufacturer.subdata(in: 2..<33)
+    var payload = manufacturer.subdata(in: 2..<manufacturer.count)
+    if payload.count < 31 {
+      payload.append(Data(repeating: 0, count: 31 - payload.count))
+    }
     let serviceData = advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data]
     let nick = serviceData?[Self.bleService] ?? Data()
     scanSink?([

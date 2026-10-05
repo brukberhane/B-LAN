@@ -77,6 +77,7 @@ class MacosProximityRadios
   Future<void> startAdvert({
     required List<int> payload,
     required List<int> scanResponse,
+    bool dualLegacy = true,
   }) async {
     assertAdvertPayload(payload);
     await _invoke('startAdvert', {
@@ -204,6 +205,26 @@ class MacosProximityRadios
       passphrase: passphrase,
       security: WifiSecurity.fromWire(security),
     );
+  }
+
+  @override
+  Future<String?> readCurrentSsid() async {
+    final Object? reply;
+    try {
+      reply = await _channel.invokeMethod<Object?>('currentWifi');
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+    if (reply is! Map) {
+      return null;
+    }
+    final ssid = reply['ssid'];
+    if (ssid is! String || ssid.isEmpty) {
+      return null;
+    }
+    return ssid;
   }
 
   void _wireInbound() {

@@ -47,9 +47,13 @@ class PrivateNetworkException implements Exception {
 enum ControlTransport { rfcomm, gatt }
 
 abstract class BlePresencePort {
+  /// [dualLegacy]: when the platform supports two advert sets (Android),
+  /// also send a legacy-mode set so receivers that never deliver extended
+  /// packets still see this device. Other platforms ignore it.
   Future<void> startAdvert({
     required List<int> payload,
     required List<int> scanResponse,
+    bool dualLegacy = true,
   });
   Future<void> stopAdvert();
   Future<void> startScan();
@@ -92,6 +96,9 @@ abstract class PrivateNetworkPort {
 abstract class OsPassphrasePort {
   /// Connected personal PSK, or null if missing / enterprise / denied / unsupported.
   Future<OsWifiNetwork?> readCurrentPersonalPsk();
+
+  /// Connected SSID with no secret. Null when Wi-Fi is off or the name is hidden.
+  Future<String?> readCurrentSsid();
 }
 
 void assertAdvertPayload(List<int> payload) {

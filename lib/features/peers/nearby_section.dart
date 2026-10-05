@@ -1,18 +1,24 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../core/persistence/database.dart';
+import '../browse/browse_page.dart';
 import '../../core/platform/lan_addresses.dart';
 import '../../core/proximity/proximity_advert.dart';
 import '../../core/proximity/proximity_orchestrator.dart';
 import '../../core/proximity/proximity_policy.dart';
 import '../../core/proximity/proximity_radios.dart';
+import '../../core/security/lan_psk_acquire.dart';
 import '../../core/security/remembered_wifi.dart';
+import '../../platform/android/android_proximity_radios.dart';
+import '../settings/nearby_settings_section.dart';
 
 class NearbySection extends ConsumerStatefulWidget {
   const NearbySection({
@@ -33,20 +39,36 @@ class NearbySection extends ConsumerStatefulWidget {
 class _NearbySectionState extends ConsumerState<NearbySection> {
   final _hits = <String, BleScanHit>{};
   StreamSubscription<BleScanHit>? _scans;
+  StreamSubscription<void>? _resets;
   ProximityOrchestrator? _orch;
   ValueNotifier<InvitePrompt?>? _pending;
+  ValueNotifier<InvitePrompt?>? _pendingLanPassword;
+  StateController<Set<String>>? _lanIds;
+  StateController<int>? _hitCount;
+  Set<String> _published = const {};
+  var _publishedCount = 0;
   var _showingInvite = false;
+  var _showingPsk = false;
 
   @override
   void dispose() {
     _scans?.cancel();
+    _resets?.cancel();
     _pending?.removeListener(_onPending);
+    _pendingLanPassword?.removeListener(_onPendingLanPassword);
+    if (_lanIds != null && _lanIds!.state.isNotEmpty) {
+      _lanIds!.state = const {};
+    }
+    if (_hitCount != null && _hitCount!.state != 0) {
+      _hitCount!.state = 0;
+    }
     super.dispose();
   }
 
   void _watch(ProximityOrchestrator? orch) {
     if (!identical(orch, _orch)) {
       _scans?.cancel();
+      _resets?.cancel();
       _orch = orch;
       _scans = orch?.ble.scans.listen((hit) {
         if (!mounted) {
@@ -54,13 +76,28 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
         }
         setState(() => _hits[hit.peerHandle] = hit);
       });
+      _resets = orch?.scanResets.listen((_) {
+        if (!mounted) {
+          return;
+        }
+        setState(_hits.clear);
+      });
     }
+    _lanIds ??= ref.read(nearbyLanPeerIdsProvider.notifier);
+    _hitCount ??= ref.read(nearbyHitCountProvider.notifier);
     final pending = ref.read(pendingInviteProvider);
     if (!identical(pending, _pending)) {
       _pending?.removeListener(_onPending);
       _pending = pending;
       _pending?.addListener(_onPending);
       _onPending();
+    }
+    final lanPassword = ref.read(pendingLanPasswordProvider);
+    if (!identical(lanPassword, _pendingLanPassword)) {
+      _pendingLanPassword?.removeListener(_onPendingLanPassword);
+      _pendingLanPassword = lanPassword;
+      _pendingLanPassword?.addListener(_onPendingLanPassword);
+      _onPendingLanPassword();
     }
   }
 
@@ -98,6 +135,41 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
     }
   }
 
+  void _takeLanPassword(InvitePrompt prompt) {
+    final pending = ref.read(pendingLanPasswordProvider);
+    if (pending != null && identical(pending.value, prompt)) {
+      pending.value = null;
+    }
+  }
+
+  void _onPendingLanPassword() {
+    final prompt = ref.read(pendingLanPasswordProvider)?.value;
+    final orch = _orch;
+    if (prompt == null || orch == null || _showingPsk || !mounted) {
+      return;
+    }
+    _showingPsk = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _showingPsk = false;
+        return;
+      }
+      final outcome = await _acquireLanPsk(context, orch, verb: 'Share');
+      _takeLanPassword(prompt);
+      if (outcome.network != null) {
+        orch.stageLanOffer(outcome.network!);
+        await orch.applyInviteResult('accept');
+      } else {
+        await orch.applyInviteResult('decline');
+      }
+      _showingPsk = false;
+      if (mounted) {
+        _onPendingLanPassword();
+      }
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
   @override
   Widget build(BuildContext context) {
     final orch = ref.watch(nearbyOrchestratorProvider);
@@ -105,6 +177,10 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
     if (orch == null) {
       return const SizedBox.shrink();
     }
+    final visible = _dedupe(
+      _hits.values.where((hit) => _peerForHit(hit) == null),
+    ).toList();
+    _scheduleMatches();
     final addresses = ref.watch(lanAddressesProvider).valueOrNull ?? const <String>[];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -122,8 +198,8 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
               child: const Text('Disband'),
             ),
           ),
-        if (_hits.isNotEmpty) const ListTile(title: Text('Nearby')),
-        for (final hit in _hits.values)
+        if (visible.isNotEmpty) const ListTile(title: Text('Nearby')),
+        for (final hit in visible)
           _row(context, orch, hit, addresses.isNotEmpty),
       ],
     );
@@ -137,20 +213,20 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
   ) {
     final advert = ProximityAdvert.unpack(hit.advert);
     final host = advert.ipv4.join('.');
-    final hello = widget.peers.any(
-      (peer) => peer.host == host && peer.port == advert.port,
-    );
+    final reached = _reachedOnLan(advert, host);
     final badge = orch.badgeForHit(
       hit,
-      onLocalSubnet: hostSharesLocalSubnet(host, widget.subnets),
-      helloSucceeded: hello,
+      onLocalSubnet: reached,
+      helloSucceeded: reached,
     );
+    final shortId = _shortLabel(advert.shortPeerId);
     final nick = hit.scanResponse.isEmpty
-        ? 'Nearby'
+        ? shortId
         : utf8.decode(hit.scanResponse, allowMalformed: true);
     return ListTile(
+      leading: const Icon(Icons.bluetooth),
       title: Text(nick),
-      subtitle: Text(_badgeLabel(badge)),
+      subtitle: Text('${_badgeLabel(badge)} · $shortId'),
       onTap: () => _onTap(context, orch, hit, advert, badge, localHasWifi),
     );
   }
@@ -167,7 +243,11 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
         (advert.role == AdvertRole.owner || advert.role == AdvertRole.member) &&
         advert.groupId.any((byte) => byte != 0);
     if (grouped) {
-      await orch.onScan(hit);
+      try {
+        await orch.onScan(hit);
+      } catch (_) {
+        _showAttemptError(_reachCopy);
+      }
       return;
     }
     final trusted = widget.peers.any(
@@ -180,15 +260,33 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
         trusted: trusted,
         badge: badge,
         localHasWifi: localHasWifi,
-        remoteHasWifi: advert.hasWifi,
+        remoteHasWifi: advert.hasWifi || advert.ipv4.any((byte) => byte != 0),
       ),
     );
     final remote = AttemptDevice(id: hit.peerHandle, kind: widget.remoteKind);
     switch (action) {
       case TapAction.openLan:
-        await orch.openSameLan(host: advert.ipv4.join('.'), port: advert.port);
+        final peer = _peerForHit(hit) ?? _peerAtAdvert(advert);
+        if (peer != null) {
+          if (!context.mounted) {
+            return;
+          }
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => BrowsePage(peer: peer)),
+          );
+          return;
+        }
+        try {
+          await orch.openSameLan(host: advert.ipv4.join('.'), port: advert.port);
+        } catch (_) {
+          _showAttemptError(_reachCopy);
+        }
       case TapAction.skipSheetStartHostChain:
-        await orch.startPrivateAttempt(remote: remote, peerHandle: hit.peerHandle);
+        try {
+          await orch.startPrivateAttempt(remote: remote, peerHandle: hit.peerHandle);
+        } catch (_) {
+          _showAttemptError(_reachCopy);
+        }
         _paint();
       case TapAction.showSheetWithCode:
       case TapAction.showSheetWithoutCode:
@@ -206,7 +304,8 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
               trusted: trusted,
               badge: badge,
               localHasWifi: localHasWifi,
-              remoteHasWifi: advert.hasWifi,
+              remoteHasWifi:
+                  advert.hasWifi || advert.ipv4.any((byte) => byte != 0),
             ),
           ),
         );
@@ -221,23 +320,64 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
     AttemptDevice remote,
     LinkSheetOptions options,
   ) async {
-    final local = orch.localDevice;
-    final code = options.showShortCode ? mintSixDigitCode(Random()) : null;
-    final steps = local == null
-        ? const <HostStep>[]
-        : hostChain(local: local, remote: remote);
+    final nick = hit.scanResponse.isEmpty
+        ? _shortLabel(advert.shortPeerId)
+        : utf8.decode(hit.scanResponse, allowMalformed: true);
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(code == null ? 'Link' : 'Code $code'),
+        title: Text(nick),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final step in steps) Text(step.toString()),
-            if (options.showUseLanMine) const Text('Use my LAN'),
-            if (options.showUseLanTheirs) const Text('Use their LAN'),
-            if (options.showPrivateNetwork) const Text('Private network'),
+            const Text(
+              'Private network starts a hotspot. That is the usual choice.',
+            ),
+            if (options.showPrivateNetwork) ...[
+              const SizedBox(height: 12),
+              FilledButton(
+                autofocus: true,
+                onPressed: () async {
+                  Navigator.pop(context);
+                  try {
+                    await orch.startPrivateAttempt(
+                      remote: remote,
+                      peerHandle: hit.peerHandle,
+                    );
+                  } catch (_) {
+                    _showAttemptError(_reachCopy);
+                  }
+                  _paint();
+                },
+                child: const Text('Private network'),
+              ),
+            ],
+            if (options.showUseLanTheirs) ...[
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await _useTheirNetwork(
+                    context,
+                    orch,
+                    remote,
+                    hit.peerHandle,
+                  );
+                },
+                child: const Text('Use their network'),
+              ),
+            ],
+            if (options.showUseLanMine) ...[
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await _useMyLan(context, orch, remote, hit.peerHandle);
+                },
+                child: const Text('Use my LAN'),
+              ),
+            ],
           ],
         ),
         actions: [
@@ -248,37 +388,50 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
             },
             child: const Text('Cancel'),
           ),
-          if (code != null)
-            TextButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                await orch.abort(UserAbort.codeDecline);
-              },
-              child: const Text('Decline'),
-            ),
-          if (options.showUseLanMine)
-            TextButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                await _useMyLan(context, orch, remote, hit.peerHandle);
-              },
-              child: const Text('Use my LAN'),
-            ),
-          if (options.showPrivateNetwork)
-            TextButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                await orch.startPrivateAttempt(
-                  remote: remote,
-                  peerHandle: hit.peerHandle,
-                );
-                _paint();
-              },
-              child: const Text('Private network'),
-            ),
         ],
       ),
     );
+  }
+
+Future<void> _useTheirNetwork(
+    BuildContext context,
+    ProximityOrchestrator orch,
+    AttemptDevice remote,
+    String peerHandle,
+  ) async {
+    final code = mintSixDigitCode(Random());
+    final joinGate = Completer<void>();
+    final result = orch.requestTheirLan(
+      remote: remote,
+      peerHandle: peerHandle,
+      code: code,
+      onBeforeJoin: () {
+        if (!joinGate.isCompleted) {
+          joinGate.complete();
+        }
+      },
+    );
+    // The attempt can fail before the waiting dialog builds; keep the
+    // future "handled" so the zone does not report it early.
+    unawaited(result.catchError((_) => AttemptEndReason.abortedSheetCancel));
+    if (!context.mounted) {
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => _WaitingCodeDialog(
+        future: Future.any<void>([joinGate.future, result]),
+        code: code,
+        onCancel: () => orch.abort(UserAbort.sheetCancel),
+      ),
+    );
+    try {
+      await result;
+    } catch (_) {
+      _showAttemptError(_reachCopy);
+    }
+    _paint();
   }
 
   Future<void> _useMyLan(
@@ -287,44 +440,216 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
     AttemptDevice remote,
     String peerHandle,
   ) async {
-    final known = await _readPsk(orch);
-    if (known != null) {
-      await orch.network.join(
-        ssid: known.ssid,
-        passphrase: known.passphrase,
-        security: known.security,
-        localOnly: false,
-      );
-      _paint();
-      return;
-    }
-    if (!context.mounted) {
-      return;
-    }
-    final remembered = await _askPassword(context);
-    if (remembered == null) {
+    final outcome = await _acquireLanPsk(context, orch, verb: 'Join');
+    final psk = outcome.network;
+    if (psk == null) {
+      if (outcome.skip) {
+        await orch.skipPassword(remote: remote, peerHandle: peerHandle);
+        _paint();
+        return;
+      }
       await orch.abort(UserAbort.sheetCancel);
       return;
     }
-    if (remembered.skip) {
-      await orch.skipPassword(remote: remote, peerHandle: peerHandle);
-      _paint();
+    try {
+      await orch.network.join(
+        ssid: psk.ssid,
+        passphrase: psk.passphrase,
+        security: psk.security,
+        localOnly: false,
+      );
+    } catch (_) {
+      _showAttemptError("Couldn't join '${psk.ssid}'.");
       return;
     }
-    final service = ref.read(appServiceProvider);
-    await service.rememberWifi(
-      ssid: remembered.ssid,
-      security: remembered.security,
-      passphrase: remembered.passphrase,
-      remember: remembered.remember,
-    );
-    await orch.network.join(
-      ssid: remembered.ssid,
-      passphrase: remembered.passphrase,
-      security: remembered.security,
-      localOnly: false,
-    );
     _paint();
+  }
+
+  Future<OsWifiNetwork?> _lanOffer(
+    BuildContext context,
+    ProximityOrchestrator orch,
+  ) async {
+    return (await _acquireLanPsk(context, orch, verb: 'Share')).network;
+  }
+
+  /// Resolves the local Wi-Fi credentials.
+  ///
+  /// Android: a Shizuku read that is already allowed runs silently and ends
+  /// in a confirmation dialog; otherwise the sheet asks once whether to use
+  /// Shizuku. Desktop reads the OS passphrase store and also confirms. Manual
+  /// entry is the fallback everywhere; its Skip is surfaced for callers that
+  /// can start a private network instead.
+  Future<_LanPskOutcome> _acquireLanPsk(
+    BuildContext context,
+    ProximityOrchestrator orch, {
+    required String verb,
+  }) async {
+    final android = !kIsWeb && Platform.isAndroid;
+    if (android) {
+      try {
+        await AndroidShizukuConsent().startListening();
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      } catch (_) {}
+    }
+    final choice = android ? await _shizukuChoice() : true;
+    debugPrint('blan-prox: lan psk choice=$choice');
+    if (choice == true) {
+      final got = await LanPskAcquire.existing(
+        readPsk: () => _readPsk(orch),
+        currentSsid: () => _currentSsid(orch),
+      );
+      debugPrint(
+        'blan-prox: lan psk silent ssid=${got.ssidHint ?? "-"} hasPass=${got.hasPassphrase}',
+      );
+      if (got.network != null) {
+        final confirmed =
+            context.mounted && await _confirmLanPsk(context, verb, got.network!);
+        return _LanPskOutcome(network: confirmed ? got.network : null);
+      }
+      if (!context.mounted) {
+        return const _LanPskOutcome();
+      }
+      return _askManual(context, got.ssidHint);
+    } else if (android && choice == null && context.mounted) {
+      final useShizuku = await _askUseShizuku(context);
+      if (useShizuku == null) {
+        return const _LanPskOutcome();
+      }
+      await ref.read(appServiceProvider).setNearbyShizukuAllowed(useShizuku);
+      if (useShizuku) {
+        final got = await LanPskAcquire.existing(
+          readPsk: () => _readPsk(orch),
+          currentSsid: () => _currentSsid(orch),
+        );
+        debugPrint(
+          'blan-prox: lan psk after ask ssid=${got.ssidHint ?? "-"} hasPass=${got.hasPassphrase}',
+        );
+        if (got.network != null) {
+          final confirmed =
+              context.mounted && await _confirmLanPsk(context, verb, got.network!);
+          return _LanPskOutcome(network: confirmed ? got.network : null);
+        }
+        if (!context.mounted) {
+          return const _LanPskOutcome();
+        }
+        return _askManual(context, got.ssidHint);
+      }
+    }
+    if (!context.mounted) {
+      return const _LanPskOutcome();
+    }
+    final ssid = await _currentSsid(orch);
+    if (!context.mounted) {
+      return const _LanPskOutcome();
+    }
+    return _askManual(context, ssid);
+  }
+
+  Future<_LanPskOutcome> _askManual(BuildContext context, String? ssid) async {
+    debugPrint('blan-prox: lan psk manual ssid=${ssid ?? "-"}');
+    if (!context.mounted) {
+      return const _LanPskOutcome();
+    }
+    final entered = await _askPassword(context, ssid);
+    if (entered == null) {
+      return const _LanPskOutcome();
+    }
+    if (entered.skip) {
+      return const _LanPskOutcome(skip: true);
+    }
+    if (entered.ssid.isEmpty || entered.passphrase.isEmpty) {
+      return const _LanPskOutcome();
+    }
+    await ref.read(appServiceProvider).rememberWifi(
+      ssid: entered.ssid,
+      security: entered.security,
+      passphrase: entered.passphrase,
+      remember: entered.remember,
+    );
+    return _LanPskOutcome(
+      network: OsWifiNetwork(
+        ssid: entered.ssid,
+        passphrase: entered.passphrase,
+        security: entered.security,
+      ),
+    );
+  }
+
+  Future<bool?> _shizukuChoice() async {
+    try {
+      return await ref.read(appServiceProvider).nearbyShizukuChoice();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _currentSsid(ProximityOrchestrator orch) async {
+    try {
+      final ssid = await orch.readCurrentSsid?.call();
+      if (ssid == null || ssid.isEmpty) {
+        return null;
+      }
+      return ssid;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Show the extracted SSID and ask before it is used. The passphrase stays
+  /// hidden — only its origin is named.
+  Future<bool> _confirmLanPsk(
+    BuildContext context,
+    String verb,
+    OsWifiNetwork psk,
+  ) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('$verb Wi-Fi'),
+        content: Text("Use the saved password for '${psk.ssid}'?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(verb),
+          ),
+        ],
+      ),
+    ).then((value) => value ?? false);
+  }
+
+  /// Ask once whether Shizuku may read the current Wi-Fi password.
+  /// Returns null when the dialog was dismissed.
+  Future<bool?> _askUseShizuku(BuildContext context) async {
+    final state = await AndroidShizukuConsent().state();
+    if (!context.mounted) {
+      return null;
+    }
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Wi-Fi password'),
+        content: Text(
+          state == 'ready'
+              ? 'Read the current Wi-Fi password with Shizuku?'
+              : 'Read the current Wi-Fi password with Shizuku?\n'
+                    '${shizukuSettingsCopy(state)}.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Enter manually'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Use Shizuku'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<OsWifiNetwork?> _readPsk(ProximityOrchestrator orch) async {
@@ -335,10 +660,31 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
     }
   }
 
-  Future<_PasswordEntry?> _askPassword(BuildContext context) {
+  Future<_PasswordEntry?> _askPassword(BuildContext context, String? ssid) {
     return showDialog<_PasswordEntry>(
       context: context,
-      builder: (context) => const _WifiPasswordDialog(),
+      builder: (context) => _WifiPasswordDialog(initialSsid: ssid),
+    );
+  }
+
+  static const _reachCopy = "Couldn't reach the device. Scan again and retry.";
+
+  void _showAttemptError(String message) {
+    if (!mounted) {
+      return;
+    }
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nearby failed'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -371,43 +717,164 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
     ProximityOrchestrator orch,
     InvitePrompt prompt,
   ) async {
-    await showDialog<void>(
+    await showModalBottomSheet<void>(
       context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(prompt.nick),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(prompt.code),
-            for (final step in prompt.hostPlan) Text(step.toString()),
-            if (prompt.useLanMine) const Text('Use my LAN'),
-            if (prompt.useLanTheirs) const Text('Use their LAN'),
-            if (prompt.usePrivateNetwork) const Text('Private network'),
-          ],
+      isDismissible: false,
+      enableDrag: false,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(prompt.nick, style: Theme.of(sheetContext).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(prompt.code, style: Theme.of(sheetContext).textTheme.headlineSmall),
+              if (_targetCopy(prompt).isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(_targetCopy(prompt)),
+              ],
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(sheetContext);
+                      _takePrompt(prompt);
+                      unawaited(orch.applyInviteResult('decline'));
+                    },
+                    child: const Text('Decline'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: () async {
+                      Navigator.pop(sheetContext);
+                      _takePrompt(prompt);
+                      if (prompt.useLanTheirs) {
+                        if (!context.mounted) {
+                          await orch.applyInviteResult('decline');
+                          return;
+                        }
+                        final offer = await _lanOffer(context, orch);
+                        if (offer == null) {
+                          await orch.applyInviteResult('decline');
+                          return;
+                        }
+                        orch.stageLanOffer(offer);
+                      }
+                      await orch.applyInviteResult('accept');
+                    },
+                    child: const Text('Accept'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              _takePrompt(prompt);
-              await orch.applyInviteResult('decline');
-            },
-            child: const Text('Decline'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              _takePrompt(prompt);
-              await orch.applyInviteResult('accept');
-            },
-            child: const Text('Accept'),
-          ),
-        ],
       ),
     );
   }
+
+  void _scheduleMatches() {
+    final ids = <String>{
+      for (final hit in _dedupe(_hits.values))
+        if (_peerForHit(hit) case final peer?) peer.id,
+    };
+    final visible = _dedupe(
+      _hits.values.where((hit) => _peerForHit(hit) == null),
+    ).length;
+    if (setEquals(ids, _published) && visible == _publishedCount) {
+      return;
+    }
+    _published = ids;
+    _publishedCount = visible;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _lanIds?.state = ids;
+      _hitCount?.state = visible;
+    });
+  }
+
+  /// One row per device: the same peer can surface under several addresses
+  /// (dual advert sets, rotating BLE private addresses). Group by advert
+  /// identity (port + short peer id) and keep the newest hit that carries a
+  /// scan response (nick) — a nick-bearing hit always displaces the previous
+  /// one so the row points at the device's current address. A hit without a
+  /// scan response never displaces a nick-bearing row.
+  Iterable<BleScanHit> _dedupe(Iterable<BleScanHit> hits) {
+    final byIdentity = <String, BleScanHit>{};
+    for (final hit in hits) {
+      final advert = ProximityAdvert.unpack(hit.advert);
+      final key =
+          '${advert.port}:${_shortLabel(advert.shortPeerId)}';
+      final existing = byIdentity[key];
+      if (existing == null || hit.scanResponse.isNotEmpty) {
+        byIdentity[key] = hit;
+      }
+    }
+    return byIdentity.values;
+  }
+
+  Peer? _peerForHit(BleScanHit hit) {
+    final advert = ProximityAdvert.unpack(hit.advert);
+    for (final peer in widget.peers) {
+      if (peer.port == advert.port && _sameShort(peer.id, advert.shortPeerId)) {
+        return peer;
+      }
+    }
+    return null;
+  }
+
+  Peer? _peerAtAdvert(ProximityAdvert advert) {
+    final host = advert.ipv4.join('.');
+    for (final peer in widget.peers) {
+      if (peer.host == host && peer.port == advert.port) {
+        return peer;
+      }
+    }
+    return null;
+  }
+
+  bool _reachedOnLan(ProximityAdvert advert, String host) {
+    final advertLocal = hostSharesLocalSubnet(host, widget.subnets);
+    for (final peer in widget.peers) {
+      if (peer.port != advert.port) {
+        continue;
+      }
+      final sameHost = peer.host == host;
+      final sameDevice = _sameShort(peer.id, advert.shortPeerId);
+      if (!sameHost && !sameDevice) {
+        continue;
+      }
+      if (advertLocal || hostSharesLocalSubnet(peer.host, widget.subnets)) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
+String _targetCopy(InvitePrompt prompt) {
+  final lines = <String>[];
+  if (prompt.useLanTheirs) {
+    lines.add('They want to join your Wi-Fi.');
+  }
+  if (prompt.useLanMine) {
+    lines.add('They want you on their Wi-Fi.');
+  }
+  if (prompt.usePrivateNetwork) {
+    lines.add('They want a private network.');
+  }
+  return lines.join('\n');
+}
+
+String _shortLabel(List<int> bytes) {
+  return bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
 }
 
 String _badgeLabel(ProximityBadge badge) {
@@ -419,7 +886,12 @@ String _badgeLabel(ProximityBadge badge) {
 }
 
 bool _sameShort(String peerId, List<int> shortId) {
-  final mine = shortPeerIdFromUuid(peerId);
+  final List<int> mine;
+  try {
+    mine = shortPeerIdFromUuid(peerId);
+  } on FormatException {
+    return false;
+  }
   if (mine.length != shortId.length) {
     return false;
   }
@@ -429,6 +901,13 @@ bool _sameShort(String peerId, List<int> shortId) {
     }
   }
   return true;
+}
+
+class _LanPskOutcome {
+  const _LanPskOutcome({this.network, this.skip = false});
+
+  final OsWifiNetwork? network;
+  final bool skip;
 }
 
 class _PasswordEntry {
@@ -453,18 +932,78 @@ class _PasswordEntry {
   final bool remember;
 }
 
+/// Shows the minted code while the request is in flight and closes itself
+/// when the attempt settles, so a fast failure cannot strand the dialog.
+class _WaitingCodeDialog extends StatefulWidget {
+  const _WaitingCodeDialog({
+    required this.future,
+    required this.code,
+    required this.onCancel,
+  });
+
+  final Future<void> future;
+  final String code;
+  final Future<void> Function() onCancel;
+
+  @override
+  State<_WaitingCodeDialog> createState() => _WaitingCodeDialogState();
+}
+
+class _WaitingCodeDialogState extends State<_WaitingCodeDialog> {
+  var _closing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.future.whenComplete(() {
+      if (!mounted || _closing) {
+        return;
+      }
+      _closing = true;
+      Navigator.of(context).pop();
+    }).catchError((_) {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Use their network'),
+      content: Text('Ask them to accept code ${widget.code}.'),
+      actions: [
+        TextButton(
+          onPressed: () {
+            _closing = true;
+            Navigator.pop(context);
+            widget.onCancel();
+          },
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
 class _WifiPasswordDialog extends StatefulWidget {
-  const _WifiPasswordDialog();
+  const _WifiPasswordDialog({this.initialSsid});
+
+  final String? initialSsid;
 
   @override
   State<_WifiPasswordDialog> createState() => _WifiPasswordDialogState();
 }
 
 class _WifiPasswordDialogState extends State<_WifiPasswordDialog> {
-  final _ssid = TextEditingController();
+  late final TextEditingController _ssid;
   final _passphrase = TextEditingController();
   var _remember = false;
   var _security = WifiSecurity.wpa2Psk;
+
+  @override
+  void initState() {
+    super.initState();
+    _ssid = TextEditingController(text: widget.initialSsid ?? '');
+    _passphrase.addListener(() => setState(() {}));
+  }
 
   @override
   void dispose() {
@@ -529,15 +1068,17 @@ class _WifiPasswordDialogState extends State<_WifiPasswordDialog> {
           child: const Text('Skip'),
         ),
         TextButton(
-          onPressed: () => Navigator.pop(
-            context,
-            _PasswordEntry(
-              ssid: _ssid.text.trim(),
-              passphrase: _passphrase.text,
-              security: _security,
-              remember: _remember,
-            ),
-          ),
+          onPressed: _passphrase.text.isEmpty
+              ? null
+              : () => Navigator.pop(
+                  context,
+                  _PasswordEntry(
+                    ssid: _ssid.text.trim(),
+                    passphrase: _passphrase.text,
+                    security: _security,
+                    remember: _remember,
+                  ),
+                ),
           child: const Text('Join'),
         ),
       ],

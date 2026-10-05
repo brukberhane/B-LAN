@@ -85,7 +85,7 @@ Name the **capability layer** you are advancing so work stays ordered.
 | Identity, trust, TLS pins, secret storage | `.cursor/rules/security.mdc` |
 | Nearby BLE, control channel, session rules | `.cursor/rules/proximity.mdc` |
 | Android hotspot, Wi-Fi Direct, network join | `.cursor/rules/android-wifi.mdc` |
-| Shizuku / Shevery Wi-Fi password read | `.cursor/rules/shizuku.mdc` |
+| Shizuku / Shevery PSK read and STA connect | `.cursor/rules/shizuku.mdc` |
 | Anything else or unsure | this file + ask |
 
 When a task spans multiple areas, read every applicable rule file before starting.
@@ -291,8 +291,8 @@ split to the user. Never split without approval.
 | mDNS, subnet filter, discovered peer | `.cursor/rules/discovery.mdc` |
 | Fingerprint, trust, pin, secret store | `.cursor/rules/security.mdc` |
 | BLE badge, invite, host chain, control frames | `.cursor/rules/proximity.mdc` |
-| Hotspot, Wi-Fi Direct, specifier join | `.cursor/rules/android-wifi.mdc` |
-| Shevery/Shizuku detection, privileged PSK read | `.cursor/rules/shizuku.mdc` |
+| Hotspot, Wi-Fi Direct, specifier / suggestion / privileged STA join | `.cursor/rules/android-wifi.mdc` |
+| Shevery/Shizuku detection, privileged PSK read and STA connect | `.cursor/rules/shizuku.mdc` |
 | Cross-cutting / unknown | `.cursor/rules/general.mdc` |
 
 ---

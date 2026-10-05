@@ -25,6 +25,21 @@ class AndroidPlatformServices
       }
     });
     await requestNotificationPermission();
+    await requestNearbyRadioPermissions();
+  }
+
+  /// Runtime Bluetooth + location. Location is required on API 33+ to read
+  /// the connected SSID from WifiInfo; BLE itself uses the nearby-device
+  /// permissions.
+  static final nearbyRuntimePermissions = <Permission>[
+    Permission.bluetoothScan,
+    Permission.bluetoothAdvertise,
+    Permission.bluetoothConnect,
+    Permission.locationWhenInUse,
+  ];
+
+  Future<void> requestNearbyRadioPermissions() async {
+    await nearbyRuntimePermissions.request();
   }
 
   @override

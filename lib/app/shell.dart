@@ -78,7 +78,12 @@ class _AppShellState extends State<AppShell> {
                 .toList(),
           ),
           const VerticalDivider(width: 1),
-          Expanded(child: pages[_index]),
+          Expanded(
+            child: IndexedStack(
+              index: _index,
+              children: pages,
+            ),
+          ),
         ],
       ),
     );

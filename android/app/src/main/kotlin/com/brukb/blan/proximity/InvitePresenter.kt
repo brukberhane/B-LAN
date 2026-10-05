@@ -15,6 +15,21 @@ import androidx.core.app.NotificationCompat
  * Decides dialog-over-screen vs heads-up notification for an invite, and
  * builds the notification. Result relays through [InviteBus].
  */
+
+/** What the initiator asked for, shown on the invite. */
+data class InviteIntent(
+    val useLanTheirs: Boolean = false,
+    val useLanMine: Boolean = false,
+    val usePrivateNetwork: Boolean = false,
+) {
+    val lines: List<String>
+        get() = buildList {
+            if (useLanTheirs) add("They want to join your Wi-Fi.")
+            if (useLanMine) add("They want you on their Wi-Fi.")
+            if (usePrivateNetwork) add("They want a private network.")
+        }
+}
+
 object InvitePresenter {
     const val NOTIFICATION_ID = 4201
     const val CHANNEL_ID = "blan_invites"
@@ -54,23 +69,37 @@ object InvitePresenter {
 
     /**
      * Shows the invite. Returns "dialog" when the full-screen activity was
-     * launched, "notification" when the heads-up was posted.
+     * launched, "notification" when the heads-up was posted. A foreground
+     * app may launch the activity directly — background activity launch
+     * restrictions only apply to backgrounded apps.
      */
     @SuppressLint("MissingPermission")
-    fun showInvite(context: Context, nick: String, code: String): String {
-        if (hasOverlayPermission(context) && hasFullScreenIntent(context)) {
+    fun showInvite(
+        context: Context,
+        nick: String,
+        code: String,
+        inForeground: Boolean,
+        inviteIntent: InviteIntent = InviteIntent(),
+    ): String {
+        if (inForeground || (hasOverlayPermission(context) && hasFullScreenIntent(context))) {
             val intent = Intent(context, InviteActivity::class.java)
                 .putExtra("nick", nick)
                 .putExtra("code", code)
+                .putExtra("lines", inviteIntent.lines.toTypedArray())
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             context.startActivity(intent)
             return "dialog"
         }
-        postHeadsUp(context, nick, code)
+        postHeadsUp(context, nick, code, inviteIntent)
         return "notification"
     }
 
-    private fun postHeadsUp(context: Context, nick: String, code: String) {
+    private fun postHeadsUp(
+        context: Context,
+        nick: String,
+        code: String,
+        inviteIntent: InviteIntent,
+    ) {
         val manager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -102,10 +131,18 @@ object InvitePresenter {
             Intent(context, InviteActionReceiver::class.java).setAction(ACTION_DECLINE),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val text = buildString {
+            append("Code: $code")
+            for (line in inviteIntent.lines) {
+                append("\n")
+                append(line)
+            }
+        }
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setContentTitle("Invite from $nick")
-            .setContentText("Code: $code")
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setContentIntent(contentIntent)

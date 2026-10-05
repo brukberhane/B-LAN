@@ -1,5 +1,5 @@
 ---
-description: Shevery and Shizuku detection for privileged Wi-Fi PSK reads
+description: Shevery and Shizuku detection for privileged Wi-Fi PSK reads and STA connect
 globs: "android/**/*.kt"
 alwaysApply: false
 ---
@@ -10,10 +10,12 @@ alwaysApply: false
 
 - Detecting Shevery / Shizuku and asking for the binder permission
 - Reading the current or saved WPA2/WPA3-Personal passphrase through the privileged Wi-Fi API
+- Privileged STA connect on the joiner when the peer already shared a personal PSK
 
 What this spoke does not cover:
 
 - Storing the passphrase → `security.mdc`
+- When specifier vs panel vs privileged connect is chosen → `android-wifi.mdc`
 - What happens when the user will not provide one → `proximity.mdc` (fall through to the host chain)
 
 ## Invariants
@@ -21,8 +23,8 @@ What this spoke does not cover:
 1. Copy provider detection from SecureSettingsManager `ShizukuManager` (`/home/brukb/projects/Android/SecureSettingsManager`). Known packages first: `com.hamondev.shevery`, `moe.shizuku.privileged.api`, `moe.shizuku.manager`. Then scan for `moe.shizuku.manager.permission.MANAGER` or `API_V23`, a Shizuku authority / `ShizukuConnector` provider, or a `ShizukuReceiver`.
 2. States: unknown, ready, no permission, dead, not installed. Sticky binder listeners. Pre-v11 is too old.
 3. First time a LAN share needs a password and Shizuku is running, ask once. Yes stays on. No stays off until Settings. Absent or dead means type the password, with the same Settings copy as that app ("start it in Shevery", "install Shevery/Shizuku").
-4. The read is `getPrivilegedConnectedNetwork` / `getPrivilegedConfiguredNetworks` through the Shizuku binder. `WRITE_SECURE_SETTINGS` does not reveal Wi-Fi passwords. Do not copy SecureSettingsManager's "start Shizuku after unlock" flow.
-5. Personal WPA only. Do not request or store enterprise identities.
+4. Hidden WifiManager getters and privileged connect run inside a Shizuku user service (shell uid). `WRITE_SECURE_SETTINGS` does not reveal Wi-Fi passwords. Do not copy SecureSettingsManager's "start Shizuku after unlock" flow. Never log a passphrase; log SSID and yes/no only. Binder extras for IWifiManager must look like the shell: user name `"shell"`, package `"com.android.shell"`, AttributionSource uid 2000. Passing the app package throws `Package X does not belong to 2000`.
+5. Personal WPA only. Do not request or store enterprise identities. The joiner also needs Shizuku ready for a silent STA switch; the sharer's grant does not cover the joiner.
 
 ## External docs
 
@@ -62,5 +64,29 @@ What this spoke does not cover:
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
 | The allow/deny sheet never appeared, and later attempts skip it | A missing activity was completed as an explicit No and persisted | Return a channel error when the dialog is not shown. Persist only Allow and Not now |
+
+<!-- last-verified: 2026-10 -->
+
+### `User-service PSK read is always empty`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Shizuku is ready and the connected SSID is known, but the privileged read returns no passphrase | The user-service process has no `Context` (`ActivityThread.currentApplication` is often null), so WifiManager was never obtained | Give the user-service a `Context` constructor. Do not rely on `currentApplication` alone |
+
+<!-- last-verified: 2026-10 -->
+
+### `IWifiManager rejects the app package`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| `Package <app> does not belong to 2000`, or attributionSource is null | Hidden wifi binder calls were made with the app package / uid, or with an empty extras Bundle | Pass shell identity: user `"shell"`, package `"com.android.shell"`, AttributionSource uid 2000 in extras. Do not pass the app package |
+
+<!-- last-verified: 2026-10 -->
+
+### `Joiner Shizuku grant does not exist`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| PSK share works on the host, but the joiner cannot privileged-connect | Shizuku permission is per device. The host grant does not apply on the joiner | Require ready Shizuku on the joiner for silent STA switch. If missing, fall through to the system Wi-Fi panel |
 
 <!-- last-verified: 2026-10 -->

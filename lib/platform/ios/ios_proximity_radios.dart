@@ -69,6 +69,7 @@ class IosProximityRadios
   Future<void> startAdvert({
     required List<int> payload,
     required List<int> scanResponse,
+    bool dualLegacy = true,
   }) async {
     assertAdvertPayload(payload);
     await _invoke('startAdvert', {
@@ -155,6 +156,9 @@ class IosProximityRadios
 
   @override
   Future<OsWifiNetwork?> readCurrentPersonalPsk() async => null;
+
+  @override
+  Future<String?> readCurrentSsid() async => null;
 
   void _wireInbound() {
     _inboundSub ??= _inbound.receiveBroadcastStream().listen((event) {

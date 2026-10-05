@@ -28,6 +28,7 @@ class NearbySettingsSection extends ConsumerStatefulWidget {
 class _NearbySettingsSectionState extends ConsumerState<NearbySettingsSection> {
   var _visible = true;
   var _members = true;
+  var _dual = true;
   var _idle = '3';
   var _shizuku = 'Install Shevery or Shizuku';
   var _shizukuEnabled = false;
@@ -43,6 +44,7 @@ class _NearbySettingsSectionState extends ConsumerState<NearbySettingsSection> {
     final db = ref.read(databaseProvider);
     final visible = await db.nearbyVisible();
     final members = await db.nearbyMembersCanInvite();
+    final dual = await db.nearbyDualAdvert();
     final idle = await db.nearbyIdleMinutes();
     final android = !kIsWeb && Platform.isAndroid;
     final shizuku = android
@@ -54,6 +56,7 @@ class _NearbySettingsSectionState extends ConsumerState<NearbySettingsSection> {
     setState(() {
       _visible = visible;
       _members = members;
+      _dual = dual;
       _idle = '$idle';
       _shizuku = shizuku;
       _shizukuEnabled = android;
@@ -94,6 +97,18 @@ class _NearbySettingsSectionState extends ConsumerState<NearbySettingsSection> {
             await service.setNearbyMembersCanInvite(value);
           },
         ),
+        if (_shizukuEnabled)
+          SwitchListTile(
+            title: const Text('Extra legacy advert'),
+            subtitle: const Text(
+              'Adds a compat advert so older receivers see this device',
+            ),
+            value: _dual,
+            onChanged: (value) async {
+              setState(() => _dual = value);
+              await service.setNearbyDualAdvert(value);
+            },
+          ),
         ListTile(
           title: const Text('Shizuku'),
           subtitle: Text(_shizuku),

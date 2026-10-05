@@ -55,3 +55,11 @@ What this spoke does not cover:
 | A third party on the control link decrypts a PSK that was "sealed" | Identity signature covers the JSON body but not the ECDH public sitting beside it | Include the sealing public key in the signed payload. Verify it before opening the AEAD |
 
 <!-- last-verified: 2026-10 -->
+
+### `Passphrase leaked to logcat`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Join, privileged read, or `cmd wifi` shows the secret in logs | The passphrase was interpolated into a log or process listing that logcat captures | Log SSID and yes/no only. Never the secret, never a command line that contains it |
+
+<!-- last-verified: 2026-10 -->
