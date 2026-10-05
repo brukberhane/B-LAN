@@ -35,7 +35,7 @@ class InviteQueue {
 
   TrustDecision acceptActive() {
     final current = _requireActive();
-    _promoteNext();
+    _promoteNext(DateTime.now());
     return TrustDecision.mutual(
       localFingerprint: current.initiatorFingerprint,
       remoteFingerprint: current.targetFingerprint,
@@ -44,7 +44,7 @@ class InviteQueue {
 
   TrustDecision declineActive() {
     _requireActive();
-    _promoteNext();
+    _promoteNext(DateTime.now());
     return const TrustDecision.none();
   }
 
@@ -56,7 +56,7 @@ class InviteQueue {
     if (now.isBefore(current.enqueuedAt.add(timeout))) {
       return null;
     }
-    _promoteNext();
+    _promoteNext(now);
     return const TrustDecision.none();
   }
 
@@ -68,11 +68,18 @@ class InviteQueue {
     return current;
   }
 
-  void _promoteNext() {
+  void _promoteNext(DateTime now) {
     if (_waiting.isEmpty) {
       _active = null;
       return;
     }
-    _active = _waiting.removeAt(0);
+    final next = _waiting.removeAt(0);
+    _active = InviteRequest(
+      id: next.id,
+      initiatorFingerprint: next.initiatorFingerprint,
+      targetFingerprint: next.targetFingerprint,
+      code: next.code,
+      enqueuedAt: now,
+    );
   }
 }

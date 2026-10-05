@@ -178,3 +178,35 @@ What this spoke does not cover:
 | Android or Mac sees no iPhone, while the iPhone sees those peers | iOS advertising accepts only a local name and service UUIDs. Manufacturer data is not in the packet | Advertise the service UUID and a short local name. Serve the 31-byte payload as a GATT read. Do not shorten the shared advert, and do not invent a payload from a service UUID |
 
 <!-- last-verified: 2026-10 -->
+
+### `Both sides wait for the other to host`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Two devices sit in the remote-host wait, and an all-fail never ends | Each chain lists the peer first, and a local success returns with no frame | Do not reorder the chain. The owner of the step hosts it and, before returning, sends the sealed secret after accept or a failure frame when the secret cannot be sealed. The invitee runs only the steps it owns when it accepts |
+
+<!-- last-verified: 2026-10 -->
+
+### `Fallthrough awaits a consent prompt`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A missing LAN password never starts the private network | The fallthrough awaited a consent read that throws when no dialog is showing | Keep the passphrase prompt on the password decision. A throw there must not sit on the fallthrough |
+
+<!-- last-verified: 2026-10 -->
+
+### `One control frame hides the invite`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A hello arrives and the invite behind it never queues, or the next waiter never appears | The reader took one frame and stopped, or decline/timeout did not present the promoted invite | Drain the link. Hello only installs keys. Present again when a waiter is promoted |
+
+<!-- last-verified: 2026-10 -->
+
+### `Idle stop leaves the session hosting`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Idle fires, the radio stops, and the next check still thinks a network is up. Or a live transfer is torn down because the client count was never written | Stop calls were not the disband path, and in-use counts were stale | Use the same teardown as disband, including clearing hosted state. Refresh transfer and client counts before idle or shutdown. A join or a delivered secret counts as a client |
+
+<!-- last-verified: 2026-10 -->

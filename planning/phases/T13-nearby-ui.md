@@ -81,3 +81,8 @@ Peers shows a Nearby section above the mDNS list with same-LAN, other-LAN, and B
 ## Learnings
 
 ## Reality notes
+
+- T12 (2026-10-05): `ProximityOrchestrator` is live. `lib/app/app.dart` passes `production()` except on web. `providers.dart` stays `AppService(db)`. Widget tests must not call `production()` — Linux opens the system bus.
+- Call the orchestrator. Do not construct platform radios from the UI, and do not reorder `hostChain`.
+- `presentInvite` is `(nick, code)`. Android keeps one `AndroidInvitePresenter`, shows that nick and code, and applies `inviteResults` (`accept` / `decline`) to the queue. Desktop and iOS `present()` only raise the window. The Accept dialog is this task.
+- `checkIdle` is not on a timer. A Disband control calls `disband()`. If a timer is added, refresh in-use counts first. Clients and in-flight transfers keep the network up.

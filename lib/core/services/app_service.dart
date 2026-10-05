@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
@@ -13,10 +14,15 @@ import '../../platform/platform_services.dart';
 import '../platform/lan_addresses.dart';
 import '../platform/desktop_shell.dart';
 import '../discovery/mdns_discovery.dart';
+import '../proximity/proximity_advert.dart';
+import '../proximity/proximity_control_frames.dart';
+import '../proximity/proximity_orchestrator.dart';
+import '../proximity/proximity_types.dart';
 import '../indexing/share_scanner.dart';
 import '../indexing/share_watcher.dart';
 import '../persistence/database.dart';
 import '../protocol/constants.dart';
+import '../protocol/download_states.dart';
 import '../protocol/models.dart';
 import '../search/search_service.dart';
 import '../network/peer_url.dart';
@@ -43,7 +49,7 @@ class SearchIndexState {
 }
 
 class AppService {
-  AppService._(this.db, this.platform)
+  AppService._(this.db, this.platform, this.proximity)
     : scanner = ShareScanner(
         db,
         chunkSize: defaultChunkSizeForPlatform(isAndroid: Platform.isAndroid),
@@ -71,13 +77,18 @@ class AppService {
     searchService = SearchService(db, client, sessions: _sessions);
   }
 
-  factory AppService(AppDatabase db, {PlatformServices? platform}) {
+  factory AppService(
+    AppDatabase db, {
+    PlatformServices? platform,
+    ProximityOrchestrator? proximity,
+  }) {
     final resolved = platform ?? createPlatformServices();
-    return AppService._(db, resolved);
+    return AppService._(db, resolved, proximity);
   }
 
   final AppDatabase db;
   final PlatformServices platform;
+  final ProximityOrchestrator? proximity;
   final ShareScanner scanner;
   final TransferServer server;
   late final TransferClient client;
@@ -179,6 +190,11 @@ class AppService {
     if (Platform.isAndroid) {
       await _startSharingForeground(ports.httpsPort, ports.browserPort);
     }
+    await _startProximity(
+      peerId: peerId,
+      nick: nick,
+      httpsPort: ports.httpsPort,
+    );
     _log.info(
       'Core services started on HTTPS :${ports.httpsPort}, browser HTTP :${ports.browserPort}',
     );
@@ -216,6 +232,12 @@ class AppService {
       return;
     }
     _log.info('Stopping LAN sharing');
+    await _syncProximityLoad();
+    await proximity?.stopRadios(
+      keepPrivateNetwork:
+          (proximity?.associatedClients ?? 0) > 0 ||
+          (proximity?.transfersInFlight ?? 0) > 0,
+    );
     await discovery.stop();
     if (Platform.isAndroid) {
       await platform.releaseMulticastLock();
@@ -254,11 +276,106 @@ class AppService {
     if (Platform.isAndroid) {
       await _startSharingForeground(ports.httpsPort, ports.browserPort);
     }
+    await _startProximity(
+      peerId: peerId,
+      nick: nick,
+      httpsPort: ports.httpsPort,
+    );
     sharingActive.value = true;
   }
 
   void onAppResumed() {
     unawaited(_refreshSharingForeground());
+    unawaited(proximity?.onForeground());
+  }
+
+  void onAppPaused() {
+    unawaited(proximity?.onBackground());
+  }
+
+  Future<void> _startProximity({
+    required String peerId,
+    required String nick,
+    required int httpsPort,
+  }) async {
+    final orch = proximity;
+    if (orch == null) {
+      return;
+    }
+    final identity = await DeviceIdentity(_secrets!).ensureIdentity();
+    orch.codec = ControlFrameCodec(DeviceIdentity(_secrets!));
+    orch.localFingerprint = identity.fingerprint;
+    orch.refreshLoad = _syncProximityLoad;
+    orch.localDevice = AttemptDevice(
+      id: peerId,
+      kind: Platform.isIOS
+          ? ProximityDeviceKind.ios
+          : Platform.isAndroid
+          ? ProximityDeviceKind.android
+          : ProximityDeviceKind.desktop,
+    );
+    orch.openLan = _openLanFromProximity;
+    final addresses = await lanIpv4Addresses();
+    final ipv4 = _ipv4Bytes(addresses.isEmpty ? '0.0.0.0' : addresses.first);
+    final shown = nick.length > 64 ? nick.substring(0, 64) : nick;
+    orch.advertBytes = () => ProximityAdvert(
+      hasWifi: addresses.isNotEmpty,
+      ipv4: ipv4,
+      port: httpsPort,
+      shortPeerId: shortPeerIdFromUuid(peerId),
+      role: AdvertRole.none,
+      groupId: const [0, 0, 0, 0],
+    ).pack();
+    orch.scanResponseBytes = () => utf8.encode(shown);
+    if (await db.nearbyVisible()) {
+      await orch.start(foreground: true);
+    }
+  }
+
+  Future<void> _openLanFromProximity(String host, int port) async {
+    final peers = await (db.select(
+      db.peers,
+    )..where((row) => row.host.equals(host) & row.port.equals(port))).get();
+    if (peers.isNotEmpty) {
+      final active =
+          await (db.select(db.downloads)..where(
+                (row) =>
+                    row.peerId.equals(peers.first.id) &
+                    row.state.isIn([
+                      DownloadState.queued,
+                      DownloadState.downloading,
+                    ]),
+              ))
+              .get();
+      if (active.isNotEmpty) {
+        return;
+      }
+    }
+    await _handshakePeer(host: host, port: port, manual: false);
+  }
+
+  Future<void> _syncProximityLoad() async {
+    final orch = proximity;
+    if (orch == null) {
+      return;
+    }
+    final rows =
+        await (db.select(db.downloads)..where(
+              (row) => row.state.isIn([
+                DownloadState.queued,
+                DownloadState.downloading,
+              ]),
+            ))
+            .get();
+    orch.transfersInFlight = rows.length;
+  }
+
+  List<int> _ipv4Bytes(String host) {
+    final parts = host.split('.');
+    if (parts.length != 4) {
+      return const [0, 0, 0, 0];
+    }
+    return [for (final part in parts) int.tryParse(part) ?? 0];
   }
 
   Future<void> _warmSearchIndex() {

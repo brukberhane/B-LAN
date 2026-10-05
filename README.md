@@ -58,7 +58,7 @@ BLE advert → accept on Bluetooth → LAN or hotspot/Wi-Fi Direct → HTTPS :59
 | Agent rules (`.cursor/rules/`) | Retargeted to this app |
 | Phase index (`planning/phases/`) | See [INDEX](planning/phases/INDEX.md) |
 | LAN share, discovery, transfers | In the tree |
-| Nearby proximity | Planned. Not implemented. |
+| Nearby proximity | Orchestrator wired. Peers UI is still T13. |
 | Verify | `make verify` — analyze, test, Android debug apk |
 
 Host toolchain at bootstrap: Flutter 3.47.2, Dart 3.13.2, stable channel. A newer Flutter stable was advertised. The shared SDK was left as-is.
@@ -71,7 +71,7 @@ Host toolchain at bootstrap: Flutter 3.47.2, Dart 3.13.2, stable channel. A newe
 | [`.cursor/rules/`](.cursor/rules/) | Agent conventions |
 | [`.cursor/skills/`](.cursor/skills/) | Plan / execute / complete |
 | [`planning/phases/`](planning/phases/) | Task sequence |
-| [`lib/`](lib/) | Dart app (`lib/core/proximity/` = session policy, 31-byte advert, sealed control frames) |
+| [`lib/`](lib/) | Dart app (`lib/core/proximity/` = session policy, sealed frames, orchestrator) |
 | [`android/`](android/) | Android runner and foreground service |
 
 ## 📚 Dependencies & docs

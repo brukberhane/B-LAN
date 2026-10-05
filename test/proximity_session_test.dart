@@ -265,9 +265,7 @@ void main() {
             kind: ProximityDeviceKind.ios,
           ),
         ),
-        [
-          const HostStep(hostId: local, method: HostMethod.hotspot),
-        ],
+        [const HostStep(hostId: local, method: HostMethod.hotspot)],
       );
     });
 
@@ -303,28 +301,31 @@ void main() {
       );
     });
 
-    test('extraMembers append after remote then local; desktop skips all WFD', () {
-      expect(
-        hostChain(
-          local: const AttemptDevice(
-            id: local,
-            kind: ProximityDeviceKind.desktop,
+    test(
+      'extraMembers append after remote then local; desktop skips all WFD',
+      () {
+        expect(
+          hostChain(
+            local: const AttemptDevice(
+              id: local,
+              kind: ProximityDeviceKind.desktop,
+            ),
+            remote: const AttemptDevice(
+              id: remote,
+              kind: ProximityDeviceKind.android,
+            ),
+            extraMembers: const [
+              AttemptDevice(id: 'extra', kind: ProximityDeviceKind.android),
+            ],
           ),
-          remote: const AttemptDevice(
-            id: remote,
-            kind: ProximityDeviceKind.android,
-          ),
-          extraMembers: const [
-            AttemptDevice(id: 'extra', kind: ProximityDeviceKind.android),
+          [
+            const HostStep(hostId: remote, method: HostMethod.hotspot),
+            const HostStep(hostId: local, method: HostMethod.hotspot),
+            const HostStep(hostId: 'extra', method: HostMethod.hotspot),
           ],
-        ),
-        [
-          const HostStep(hostId: remote, method: HostMethod.hotspot),
-          const HostStep(hostId: local, method: HostMethod.hotspot),
-          const HostStep(hostId: 'extra', method: HostMethod.hotspot),
-        ],
-      );
-    });
+        );
+      },
+    );
 
     test('three androids each try hotspot then wifi direct', () {
       expect(
@@ -458,6 +459,8 @@ void main() {
       final decision = q.tick(t0.add(const Duration(seconds: 60)));
       expect(decision, isNotNull);
       expect(decision!.storesTrust, isFalse);
+      expect(q.active?.id, 'b');
+      expect(q.tick(t0.add(const Duration(seconds: 60))), isNull);
       expect(q.active?.id, 'b');
     });
 

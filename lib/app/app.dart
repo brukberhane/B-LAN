@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'providers.dart';
+import '../core/proximity/proximity_orchestrator.dart';
 import '../core/services/app_service.dart';
 import '../core/persistence/database.dart';
 import 'shell.dart';
@@ -54,12 +56,21 @@ class _AppBootstrapState extends ConsumerState<AppBootstrap>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _service?.onAppResumed();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      _service?.onAppPaused();
     }
   }
 
   Future<void> _start() async {
     try {
-      final service = AppService(widget.database);
+      final service = AppService(
+        widget.database,
+        proximity: kIsWeb
+            ? null
+            : ProximityOrchestrator.production(widget.database),
+      );
       await service.initialize();
       if (!mounted) {
         return;
@@ -81,9 +92,7 @@ class _AppBootstrapState extends ConsumerState<AppBootstrap>
     }
     if (_service == null) {
       return const MaterialApp(
-        home: Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
+        home: Scaffold(body: Center(child: CircularProgressIndicator())),
       );
     }
 
