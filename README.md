@@ -12,7 +12,7 @@
 
 B-LAN shares folders with other devices you trust. On a normal LAN it finds peers with mDNS, browses their files, and downloads with verified chunks over pinned HTTPS. The next layer lets phones that are near each other see one another over Bluetooth, accept once, and either join a Wi-Fi or start a private hotspot when they are not already on the same network.
 
-People running the app on Linux, macOS, Windows, or Android. iOS code and tests ship with the nearby work and stay mocked until a Mac can run them. Done means a nearby device can be opened on the existing transfer stack, and `make verify` stays green.
+People running the app on Linux, macOS, Windows, Android, or iOS. iOS unit tests mock the radio channel. A simulator launch does not prove Bluetooth. Done means a nearby device can be opened on the existing transfer stack, and `make verify` stays green.
 
 ## Table of Contents
 
@@ -127,6 +127,7 @@ flutter run -d linux
 | macOS | Yes | Yes | Yes |
 | Windows | Yes | Yes | Yes. Bonsoir via WinDNS |
 | Android | SAF or filesystem | Yes | Yes. Foreground service while sharing |
+| iOS | Yes | Yes | Yes. BLE advert is a service UUID and a local name; manufacturer scanners will not list the phone |
 | Web | No | No | No. Manual connect with a browser token |
 
 Protocol v1: `GET /hello`, `POST /session`, shares, entries, manifests, chunks, ranged files. Peer transfers are HTTPS with a pinned self-signed cert. The browser API stays on loopback HTTP port 59487.

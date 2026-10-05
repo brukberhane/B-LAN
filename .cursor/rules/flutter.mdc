@@ -144,3 +144,35 @@ What this spoke does not cover:
 | `firstWhere` throws because a Linux-only health row is absent | The test reads `dart:io` `Platform` and this host is another OS | Return before the assertion when that OS is not the current one. Keep the assertion for the OS that adds the row |
 
 <!-- last-verified: 2026-10 -->
+
+### `Stream callback cannot be stored`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Host file fails to compile with "assigning non-escaping parameter", or an event channel stays silent | A stream callback's function argument is non-escaping, and the handler stored that function | Mark the stored callback's parameter `@escaping` before assigning it |
+
+<!-- last-verified: 2026-10 -->
+
+### `One-platform create drops the others`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Adding a runner rewrites the project stamp and the lockfile, and the other platforms disappear from metadata | Creating a single platform replaces the platform list and runs pub get | Pass only the new platform. Restore the previous metadata entries and the lockfile. Record which SDK generated the new runner |
+
+<!-- last-verified: 2026-10 -->
+
+### `Simulator build says the OS is not installed`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A simulator build fails with the OS version not installed, while the SDK list includes that version | The SDK is present and the matching simulator runtime is not. An older runtime is not a destination for the newer SDK | Check installed runtimes, then download that platform. Create a simulator on the new runtime before launching |
+
+<!-- last-verified: 2026-10 -->
+
+### `Plugin register runs before the engine exists`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Channel methods are missing after launch, or launch has no view controller to register against | The iOS template creates the engine later, on the implicit-engine callback | Register there. The messenger is on the application registrar, not a window controller |
+
+<!-- last-verified: 2026-10 -->

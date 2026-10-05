@@ -30,7 +30,7 @@ What this spoke does not cover:
 8. File bytes stay on the existing pinned HTTPS client, aimed at the address delivered on the control channel.
 9. The visible switch does not keep an empty hotspot up. Idle default is 3 minutes after the last client leaves. Disband is manual and asks once. A transfer counts as in use.
 10. Legacy BLE advert payload is 31 bytes. Advert carries flags, IPv4, port, short peer id, role, group id. Nick goes in the scan response. Never a fingerprint or a password.
-11. iOS gets real platform code and expected tests. Assertions run on mocks until a Mac can execute them.
+11. iOS gets real platform code. Unit tests mock the channel. A simulator launch does not prove Bluetooth.
 
 ## External docs
 
@@ -168,5 +168,13 @@ What this spoke does not cover:
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
 | A 31-byte manufacturer payload is invisible to a CoreBluetooth scan, or the hit is two bytes long | Android's manufacturer getter strips the company id. CoreBluetooth keeps it, little-endian, in front of the payload | Advertise `D9 FD` then the 31 bytes for company id `0xFDA9`. On scan, require those two bytes and pass the rest through. Do not shorten the packed advert |
+
+<!-- last-verified: 2026-10 -->
+
+### `iPhone advert is invisible to a manufacturer scan`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Android or Mac sees no iPhone, while the iPhone sees those peers | iOS advertising accepts only a local name and service UUIDs. Manufacturer data is not in the packet | Advertise the service UUID and a short local name. Serve the 31-byte payload as a GATT read. Do not shorten the shared advert, and do not invent a payload from a service UUID |
 
 <!-- last-verified: 2026-10 -->

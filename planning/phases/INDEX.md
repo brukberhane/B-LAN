@@ -22,7 +22,7 @@ LAN share, mDNS, pinned HTTPS, and trust already exist in `lib/`. This index doe
 - File bytes stay on pinned HTTPS at the address from the control channel.
 - Idle default 3 minutes after the network is empty. Disband asks once. The visible switch does not keep an empty hotspot up.
 - One invite dialog. Others wait. 60s timeout declines. Overlay and full-screen intent, else a heads-up. Desktop raises a window.
-- iOS: real platform code and expected tests, mocked until a Mac runs them.
+- iOS: real platform code and expected tests. Unit tests mock the channel. A simulator launch does not prove Bluetooth.
 - Implement platforms in the task order below. Test-and-fix stays inside each platform task. Do not upgrade the shared Flutter SDK from a task.
 
 | ID | Title | Status | Depends-on | Next | Layer | Notes |
@@ -37,7 +37,7 @@ LAN share, mDNS, pinned HTTPS, and trust already exist in `lib/`. This index doe
 | T08 | [Linux radios](./T08-linux-radios.md) | ✅ | T07 | T09 | L6 | NetworkManager |
 | T09 | [macOS radios](./T09-macos-radios.md) | ✅ | T08 | T10 | L6 | Mocked until a Mac |
 | T10 | [Windows radios](./T10-windows-radios.md) | ✅ | T09 | T11 | L6 | Best-effort radios. mDNS advertise on |
-| T11 | [iOS radios](./T11-ios-radios.md) | Pending | T10 | T12 | L6 | Code + expected tests |
+| T11 | [iOS radios](./T11-ios-radios.md) | ✅ | T10 | T12 | L6 | Simulator build on this Mac |
 | T12 | [Orchestrator](./T12-proximity-orchestrator.md) | Pending | T11 | T13 | L4 | Existing HTTPS |
 | T13 | [Nearby UI](./T13-nearby-ui.md) | Pending | T12 | T14 | L7 | Peers + Settings |
 | T14 | [E2E proof](./T14-e2e.md) | Pending | T13 | — | L8 | Fakes here, devices manual |
