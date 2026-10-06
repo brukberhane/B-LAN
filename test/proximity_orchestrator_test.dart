@@ -697,11 +697,382 @@ void main() {
   expect(initiatorNet.lastJoinLocalOnly, isFalse);
   expect(initiatorNet.lastJoinPassphrase, 'lane-secret');
   expect(targetNet.calls, isNot(contains('startHotspot')));
+  expect(targetNet.calls.where((call) => call.startsWith('join:')), isEmpty);
   expect(
     wire.any((frame) => frame.toString().contains('lane-secret')),
     isFalse,
   );
   await wireSub.cancel();
+    await pair.a.close();
+    await inbound;
+  });
+
+  test('their network accept does not switch the sharing phone', () async {
+    final pair = FakeControlPair.connect();
+    final local = await _codec();
+    final remote = await _codec();
+    final session = ControlSession();
+    final targetNet = FakePrivateNetworkPort();
+    final target = ProximityOrchestrator(
+      ble: FakeBlePresencePort(),
+      control: _HeldControl(pair.b),
+      network: targetNet,
+      queue: InviteQueue(),
+      codec: remote.$1,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    target.localDevice = const AttemptDevice(
+      id: 'remote',
+      kind: ProximityDeviceKind.android,
+    );
+    target.readSavedPersonalPsk = (ssid) async => ssid == 'Home'
+        ? const OsWifiNetwork(
+            ssid: 'Home',
+            passphrase: 'pw-home',
+            security: WifiSecurity.wpa2Psk,
+          )
+        : null;
+    InvitePrompt? shown;
+    target.presentInvite = (prompt, {required bool foreground}) async {
+      shown = prompt;
+    };
+    final inbound = target.onInbound(pair.b);
+    await Future<void>.delayed(Duration.zero);
+    await pair.a.send(
+      await local.$1.encode(
+        ControlHelloBody(
+          peerId: 'local',
+          nick: 'S26',
+          publicKeyBase64: local.$2.publicKeyBase64,
+          wifiSsid: 'Home',
+        ),
+        session: session,
+      ),
+    );
+    await pair.a.send(
+      await local.$1.encode(
+        const ControlInviteBody(
+          nick: 'S26',
+          code: '445566',
+          hostPlan: [],
+          useLanMine: true,
+          useLanTheirs: true,
+          usePrivateNetwork: false,
+        ),
+        session: session,
+      ),
+    );
+    for (var i = 0; shown == null && i < 40; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(shown?.useLanTheirs, isTrue);
+    target.stageLanOffer(
+      const OsWifiNetwork(
+        ssid: 'FoldWiFi',
+        passphrase: 'lane-secret',
+        security: WifiSecurity.wpa2Psk,
+      ),
+    );
+    await target.applyInviteResult('accept');
+    expect(targetNet.calls.where((call) => call.startsWith('join:')), isEmpty);
+    await pair.a.close();
+    await inbound;
+  });
+
+  test('their network joins a saved password without asking to share', () async {
+    final pair = FakeControlPair.connect();
+    final initiatorNet = FakePrivateNetworkPort();
+    final local = await _codec();
+    final remote = await _codec();
+    final initiator = ProximityOrchestrator(
+      ble: FakeBlePresencePort(),
+      control: _HeldControl(pair.a),
+      network: initiatorNet,
+      queue: InviteQueue(),
+      codec: local.$1,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    initiator.localDevice = const AttemptDevice(
+      id: 'local',
+      kind: ProximityDeviceKind.android,
+    );
+    initiator.localNick = 'S26';
+    initiator.wifiJoinStyle = () async => WifiJoinStyle.direct;
+    initiator.readSavedPersonalPsk = (ssid) async => ssid == 'FoldWiFi'
+        ? const OsWifiNetwork(
+            ssid: 'FoldWiFi',
+            passphrase: 'saved-fold',
+            security: WifiSecurity.wpa2Psk,
+          )
+        : null;
+    final target = ProximityOrchestrator(
+      ble: FakeBlePresencePort(),
+      control: _HeldControl(pair.b),
+      network: FakePrivateNetworkPort(),
+      queue: InviteQueue(),
+      codec: remote.$1,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    target.localDevice = const AttemptDevice(
+      id: 'remote',
+      kind: ProximityDeviceKind.android,
+    );
+    target.readCurrentSsid = () async => 'FoldWiFi';
+    InvitePrompt? shown;
+    target.presentInvite = (prompt, {required bool foreground}) async {
+      shown = prompt;
+    };
+    final inbound = target.onInbound(pair.b);
+    final end = await initiator.requestTheirLan(
+      remote: const AttemptDevice(id: 'remote', kind: ProximityDeviceKind.android),
+      peerHandle: 'fold',
+      code: '445566',
+    );
+    expect(end, AttemptEndReason.running);
+    expect(shown, isNull);
+    expect(initiatorNet.calls, contains('join:FoldWiFi'));
+    expect(initiatorNet.lastJoinLocalOnly, isFalse);
+    expect(initiatorNet.lastJoinStyle, WifiJoinStyle.direct);
+    expect(initiatorNet.lastJoinPassphrase, 'saved-fold');
+    await pair.a.close();
+    await inbound;
+  });
+
+  test('my lan receiver joins a saved network and the initiator stays put', () async {
+    final pair = FakeControlPair.connect();
+    final wire = <Map<String, dynamic>>[];
+    final wireSub = pair.b.incoming.listen(wire.add);
+    final initiatorNet = FakePrivateNetworkPort();
+    final local = await _codec();
+    final remote = await _codec();
+    final initiator = ProximityOrchestrator(
+      ble: FakeBlePresencePort(),
+      control: _HeldControl(pair.a),
+      network: initiatorNet,
+      queue: InviteQueue(),
+      codec: local.$1,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    initiator.localDevice = const AttemptDevice(
+      id: 'local',
+      kind: ProximityDeviceKind.android,
+    );
+    initiator.localNick = 'S26';
+    initiator.readCurrentSsid = () async => 'Home';
+    final targetNet = FakePrivateNetworkPort();
+    final target = ProximityOrchestrator(
+      ble: FakeBlePresencePort(),
+      control: _HeldControl(pair.b),
+      network: targetNet,
+      queue: InviteQueue(),
+      codec: remote.$1,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    target.localDevice = const AttemptDevice(
+      id: 'remote',
+      kind: ProximityDeviceKind.android,
+    );
+    target.wifiJoinStyle = () async => WifiJoinStyle.panel;
+    target.readSavedPersonalPsk = (ssid) async => ssid == 'Home'
+        ? const OsWifiNetwork(
+            ssid: 'Home',
+            passphrase: 'pw-home',
+            security: WifiSecurity.wpa2Psk,
+          )
+        : null;
+    InvitePrompt? shown;
+    target.presentInvite = (prompt, {required bool foreground}) async {
+      shown = prompt;
+    };
+    final inbound = target.onInbound(pair.b);
+    var shared = false;
+    final pending = initiator.requestMyLan(
+      remote: const AttemptDevice(id: 'remote', kind: ProximityDeviceKind.android),
+      peerHandle: 'fold',
+      code: '112233',
+      sharePassword: () async {
+        shared = true;
+        return null;
+      },
+    );
+    for (var i = 0; shown == null && i < 40; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(shown?.useLanMine, isTrue);
+    expect(shown?.useLanTheirs, isFalse);
+    await target.applyInviteResult('accept');
+    expect(await pending, AttemptEndReason.running);
+    expect(shared, isFalse);
+    expect(targetNet.calls, contains('join:Home'));
+    expect(targetNet.lastJoinStyle, WifiJoinStyle.panel);
+    expect(targetNet.lastJoinLocalOnly, isFalse);
+    expect(initiatorNet.calls, isNot(contains('join:Home')));
+    expect(wire.any((frame) => frame.toString().contains('pw-home')), isFalse);
+    await wireSub.cancel();
+    await pair.a.close();
+    await inbound;
+  });
+
+  test('mutual trust joins a saved network without a prompt', () async {
+    final pair = FakeControlPair.connect();
+    final local = await _codec();
+    final remote = await _codec();
+    final initiator = ProximityOrchestrator(
+      ble: FakeBlePresencePort(),
+      control: _HeldControl(pair.a),
+      network: FakePrivateNetworkPort(),
+      queue: InviteQueue(),
+      codec: local.$1,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    initiator.localDevice = const AttemptDevice(
+      id: 'local',
+      kind: ProximityDeviceKind.android,
+    );
+    initiator.localNick = 'S26';
+    initiator.readCurrentSsid = () async => 'Home';
+    String? joined;
+    final target = ProximityOrchestrator(
+      ble: FakeBlePresencePort(),
+      control: _HeldControl(pair.b),
+      network: FakePrivateNetworkPort(),
+      queue: InviteQueue(),
+      codec: remote.$1,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    target.localDevice = const AttemptDevice(
+      id: 'remote',
+      kind: ProximityDeviceKind.android,
+    );
+    target.peerIsTrusted = (peerId, publicKey) async =>
+        peerId == 'local' && publicKey == local.$2.publicKeyBase64;
+    target.hasSavedSsid = (ssid) async => ssid == 'Home';
+    target.joinSavedNetwork = (ssid, _) async {
+      joined = ssid;
+    };
+    InvitePrompt? shown;
+    target.presentInvite = (prompt, {required bool foreground}) async {
+      shown = prompt;
+    };
+    final inbound = target.onInbound(pair.b);
+    final end = await initiator.requestMyLan(
+      remote: const AttemptDevice(
+        id: 'remote',
+        kind: ProximityDeviceKind.android,
+      ),
+      peerHandle: 'fold',
+      code: '112233',
+      sharePassword: () async => null,
+    );
+    expect(end, AttemptEndReason.running);
+    expect(shown, isNull);
+    expect(joined, 'Home');
+    expect(
+      trustedKeyMatches(
+        trusted: true,
+        storedFingerprint: local.$2.fingerprint,
+        publicKeyBase64: local.$2.publicKeyBase64,
+      ),
+      isTrue,
+    );
+    expect(
+      trustedKeyMatches(
+        trusted: true,
+        storedFingerprint: local.$2.fingerprint,
+        publicKeyBase64: remote.$2.publicKeyBase64,
+      ),
+      isFalse,
+    );
+    await pair.a.close();
+    await inbound;
+  });
+
+  test('my lan shares only when the receiver lacks the password', () async {
+    final pair = FakeControlPair.connect();
+    final wire = <Map<String, dynamic>>[];
+    final wireSub = pair.b.incoming.listen(wire.add);
+    final local = await _codec();
+    final remote = await _codec();
+    final initiator = ProximityOrchestrator(
+      ble: FakeBlePresencePort(),
+      control: _HeldControl(pair.a),
+      network: FakePrivateNetworkPort(),
+      queue: InviteQueue(),
+      codec: local.$1,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    initiator.localDevice = const AttemptDevice(
+      id: 'local',
+      kind: ProximityDeviceKind.android,
+    );
+    initiator.localNick = 'S26';
+    initiator.readCurrentSsid = () async => 'Home';
+    final targetNet = FakePrivateNetworkPort();
+    final target = ProximityOrchestrator(
+      ble: FakeBlePresencePort(),
+      control: _HeldControl(pair.b),
+      network: targetNet,
+      queue: InviteQueue(),
+      codec: remote.$1,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    target.localDevice = const AttemptDevice(
+      id: 'remote',
+      kind: ProximityDeviceKind.android,
+    );
+    target.readSavedPersonalPsk = (_) async => null;
+    target.wifiJoinStyle = () async => WifiJoinStyle.direct;
+    InvitePrompt? shown;
+    target.presentInvite = (prompt, {required bool foreground}) async {
+      shown = prompt;
+    };
+    final inbound = target.onInbound(pair.b);
+    var shared = 0;
+    final pending = initiator.requestMyLan(
+      remote: const AttemptDevice(id: 'remote', kind: ProximityDeviceKind.android),
+      peerHandle: 'fold',
+      code: '112233',
+      sharePassword: () async {
+        shared++;
+        return const OsWifiNetwork(
+          ssid: 'Home',
+          passphrase: 'pw-home',
+          security: WifiSecurity.wpa2Psk,
+        );
+      },
+    );
+    for (var i = 0; shown == null && i < 40; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    await target.applyInviteResult('accept');
+    expect(await pending, AttemptEndReason.running);
+    expect(shared, 1);
+    for (var i = 0; !targetNet.calls.contains('join:Home') && i < 40; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(targetNet.calls, contains('join:Home'));
+    expect(targetNet.lastJoinStyle, WifiJoinStyle.direct);
+    expect(targetNet.lastJoinPassphrase, 'pw-home');
+    expect(wire.any((frame) => frame.toString().contains('pw-home')), isFalse);
+    await wireSub.cancel();
     await pair.a.close();
     await inbound;
   });
@@ -880,6 +1251,69 @@ void main() {
     expect(target.queue.active, isNull);
     await wireSub.cancel();
     await pair.b.close();
+    await inbound;
+  });
+
+  test('private network invites the hello peer id and joins their hotspot', () async {
+    final pair = FakeControlPair.connect();
+    final local = await _codec();
+    final remote = await _codec();
+    final initiatorNet = FakePrivateNetworkPort();
+    final targetNet = FakePrivateNetworkPort();
+    final initiator = ProximityOrchestrator(
+      ble: FakeBlePresencePort(),
+      control: _HeldControl(pair.a),
+      network: initiatorNet,
+      queue: InviteQueue(),
+      codec: local.$1,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    initiator.localDevice = const AttemptDevice(
+      id: 'local',
+      kind: ProximityDeviceKind.android,
+    );
+    initiator.localNick = 'S26';
+    final target = ProximityOrchestrator(
+      ble: FakeBlePresencePort(),
+      control: _HeldControl(pair.b),
+      network: targetNet,
+      queue: InviteQueue(),
+      codec: remote.$1,
+      now: DateTime.now,
+      readPersonalPsk: () async => null,
+      openLan: (_, _) async {},
+    );
+    target.localDevice = const AttemptDevice(
+      id: 'fold',
+      kind: ProximityDeviceKind.android,
+    );
+    target.localNick = 'Fold';
+    InvitePrompt? shown;
+    target.presentInvite = (prompt, {required bool foreground}) async {
+      shown = prompt;
+    };
+    final inbound = target.onInbound(pair.b);
+    final pending = initiator.startPrivateAttempt(
+      remote: const AttemptDevice(
+        id: 'ble-aa',
+        kind: ProximityDeviceKind.android,
+      ),
+      peerHandle: 'ble-aa',
+    );
+    for (var i = 0; shown == null && i < 50; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(shown?.usePrivateNetwork, isTrue);
+    expect(shown?.hostPlan.first.hostId, 'fold');
+    await target.applyInviteResult('accept');
+    expect(await pending, AttemptEndReason.running);
+    expect(targetNet.calls, contains('startHotspot'));
+    expect(initiatorNet.calls, contains('join:fake-hotspot'));
+    expect(initiatorNet.lastJoinLocalOnly, isTrue);
+    expect(initiatorNet.lastJoinPassphrase, 't05-psk-token');
+    await pair.a.close();
     await inbound;
   });
 }

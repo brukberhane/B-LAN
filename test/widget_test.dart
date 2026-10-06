@@ -23,6 +23,7 @@ void main() {
           sharesProvider.overrideWith((ref) => Stream.value([])),
           peersProvider.overrideWith((ref) => Stream.value([])),
           downloadsProvider.overrideWith((ref) => Stream.value([])),
+          downloadGroupsProvider.overrideWith((ref) => Stream.value([])),
           uploadsProvider.overrideWith((ref) => Stream.value([])),
           downloadsDirectoryProvider.overrideWith(
             (ref) async => '/tmp/blan-downloads',
@@ -35,6 +36,9 @@ void main() {
       ),
     );
     await tester.pump();
+    // IndexedStack builds every page. A cancelled Drift watch arms a
+    // zero-duration timer; leave it pending and the test isolate never exits.
+    await tester.pump(Duration.zero);
 
     expect(find.text('Peers'), findsOneWidget);
     expect(find.text('Search'), findsOneWidget);

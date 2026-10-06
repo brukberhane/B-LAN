@@ -36,6 +36,9 @@ class AndroidPlatformServices
     Permission.bluetoothAdvertise,
     Permission.bluetoothConnect,
     Permission.locationWhenInUse,
+    // Local-only hotspot and Wi-Fi Direct. neverForLocation means the
+    // location grant does not cover this.
+    Permission.nearbyWifiDevices,
   ];
 
   Future<void> requestNearbyRadioPermissions() async {

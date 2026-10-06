@@ -55,7 +55,7 @@ final peersProvider = StreamProvider((ref) {
       return rows;
     }
     final subnets = await listLocalIpv4Subnets();
-    return db.filterPeersOnLocalSubnet(rows, subnets);
+    return db.peersForLanList(rows, subnets, filterEnabled: true);
   });
 });
 

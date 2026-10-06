@@ -56,6 +56,14 @@ What this spoke does not cover:
 
 <!-- last-verified: 2026-10 -->
 
+### `Hello trust bit skips the prompt for a stranger`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| A device that was never trusted skips the nearby confirm, or a copied peer id is treated as mutual trust | A boolean in the signed hello is signed by whatever key the sender put in that hello. Copying a trusted peer id and setting the bit still verifies | Do not put a trust claim on the wire. Skip the local prompt only when this device's trusted row stores the fingerprint of the public key that signed the hello. Each phone checks only its own store |
+
+<!-- last-verified: 2026-10 -->
+
 ### `Passphrase leaked to logcat`
 
 | Symptom | Cause | Fix |

@@ -5,7 +5,9 @@ import 'package:blan/core/proximity/proximity_radios.dart';
 import 'package:blan/core/proximity/proximity_types.dart';
 import 'package:blan/core/security/shizuku_detect.dart';
 import 'package:blan/core/security/remembered_wifi.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 /// Android radios behind `com.brukb.blan/proximity` (host:
 /// `com.brukb.blan.proximity.ProximityPlugin`).
@@ -151,6 +153,7 @@ class AndroidProximityRadios
 
   @override
   Future<HotspotCredentials> startHotspot() async {
+    await _askNearbyWifi();
     final reply = await _invoke('startHotspot');
     return _credentials(reply, HostMethod.hotspot);
   }
@@ -160,6 +163,7 @@ class AndroidProximityRadios
 
   @override
   Future<HotspotCredentials> startWifiDirect() async {
+    await _askNearbyWifi();
     final reply = await _invoke('startWifiDirect');
     return _credentials(reply, HostMethod.wifiDirect);
   }
@@ -173,12 +177,14 @@ class AndroidProximityRadios
     required String passphrase,
     required WifiSecurity security,
     required bool localOnly,
+    WifiJoinStyle style = WifiJoinStyle.panel,
   }) async {
     await _invoke('join', {
       'ssid': ssid,
       'passphrase': passphrase,
       'security': security.wire,
       'localOnly': localOnly,
+      'style': style.name,
     });
   }
 
@@ -190,6 +196,57 @@ class AndroidProximityRadios
   @override
   Future<OsWifiNetwork?> readCurrentPersonalPsk() async {
     final reply = await _channel.invokeMethod<Object?>('readPersonalPsk');
+    return _pskFrom(reply);
+  }
+
+  /// True when [ssid] is already saved. The app list is tried first; a miss
+  /// falls through to a shell name list. The passphrase is not returned.
+  Future<bool> hasSavedSsid(String ssid) async {
+    if (ssid.isEmpty) {
+      return false;
+    }
+    final reply = await _channel.invokeMethod<Object?>('hasSavedSsid', {
+      'ssid': ssid,
+    });
+    return reply == true;
+  }
+
+  /// Switch onto a saved network without the passphrase crossing into Dart.
+  Future<void> joinSaved({
+    required String ssid,
+    WifiJoinStyle style = WifiJoinStyle.direct,
+  }) async {
+    await _invoke('joinSaved', {
+      'ssid': ssid,
+      'style': style.name,
+    });
+  }
+
+  Future<void> _askNearbyWifi() async {
+    try {
+      final status = await Permission.nearbyWifiDevices.request();
+      debugPrint('blan-prox: nearby wifi permission $status');
+    } on MissingPluginException {
+      debugPrint('blan-prox: nearby wifi permission plugin missing');
+    }
+  }
+
+  /// Saved personal network for [ssid], including one that is not connected.
+  Future<OsWifiNetwork?> readSavedPersonalPsk(String ssid) async {
+    if (ssid.isEmpty) {
+      return null;
+    }
+    final reply = await _channel.invokeMethod<Object?>('readPersonalPsk', {
+      'ssid': ssid,
+    });
+    final network = _pskFrom(reply);
+    if (network == null || network.ssid != ssid) {
+      return null;
+    }
+    return network;
+  }
+
+  OsWifiNetwork? _pskFrom(Object? reply) {
     if (reply is! Map) {
       return null;
     }
@@ -245,6 +302,7 @@ class AndroidProximityRadios
     final reply = await _channel.invokeMethod<Object?>(method, args);
     if (reply is Map && reply['error'] != null) {
       final code = reply['error'] as String;
+      debugPrint('blan-prox: $method error $code');
       if (code == 'hotspotFailed') {
         throw PrivateNetworkException(HostMethod.hotspot);
       }

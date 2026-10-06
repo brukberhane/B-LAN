@@ -96,6 +96,29 @@ String fingerprintFromPublicKeyBytes(List<int> publicKeyBytes) {
   return base64Encode(digest.bytes).substring(0, 16);
 }
 
+/// True when a trusted row's stored fingerprint is the SHA-256 of [publicKeyBase64].
+///
+/// The hello signature already proves the sender holds the matching private key.
+/// This check rejects a peer id copied onto a different key.
+bool trustedKeyMatches({
+  required bool trusted,
+  required String? storedFingerprint,
+  required String publicKeyBase64,
+}) {
+  if (!trusted ||
+      storedFingerprint == null ||
+      storedFingerprint.isEmpty ||
+      publicKeyBase64.isEmpty) {
+    return false;
+  }
+  try {
+    return storedFingerprint ==
+        fingerprintFromPublicKeyBytes(base64Decode(publicKeyBase64));
+  } on FormatException {
+    return false;
+  }
+}
+
 /// Legacy fingerprint kept for older peers without device keys.
 String fingerprintFromPeerId(String peerId) {
   final digest = sha256.convert(utf8.encode(peerId));

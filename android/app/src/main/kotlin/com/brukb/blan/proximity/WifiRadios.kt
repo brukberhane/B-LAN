@@ -18,6 +18,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
+import android.util.Log
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -52,6 +53,14 @@ class WifiRadios(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     fun startHotspot(): Creds {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val nearby = context.checkSelfPermission(android.Manifest.permission.NEARBY_WIFI_DEVICES)
+            val granted = nearby == android.content.pm.PackageManager.PERMISSION_GRANTED
+            Log.i("blan-ctl", "hotspot nearbyWifi=$granted")
+            if (!granted) {
+                throw RadioException("hotspotFailed")
+            }
+        }
         stopHotspot()
         val started = CountDownLatch(1)
         val holder = AtomicReference<WifiManager.LocalOnlyHotspotReservation?>()
@@ -71,6 +80,7 @@ class WifiRadios(private val context: Context) {
                 }
 
                 override fun onFailed(reason: Int) {
+                    Log.w("blan-ctl", "hotspot onFailed reason=$reason")
                     failure.set(reason)
                     started.countDown()
                 }
@@ -87,13 +97,18 @@ class WifiRadios(private val context: Context) {
             Handler(Looper.getMainLooper()),
         )
         if (!started.await(20, TimeUnit.SECONDS)) {
+            Log.w("blan-ctl", "hotspot timeout")
             throw RadioException("hotspotFailed")
         }
-        failure.get()?.let { throw RadioException("hotspotFailed") }
+        failure.get()?.let { reason ->
+            Log.w("blan-ctl", "hotspot failed reason=$reason")
+            throw RadioException("hotspotFailed")
+        }
         val res = holder.get() ?: throw RadioException("hotspotFailed")
         reservation = res
         val creds = credsFromReservation(res)
         if (creds == null) {
+            Log.w("blan-ctl", "hotspot missing creds")
             res.close()
             reservation = null
             throw RadioException("hotspotFailed")
@@ -234,6 +249,22 @@ class WifiRadios(private val context: Context) {
         throw RadioException("joinFailed")
     }
 
+    /** Saved network, no passphrase: open the system Wi-Fi sheet and wait for the SSID. */
+    fun waitOnWifiPanel(ssid: String) {
+        Log.i("blan-ctl", "lan wifi panel saved")
+        val intent = Intent(Settings.Panel.ACTION_WIFI).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+        val deadline = SystemClock.elapsedRealtime() + 60_000L
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (currentSsid() == ssid) {
+                Log.i("blan-ctl", "lan ssid match")
+                return
+            }
+            Thread.sleep(400)
+        }
+        throw RadioException("joinFailed")
+    }
+
     private val connectivityManager =
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
@@ -332,6 +363,84 @@ class WifiRadios(private val context: Context) {
 
     /** Connected SSID, or null when unknown / off / redacted. Never a passphrase. */
     @SuppressLint("MissingPermission")
+    /**
+     * Saved-SSID check from this app's identity. No passphrase is read.
+     * Android 10+ usually returns an empty list here; the shell list is the
+     * fallback in [ShizukuBridge].
+     */
+    @Suppress("DEPRECATION")
+    fun hasSavedSsid(ssid: String): Boolean {
+        if (ssid.isEmpty()) {
+            return false
+        }
+        val configs = ArrayList<WifiConfiguration>()
+        try {
+            wifiManager.configuredNetworks?.let { configs.addAll(it) }
+        } catch (error: Exception) {
+            Log.w("blan-ctl", "savedNetworks app ${error.javaClass.simpleName}")
+        }
+        if (configs.isEmpty()) {
+            configs.addAll(semConfigured())
+        }
+        val hit = configs.any { config ->
+            sanitizeSsid(config.SSID) == ssid && config.networkId >= 0
+        }
+        Log.i("blan-ctl", "savedNetworks app n=${configs.size} hit=$hit")
+        return hit
+    }
+
+    /** Switch using a saved network id. No passphrase. Returns false when the platform rejects it. */
+    @Suppress("DEPRECATION")
+    fun connectSavedById(ssid: String): Boolean {
+        val id = try {
+            wifiManager.configuredNetworks
+                ?.firstOrNull { sanitizeSsid(it.SSID) == ssid && it.networkId >= 0 }
+                ?.networkId
+        } catch (_: Exception) {
+            null
+        } ?: semConfigured().firstOrNull { sanitizeSsid(it.SSID) == ssid && it.networkId >= 0 }
+            ?.networkId
+        if (id == null) {
+            return false
+        }
+        val enabled = try {
+            wifiManager.enableNetwork(id, true)
+        } catch (error: Exception) {
+            Log.w("blan-ctl", "saved connect id=$id ${error.javaClass.simpleName}")
+            false
+        }
+        Log.i("blan-ctl", "saved connect id=$id enabled=$enabled")
+        if (!enabled) {
+            return false
+        }
+        try {
+            wifiManager.reconnect()
+        } catch (_: Exception) {}
+        val deadline = SystemClock.elapsedRealtime() + 8_000L
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (currentSsid() == ssid) {
+                return true
+            }
+            Thread.sleep(400)
+        }
+        return currentSsid() == ssid
+    }
+
+    @Suppress("DEPRECATION")
+    private fun semConfigured(): List<WifiConfiguration> {
+        return try {
+            val sem = context.getSystemService("sem_wifi") ?: return emptyList()
+            val method = sem.javaClass.methods.firstOrNull { candidate ->
+                candidate.name == "getConfiguredNetworks" && candidate.parameterTypes.isEmpty()
+            } ?: return emptyList()
+            val raw = method.invoke(sem) as? List<*> ?: return emptyList()
+            raw.filterIsInstance<WifiConfiguration>()
+        } catch (error: Exception) {
+            Log.w("blan-ctl", "savedNetworks sem ${error.javaClass.simpleName}")
+            emptyList()
+        }
+    }
+
     fun currentSsid(): String? {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val network = connectivityManager.activeNetwork

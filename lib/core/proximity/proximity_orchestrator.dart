@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
@@ -9,6 +10,7 @@ import '../../platform/desktop/macos_proximity_radios.dart';
 import '../../platform/desktop/windows_proximity_radios.dart';
 import '../../platform/ios/ios_proximity_radios.dart';
 import '../persistence/database.dart';
+import '../security/device_identity.dart';
 import '../security/remembered_wifi.dart';
 import '../security/shizuku_psk_gate.dart';
 import 'proximity_advert.dart';
@@ -51,6 +53,22 @@ class ProximityOrchestrator {
   /// not supply. The UI must stage an offer and re-run the accept.
   Future<void> Function(InvitePrompt prompt)? needsLanPassword;
   Future<String?> Function()? readCurrentSsid;
+
+  /// Saved personal PSK for an SSID that may not be the connected one.
+  Future<OsWifiNetwork?> Function(String ssid)? readSavedPersonalPsk;
+
+  /// Saved-SSID check that does not return a passphrase.
+  Future<bool> Function(String ssid)? hasSavedSsid;
+
+  /// STA switch onto a network this phone already saved.
+  Future<void> Function(String ssid, WifiJoinStyle style)? joinSavedNetwork;
+
+  /// True when [peerId] is trusted and [publicKeyBase64] is the key stored
+  /// for that peer. The hello signature has already been checked.
+  Future<bool> Function(String peerId, String publicKeyBase64)? peerIsTrusted;
+
+  /// STA switch for a normal LAN join. Local-only joins ignore this.
+  Future<WifiJoinStyle> Function()? wifiJoinStyle;
   final Future<void> Function(String peerId)? trustPeer;
   Future<void> Function()? refreshLoad;
   Duration idle;
@@ -97,6 +115,10 @@ class ProximityOrchestrator {
   DateTime? _privateUpSince;
   HotspotCredentials? _hosted;
   OsWifiNetwork? _lanOffer;
+  String? _peerWifiSsid;
+  String? _peerId;
+  String? _peerPublicKey;
+  var _awaitingMyLanSecret = false;
   var _sentHello = false;
   final _helloReplied = <ControlLink>{};
   var _cancelAttempt = false;
@@ -152,6 +174,35 @@ class ProximityOrchestrator {
       openLan: (_, _) async {},
     );
     orch.readCurrentSsid = psk.readCurrentSsid;
+    if (radios is AndroidProximityRadios) {
+      orch.readSavedPersonalPsk = radios.readSavedPersonalPsk;
+      orch.hasSavedSsid = radios.hasSavedSsid;
+      orch.joinSavedNetwork = (ssid, style) =>
+          radios.joinSaved(ssid: ssid, style: style);
+    }
+    orch.peerIsTrusted = (peerId, publicKey) async {
+      final row = await db.peerById(peerId);
+      return trustedKeyMatches(
+        trusted: row?.trusted == true,
+        storedFingerprint: row?.fingerprint,
+        publicKeyBase64: publicKey,
+      );
+    };
+    orch.wifiJoinStyle = () async {
+      final choice = await db.nearbyWifiJoinChoice();
+      if (choice == 'direct') {
+        return WifiJoinStyle.direct;
+      }
+      if (choice == 'panel') {
+        return WifiJoinStyle.panel;
+      }
+      if (consent != null &&
+          await db.nearbyShizukuAllowed() &&
+          await consent.state() == 'ready') {
+        return WifiJoinStyle.direct;
+      }
+      return WifiJoinStyle.panel;
+    };
     if (consent != null) {
       unawaited(consent.startListening());
     }
@@ -371,6 +422,97 @@ class ProximityOrchestrator {
     required String peerHandle,
     required String code,
     VoidCallback? onBeforeJoin,
+    VoidCallback? onInvite,
+  }) async {
+    _cancelAttempt = false;
+    if (codec == null) {
+      throw StateError('codec not bound');
+    }
+    await bindPeer(remote: remote, peerHandle: peerHandle);
+    final activeLink = link;
+    if (activeLink == null) {
+      throw StateError('local device unset');
+    }
+    await _sendHello(activeLink);
+    var invited = false;
+    try {
+      await for (final frame in activeLink.incoming) {
+        if (_cancelAttempt) {
+          return AttemptEndReason.abortedSheetCancel;
+        }
+        final body = await _requireCodec().decode(frame, session: session);
+        if (body is ControlHelloBody && !invited) {
+          final theirs = body.wifiSsid;
+          final mine = await _wifiSsid();
+          final saved = theirs != null && theirs.isNotEmpty && theirs != mine
+              ? await _savedFor(theirs)
+              : null;
+          if (saved != null) {
+            debugPrint('blan-prox: their lan saved join ssid=$theirs');
+            onBeforeJoin?.call();
+            if (onBeforeJoin != null) {
+              await Future<void>.delayed(const Duration(milliseconds: 300));
+            }
+            await _joinLan(saved);
+            return AttemptEndReason.running;
+          }
+          invited = true;
+          debugPrint('blan-prox: their lan invite ssid=${theirs ?? "-"}');
+          onInvite?.call();
+          await _send(
+            activeLink,
+            await _requireCodec().encode(
+              ControlInviteBody(
+                nick: localNick.isEmpty ? localDevice!.id : localNick,
+                code: code,
+                hostPlan: const [],
+                useLanMine: false,
+                useLanTheirs: true,
+                usePrivateNetwork: false,
+              ),
+              session: session,
+            ),
+          );
+        } else if (body is ControlDeclineBody) {
+          return AttemptEndReason.abortedCodeDecline;
+        } else if (body is ControlSecretBody && body.kind == 'lan') {
+          debugPrint('blan-prox: their lan secret join ssid=${body.ssid}');
+          onBeforeJoin?.call();
+          if (onBeforeJoin != null) {
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+          }
+          await _joinLan(
+            OsWifiNetwork(
+              ssid: body.ssid,
+              passphrase: body.psk,
+              security: WifiSecurity.fromWire(body.security),
+            ),
+          );
+          return AttemptEndReason.running;
+        }
+      }
+    } catch (_) {
+      if (_cancelAttempt) {
+        return AttemptEndReason.abortedSheetCancel;
+      }
+      rethrow;
+    }
+    if (_cancelAttempt) {
+      return AttemptEndReason.abortedSheetCancel;
+    }
+    return AttemptEndReason.hostChainExhausted;
+  }
+
+  /// Stay on this Wi-Fi and ask [remote] to join it.
+  ///
+  /// The receiver switches with a saved password when it has one. Otherwise
+  /// [sharePassword] runs and the secret is sent after accept.
+  Future<AttemptEndReason> requestMyLan({
+    required AttemptDevice remote,
+    required String peerHandle,
+    required String code,
+    required Future<OsWifiNetwork?> Function() sharePassword,
+    void Function(bool theyTrust)? onPeerTrust,
   }) async {
     _cancelAttempt = false;
     if (codec == null) {
@@ -391,6 +533,9 @@ class ProximityOrchestrator {
         final body = await _requireCodec().decode(frame, session: session);
         if (body is ControlHelloBody && !invited) {
           invited = true;
+          onPeerTrust?.call(
+            await _weTrust(body.peerId, body.publicKeyBase64),
+          );
           await _send(
             activeLink,
             await _requireCodec().encode(
@@ -398,8 +543,8 @@ class ProximityOrchestrator {
                 nick: localNick.isEmpty ? localDevice!.id : localNick,
                 code: code,
                 hostPlan: const [],
-                useLanMine: false,
-                useLanTheirs: true,
+                useLanMine: true,
+                useLanTheirs: false,
                 usePrivateNetwork: false,
               ),
               session: session,
@@ -407,16 +552,28 @@ class ProximityOrchestrator {
           );
         } else if (body is ControlDeclineBody) {
           return AttemptEndReason.abortedCodeDecline;
-        } else if (body is ControlSecretBody && body.kind == 'lan') {
-          onBeforeJoin?.call();
-          if (onBeforeJoin != null) {
-            await Future<void>.delayed(const Duration(milliseconds: 300));
+        } else if (body is ControlLanStatusBody) {
+          if (!body.needPsk) {
+            return AttemptEndReason.running;
           }
-          await network.join(
-            ssid: body.ssid,
-            passphrase: body.psk,
-            security: WifiSecurity.fromWire(body.security),
-            localOnly: false,
+          final shared = await sharePassword();
+          if (_cancelAttempt) {
+            return AttemptEndReason.abortedSheetCancel;
+          }
+          if (shared == null) {
+            return AttemptEndReason.abortedSheetCancel;
+          }
+          await _send(
+            activeLink,
+            await _requireCodec().encode(
+              ControlSecretBody(
+                ssid: shared.ssid,
+                psk: shared.passphrase,
+                security: shared.security.wire,
+                kind: 'lan',
+              ),
+              session: session,
+            ),
           );
           return AttemptEndReason.running;
         }
@@ -437,18 +594,61 @@ class ProximityOrchestrator {
     required AttemptDevice remote,
     required String peerHandle,
   }) async {
+    _cancelAttempt = false;
+    if (codec == null) {
+      throw StateError('codec not bound');
+    }
     await bindPeer(remote: remote, peerHandle: peerHandle);
     final local = localDevice;
     final activeLink = link;
     if (local == null || activeLink == null) {
       throw StateError('local device unset');
     }
+    // One subscription for the whole attempt. A second listen drops the
+    // accept that arrives while the invite is still being written.
+    final frames = StreamIterator(activeLink.incoming);
+    await _sendHello(activeLink);
+    String? remotePeerId;
+    while (await frames.moveNext()) {
+      if (_cancelAttempt) {
+        return AttemptEndReason.abortedSheetCancel;
+      }
+      final body = await _requireCodec().decode(
+        frames.current,
+        session: session,
+      );
+      if (body is ControlHelloBody) {
+        remotePeerId = body.peerId;
+        break;
+      }
+    }
+    if (remotePeerId == null || remotePeerId.isEmpty) {
+      return AttemptEndReason.hostChainExhausted;
+    }
+    final remoteDevice = AttemptDevice(id: remotePeerId, kind: remote.kind);
+    final plan = hostChain(local: local, remote: remoteDevice);
+    debugPrint('blan-prox: private invite peer=$remotePeerId');
+    await _send(
+      activeLink,
+      await _requireCodec().encode(
+        ControlInviteBody(
+          nick: localNick.isEmpty ? local.id : localNick,
+          code: mintSixDigitCode(Random()),
+          hostPlan: plan,
+          useLanMine: false,
+          useLanTheirs: false,
+          usePrivateNetwork: true,
+        ),
+        session: session,
+      ),
+    );
     return runHostPlan(
       local: local,
-      remote: remote,
+      remote: remoteDevice,
       extraMembers: extraMembers,
       link: activeLink,
       session: session,
+      frames: frames,
     );
   }
 
@@ -466,6 +666,7 @@ class ProximityOrchestrator {
     List<AttemptDevice> extraMembers = const [],
     required ControlLink link,
     required ControlSession session,
+    StreamIterator<Map<String, dynamic>>? frames,
   }) async {
     final allowed = {local.id, remote.id, ...extraMembers.map((d) => d.id)};
     final steps = hostChain(
@@ -473,6 +674,7 @@ class ProximityOrchestrator {
       remote: remote,
       extraMembers: extraMembers,
     ).where((step) => allowed.contains(step.hostId));
+    StreamIterator<Map<String, dynamic>>? open = frames;
     for (final step in steps) {
       if (step.hostId == local.id) {
         final recorder = _RecordingNetwork(network);
@@ -499,8 +701,13 @@ class ProximityOrchestrator {
         }
         return AttemptEndReason.running;
       }
-      final remoteBody = await _waitRemote(link, session, step);
+      open ??= StreamIterator(link.incoming);
+      final remoteBody = await _waitRemote(open, session, step);
+      if (remoteBody is ControlDeclineBody) {
+        return AttemptEndReason.abortedCodeDecline;
+      }
       if (remoteBody is ControlSecretBody) {
+        debugPrint('blan-prox: private join ssid=${remoteBody.ssid}');
         await network.join(
           ssid: remoteBody.ssid,
           passphrase: remoteBody.psk,
@@ -564,6 +771,20 @@ class ProximityOrchestrator {
             session: activeSession,
           ),
         );
+        if (prompt != null && prompt.useLanTheirs) {
+          // Initiator joins this phone's Wi-Fi. This phone must not switch.
+          _awaitingMyLanSecret = false;
+          debugPrint('blan-prox: their lan offer');
+          await _sendLanOffer(activeLink, activeSession);
+          _presentActive(previous);
+          return;
+        }
+        if (prompt != null && prompt.useLanMine) {
+          debugPrint('blan-prox: my lan answer ssid=${_peerWifiSsid ?? "-"}');
+          await _answerMyLan(activeLink, activeSession);
+          _presentActive(previous);
+          return;
+        }
         if (plan != null) {
           await _hostOwned(plan, activeLink, activeSession);
         }
@@ -635,13 +856,13 @@ class ProximityOrchestrator {
   }
 
   Future<Object> _waitRemote(
-    ControlLink link,
+    StreamIterator<Map<String, dynamic>> frames,
     ControlSession session,
     HostStep step,
   ) async {
-    await for (final frame in link.incoming) {
-      final body = await _requireCodec().decode(frame, session: session);
-      if (body is ControlSecretBody) {
+    while (await frames.moveNext()) {
+      final body = await _requireCodec().decode(frames.current, session: session);
+      if (body is ControlDeclineBody || body is ControlSecretBody) {
         return body;
       }
       if (body is ControlHostFailedBody &&
@@ -661,10 +882,27 @@ class ProximityOrchestrator {
     final body = await _requireCodec().decode(frame, session: linkSession);
     if (body is ControlHelloBody) {
       debugPrint('blan-prox: inbound hello link=$link');
+      final ssid = body.wifiSsid;
+      if (ssid != null && ssid.isNotEmpty) {
+        _peerWifiSsid = ssid;
+      }
+      _peerId = body.peerId;
+      _peerPublicKey = body.publicKeyBase64;
       await _replyHello(link, linkSession);
       return;
     }
     if (body is ControlInviteBody) {
+      if (body.useLanMine &&
+          !body.useLanTheirs &&
+          !body.usePrivateNetwork &&
+          await _weTrust(_peerId, _peerPublicKey)) {
+        final saved = await _savedFor(_peerWifiSsid);
+        if (saved != null) {
+          debugPrint('blan-prox: my lan trusted join ssid=${saved.ssid}');
+          await _answerMyLan(link, linkSession);
+          return;
+        }
+      }
       _inviteNicks[body.code] = body.nick;
       _plans[body.code] = body.hostPlan;
       _inviteLinks[body.code] = link;
@@ -704,6 +942,34 @@ class ProximityOrchestrator {
       if (plan != null) {
         await _hostOwned(plan, link, linkSession);
       }
+      return;
+    }
+    if (body is ControlSecretBody &&
+        (body.kind == 'hotspot' || body.kind == 'wifiDirect')) {
+      debugPrint('blan-prox: private secret join ssid=${body.ssid}');
+      await network.join(
+        ssid: body.ssid,
+        passphrase: body.psk,
+        security: WifiSecurity.fromWire(body.security),
+        localOnly: true,
+      );
+      if (associatedClients < 1) {
+        associatedClients = 1;
+      }
+      _privateUpSince = now();
+      return;
+    }
+    if (body is ControlSecretBody &&
+        body.kind == 'lan' &&
+        _awaitingMyLanSecret) {
+      _awaitingMyLanSecret = false;
+      await _joinLan(
+        OsWifiNetwork(
+          ssid: body.ssid,
+          passphrase: body.psk,
+          security: WifiSecurity.fromWire(body.security),
+        ),
+      );
       return;
     }
     if (body is ControlDeclineBody) {
@@ -889,6 +1155,102 @@ class ProximityOrchestrator {
     );
   }
 
+  Future<bool> _weTrust(String? peerId, String? publicKey) async {
+    if (peerId == null ||
+        peerId.isEmpty ||
+        publicKey == null ||
+        publicKey.isEmpty) {
+      return false;
+    }
+    return await peerIsTrusted?.call(peerId, publicKey) ?? false;
+  }
+
+  Future<OsWifiNetwork?> _savedFor(String? ssid) async {
+    if (ssid == null || ssid.isEmpty) {
+      return null;
+    }
+    if (await hasSavedSsid?.call(ssid) == true) {
+      final detailed = await readSavedPersonalPsk?.call(ssid);
+      if (detailed != null &&
+          detailed.ssid == ssid &&
+          detailed.passphrase.isNotEmpty) {
+        return detailed;
+      }
+      return OsWifiNetwork(
+        ssid: ssid,
+        passphrase: '',
+        security: WifiSecurity.wpa2Psk,
+      );
+    }
+    final saved = await readSavedPersonalPsk?.call(ssid);
+    if (saved == null || saved.ssid != ssid || saved.passphrase.isEmpty) {
+      return null;
+    }
+    return saved;
+  }
+
+  Future<WifiJoinStyle> _lanStyle() async {
+    return await wifiJoinStyle?.call() ?? WifiJoinStyle.panel;
+  }
+
+  Future<void> _joinLan(OsWifiNetwork network) async {
+    final joinSaved = joinSavedNetwork;
+    if (network.passphrase.isEmpty && joinSaved != null) {
+      await joinSaved(network.ssid, await _lanStyle());
+      return;
+    }
+    await this.network.join(
+      ssid: network.ssid,
+      passphrase: network.passphrase,
+      security: network.security,
+      localOnly: false,
+      style: await _lanStyle(),
+    );
+  }
+
+  /// Receiver of "use my LAN": switch with a saved password, or ask for one.
+  Future<void> _answerMyLan(ControlLink link, ControlSession session) async {
+    final saved = await _savedFor(_peerWifiSsid);
+    if (saved != null) {
+      try {
+        debugPrint('blan-prox: my lan saved join ssid=${saved.ssid}');
+        // Close the initiator's waiting dialog before the STA move. The
+        // notify that would close it afterwards is easy to drop once the
+        // radio starts switching.
+        await _sendLanStatus(link, session, needPsk: false);
+        await _joinLan(saved);
+        return;
+      } catch (error) {
+        debugPrint('blan-prox: my lan saved join failed $error');
+        await _send(
+          link,
+          await _requireCodec().encode(
+            const ControlDeclineBody(reason: 'joinFailed'),
+            session: session,
+          ),
+        );
+        return;
+      }
+    }
+    debugPrint('blan-prox: my lan need psk ssid=${_peerWifiSsid ?? "-"}');
+    _awaitingMyLanSecret = true;
+    await _sendLanStatus(link, session, needPsk: true);
+  }
+
+  Future<void> _sendLanStatus(
+    ControlLink link,
+    ControlSession session, {
+    required bool needPsk,
+  }) async {
+    await _send(
+      link,
+      await _requireCodec().encode(
+        ControlLanStatusBody(needPsk: needPsk),
+        session: session,
+      ),
+    );
+  }
+
   Future<String?> _wifiSsid() async {
     try {
       final ssid = await readCurrentSsid?.call();
@@ -1061,12 +1423,14 @@ class _RecordingNetwork implements PrivateNetworkPort {
     required String passphrase,
     required WifiSecurity security,
     required bool localOnly,
+    WifiJoinStyle style = WifiJoinStyle.panel,
   }) {
     return inner.join(
       ssid: ssid,
       passphrase: passphrase,
       security: security,
       localOnly: localOnly,
+      style: style,
     );
   }
 

@@ -326,7 +326,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
   });
 
-  testWidgets('password skip starts one local hotspot', (tester) async {
+  testWidgets('use my lan does not join this phone', (tester) async {
     final ble = FakeBlePresencePort();
     final network = FakePrivateNetworkPort();
     final orch = _orch(ble, network: network);
@@ -357,12 +357,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(OutlinedButton, 'Use my LAN'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Skip'));
-    await tester.pumpAndSettle();
 
-    expect(network.calls.where((call) => call == 'startHotspot').length, 1);
-    expect(network.calls, isNot(contains('startWifiDirect')));
-    expect(network.calls.join(), isNot(contains('t05-psk-token')));
+    expect(find.text('Nearby failed'), findsOneWidget);
+    expect(network.calls.where((call) => call == 'startHotspot'), isEmpty);
+    expect(network.calls.where((call) => call.startsWith('join:')), isEmpty);
   });
 
   testWidgets('initiator sheet highlights hotspot and offers their network', (
@@ -420,7 +418,7 @@ void main() {
     expect(find.text('Ada'), findsNothing);
   });
 
-  testWidgets('use my lan confirms the auto-read password before joining', (
+  testWidgets('use my lan does not confirm or join locally', (
     tester,
   ) async {
     final ble = FakeBlePresencePort();
@@ -462,22 +460,9 @@ void main() {
     await tester.tap(find.widgetWithText(OutlinedButton, 'Use my LAN'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Home'), findsOneWidget);
+    expect(find.textContaining('Home'), findsNothing);
+    expect(find.text('Nearby failed'), findsOneWidget);
     expect(network.calls, isNot(contains('join:Home')));
-
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
-    expect(network.calls, isNot(contains('join:Home')));
-
-    await tester.tap(find.text('Bea'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Use my LAN'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Join'));
-    await tester.pumpAndSettle();
-
-    expect(network.calls, contains('join:Home'));
-    expect(network.lastJoinPassphrase, 'pw-home');
   });
 
   testWidgets('their network failure surfaces a dialog', (tester) async {
@@ -732,7 +717,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Accept'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Wi-Fi password'), findsOneWidget);
     expect(
       tester.widget<TextField>(find.byType(TextField).first).controller?.text,
@@ -768,7 +754,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Accept'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
     expect(
       tester.widget<TextButton>(find.widgetWithText(TextButton, 'Join')).onPressed,

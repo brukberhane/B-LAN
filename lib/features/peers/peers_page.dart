@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:blan/core/protocol/constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,7 +46,19 @@ class PeersPage extends ConsumerWidget {
           return CustomScrollView(
             slivers: [
               SliverToBoxAdapter(
-                child: NearbySection(peers: rows, subnets: localSubnets),
+                child: NearbySection(
+                  peers: rows,
+                  subnets: localSubnets,
+                  onAdvert: (advert) {
+                    try {
+                      unawaited(
+                        ref.read(appServiceProvider).noteNearbyAdvert(advert),
+                      );
+                    } on UnimplementedError {
+                      // Widget tests render the page without a database.
+                    }
+                  },
+                ),
               ),
               if (!filterEnabled)
                 SliverToBoxAdapter(

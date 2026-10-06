@@ -146,6 +146,27 @@ class ShizukuBridge(private val context: Context) {
         return got
     }
 
+    /** Saved-network name check. The reply is a boolean; the passphrase stays in the shell process. */
+    fun hasSaved(ssid: String): Boolean {
+        if (ssid.isEmpty()) {
+            return false
+        }
+        val hit = callUserService(8) { service -> service.hasSaved(ssid) } == true
+        android.util.Log.i("blan-ctl", "shizuku saved ssid=$ssid hit=$hit")
+        return hit
+    }
+
+    /** Switch onto a saved network. The passphrase is read and used inside the shell process. */
+    fun connectSaved(ssid: String): Boolean {
+        val creds = readPersonalPsk(ssid) ?: return false
+        val pass = creds["passphrase"] ?: return false
+        if (pass.isEmpty()) {
+            return false
+        }
+        val security = creds["security"] ?: "wpa2-psk"
+        return connectPersonal(ssid, pass, security)
+    }
+
     /** Privileged STA switch. Passphrase stays in the binder call; never logged. */
     fun connectPersonal(ssid: String, passphrase: String, security: String): Boolean {
         if (ssid.isEmpty() || passphrase.isEmpty()) {
@@ -182,7 +203,7 @@ class ShizukuBridge(private val context: Context) {
             .daemon(false)
             .processNameSuffix("psk")
             .debuggable(isDebuggable())
-            .version(6)
+            .version(8)
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
                 try {

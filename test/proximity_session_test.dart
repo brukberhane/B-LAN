@@ -31,6 +31,36 @@ void main() {
     }
   });
 
+  test('fresh advert off this subnet is not same LAN', () {
+    expect(
+      sameLanReachable(
+        advertHasIpv4: true,
+        advertOnSubnet: false,
+        storedOnSubnet: true,
+        peerStale: false,
+      ),
+      isFalse,
+    );
+    expect(
+      sameLanReachable(
+        advertHasIpv4: true,
+        advertOnSubnet: true,
+        storedOnSubnet: true,
+        peerStale: true,
+      ),
+      isFalse,
+    );
+    expect(
+      sameLanReachable(
+        advertHasIpv4: true,
+        advertOnSubnet: true,
+        storedOnSubnet: false,
+        peerStale: false,
+      ),
+      isTrue,
+    );
+  });
+
   group('tap and sheet', () {
     const cases =
         <

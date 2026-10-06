@@ -234,8 +234,13 @@ class ProximityPlugin(
                         )
                     }
                 } catch (error: WifiRadios.RadioException) {
+                    Log.w("blan-ctl", "hotspot ${error.code}")
                     main.post { result.success(mapOf("error" to error.code)) }
                 } catch (error: Exception) {
+                    Log.w(
+                        "blan-ctl",
+                        "hotspot error ${error.javaClass.simpleName}: ${error.message}",
+                    )
                     main.post { result.success(mapOf("error" to "hotspotFailed")) }
                 }
             }
@@ -278,21 +283,35 @@ class ProximityPlugin(
                 val passphrase = call.argument<String>("passphrase")
                 val security = call.argument<String>("security") ?: "wpa2-psk"
                 val localOnly = call.argument<Boolean>("localOnly") ?: true
+                val style = call.argument<String>("style") ?: "panel"
                 if (ssid == null || passphrase == null) {
                     result.success(mapOf("error" to "badArgs"))
                     return
                 }
                 radioPool.execute {
                     try {
-                        if (!localOnly && shizuku.connectPersonal(ssid, passphrase, security)) {
-                            Log.i("blan-ctl", "lan shizuku connect ok")
+                        if (localOnly) {
+                            wifi.join(ssid, passphrase, security, true)
                             main.post { result.success(null) }
                             return@execute
                         }
-                        if (!localOnly) {
-                            Log.w("blan-ctl", "lan shizuku connect miss, wifi panel")
+                        if (style == "direct") {
+                            val shizukuState = shizuku.state()
+                            if (shizukuState != "ready") {
+                                Log.w("blan-ctl", "lan shizuku not ready state=$shizukuState")
+                                main.post { result.success(mapOf("error" to "shizukuDead")) }
+                                return@execute
+                            }
+                            if (shizuku.connectPersonal(ssid, passphrase, security)) {
+                                Log.i("blan-ctl", "lan shizuku connect ok")
+                                main.post { result.success(null) }
+                            } else {
+                                Log.w("blan-ctl", "lan shizuku connect miss")
+                                main.post { result.success(mapOf("error" to "joinFailed")) }
+                            }
+                            return@execute
                         }
-                        wifi.join(ssid, passphrase, security, localOnly)
+                        wifi.join(ssid, passphrase, security, false)
                         main.post { result.success(null) }
                     } catch (error: WifiRadios.RadioException) {
                         main.post { result.success(mapOf("error" to error.code)) }
@@ -376,9 +395,67 @@ class ProximityPlugin(
                 }
             }
 
+            "hasSavedSsid" -> radioPool.execute {
+                val ssid = call.argument<String>("ssid").orEmpty()
+                val local = try {
+                    wifi.hasSavedSsid(ssid)
+                } catch (_: Exception) {
+                    false
+                }
+                val hit = local || try {
+                    shizuku.hasSaved(ssid)
+                } catch (_: Exception) {
+                    false
+                }
+                Log.i("blan-ctl", "hasSavedSsid ssid=$ssid local=$local hit=$hit")
+                main.post { result.success(hit) }
+            }
+
+            "joinSaved" -> {
+                val ssid = call.argument<String>("ssid")
+                val style = call.argument<String>("style") ?: "direct"
+                if (ssid.isNullOrEmpty()) {
+                    result.success(mapOf("error" to "badArgs"))
+                    return
+                }
+                radioPool.execute {
+                    try {
+                        if (wifi.connectSavedById(ssid)) {
+                            Log.i("blan-ctl", "lan saved id connect ok")
+                            main.post { result.success(null) }
+                            return@execute
+                        }
+                        if (style == "direct") {
+                            val shizukuState = shizuku.state()
+                            if (shizukuState != "ready") {
+                                Log.w("blan-ctl", "lan saved shizuku not ready state=$shizukuState")
+                                main.post { result.success(mapOf("error" to "shizukuDead")) }
+                                return@execute
+                            }
+                            if (shizuku.connectSaved(ssid)) {
+                                Log.i("blan-ctl", "lan saved shizuku connect ok")
+                                main.post { result.success(null) }
+                            } else {
+                                Log.w("blan-ctl", "lan saved shizuku connect miss")
+                                main.post { result.success(mapOf("error" to "joinFailed")) }
+                            }
+                            return@execute
+                        }
+                        wifi.waitOnWifiPanel(ssid)
+                        main.post { result.success(null) }
+                    } catch (error: WifiRadios.RadioException) {
+                        main.post { result.success(mapOf("error" to error.code)) }
+                    } catch (error: Exception) {
+                        Log.w("blan-ctl", "joinSaved ${error.javaClass.simpleName}: ${error.message}")
+                        main.post { result.success(mapOf("error" to "joinFailed")) }
+                    }
+                }
+            }
+
             "readPersonalPsk" -> radioPool.execute {
+                val hinted = call.argument<String>("ssid")?.takeIf { it.isNotEmpty() }
                 val creds = try {
-                    shizuku.readPersonalPsk(wifi.currentSsid())
+                    shizuku.readPersonalPsk(hinted ?: wifi.currentSsid())
                 } catch (_: Exception) {
                     null
                 }

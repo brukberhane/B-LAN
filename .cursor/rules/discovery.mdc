@@ -44,6 +44,6 @@ What this spoke does not cover:
 
 | Symptom | Cause | Fix |
 | ------- | ----- | --- |
-| Subnet match treated as reachable | `/hello` never ran, or AP isolation drops the TCP path | Badge Same LAN only after `/hello` succeeds. Otherwise Other LAN or BLE only, per `proximity.mdc`. |
+| Subnet match treated as reachable. Refresh still shows a trusted peer as Same LAN after the other phone leaves, until the row is deleted | `/hello` never ran, or a stored host still sits in a reused private CIDR (`192.168.0.0/24` on two different networks). Trusted rows are not purged, and a refresh that only retries already-stale rows never re-checks them. A BLE advert IPv4 from the last scan is fresher than the stored host | Same LAN only when the newest address (BLE advert IPv4 when present) is on a current subnet and a recent `/hello` succeeded. Refresh and a short timer re-hello on-subnet peers, trusted ones included. An advert address outside the current subnets marks the row stale and moves it off the list without deleting trust. Restart the BLE advert when this phone's own IPv4 changes so the other side sees the move |
 
 <!-- last-verified: 2026-10 -->

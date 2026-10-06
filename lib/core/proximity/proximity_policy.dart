@@ -4,6 +4,26 @@ import 'proximity_types.dart';
 
 export 'proximity_types.dart';
 
+/// Same-LAN only from the newest address we have.
+///
+/// A stored host that still falls inside the current CIDR is not enough:
+/// another network often reuses `192.168.0.0/24`. A fresh advert IPv4 off
+/// this subnet, or a failed `/hello` (`peerStale`), drops the badge.
+bool sameLanReachable({
+  required bool advertHasIpv4,
+  required bool advertOnSubnet,
+  required bool storedOnSubnet,
+  required bool peerStale,
+}) {
+  if (peerStale) {
+    return false;
+  }
+  if (advertHasIpv4) {
+    return advertOnSubnet;
+  }
+  return storedOnSubnet;
+}
+
 ProximityBadge badgeFor(BadgeFacts facts) {
   if (!facts.hasAdvertisedIpv4) {
     return ProximityBadge.bleOnly;

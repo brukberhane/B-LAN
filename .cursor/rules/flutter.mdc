@@ -65,6 +65,14 @@ What this spoke does not cover:
 
 <!-- last-verified: 2026-10 -->
 
+### `Dialog after a pop never appears`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| The error or follow-up sheet never shows after the first dialog closes. A widget test also fails with a pending timer | The button captured the dialog context, popped it, then awaited. That context is unmounted. A `Future.timeout` raced inside `Future.any` is not cancelled when the other future wins | Continue after pop with the page context. Use an explicit timer and cancel it when the race ends |
+
+<!-- last-verified: 2026-10 -->
+
 ### `Async test fails on a fixed delay after a new pre-work phase is added`
 
 | Symptom | Cause | Fix |

@@ -115,6 +115,7 @@ class LinuxProximityRadios
     required String passphrase,
     required WifiSecurity security,
     required bool localOnly,
+    WifiJoinStyle style = WifiJoinStyle.panel,
   }) {
     return _nm.join(ssid: ssid, passphrase: passphrase, localOnly: localOnly);
   }

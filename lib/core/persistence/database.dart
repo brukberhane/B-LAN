@@ -273,6 +273,26 @@ class AppDatabase extends _$AppDatabase {
     await setSetting('nearby_dual_advert', enabled ? '1' : '0');
   }
 
+  /// `direct`, `panel`, or null when the user has never chosen.
+  /// A missing row stays null so a ready Shizuku grant can default to direct.
+  Future<String?> nearbyWifiJoinChoice() async {
+    final raw = await getSetting('nearby_wifi_join');
+    if (raw == 'direct' || raw == 'panel') {
+      return raw;
+    }
+    return null;
+  }
+
+  /// `direct` is a privileged STA connect. `panel` is the system Wi-Fi sheet.
+  /// A missing choice reads as `panel` for callers that cannot see Shizuku.
+  Future<String> nearbyWifiJoin() async {
+    return await nearbyWifiJoinChoice() ?? 'panel';
+  }
+
+  Future<void> setNearbyWifiJoin(String style) async {
+    await setSetting('nearby_wifi_join', style == 'direct' ? 'direct' : 'panel');
+  }
+
   Future<bool> nearbyShizukuAllowed() async {
     final raw = await getSetting('nearby_shizuku_allowed', defaultValue: '0');
     return raw == '1';
@@ -1445,6 +1465,34 @@ class AppDatabase extends _$AppDatabase {
         stale: const Value(false),
       ),
     );
+  }
+
+  Future<void> updatePeerHost(
+    String peerId, {
+    required String host,
+    int? port,
+  }) async {
+    await (update(peers)..where((t) => t.id.equals(peerId))).write(
+      PeersCompanion(
+        host: Value(host),
+        port: port == null ? const Value.absent() : Value(port),
+      ),
+    );
+  }
+
+  /// Rows for the peers list. Trusted peers that failed a fresh `/hello`
+  /// stay in the database but leave the same-LAN list until the probe works.
+  List<Peer> peersForLanList(
+    List<Peer> rows,
+    List<Ipv4Subnet> localSubnets, {
+    required bool filterEnabled,
+  }) {
+    if (!filterEnabled) {
+      return rows;
+    }
+    return filterPeersOnLocalSubnet(rows, localSubnets)
+        .where((peer) => !(peer.trusted && peer.stale))
+        .toList();
   }
 
   Future<void> setPeerStale(String peerId, bool stale) async {

@@ -205,16 +205,20 @@ class FakePrivateNetworkPort implements PrivateNetworkPort {
     calls.add('stopWifiDirect');
   }
 
+  WifiJoinStyle? lastJoinStyle;
+
   @override
   Future<void> join({
     required String ssid,
     required String passphrase,
     required WifiSecurity security,
     required bool localOnly,
+    WifiJoinStyle style = WifiJoinStyle.panel,
   }) async {
     lastJoinPassphrase = passphrase;
     lastJoinLocalOnly = localOnly;
     lastJoinSecurity = security;
+    lastJoinStyle = style;
     calls.add('join:$ssid');
   }
 

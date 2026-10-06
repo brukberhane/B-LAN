@@ -26,11 +26,16 @@ class NearbySection extends ConsumerStatefulWidget {
     required this.peers,
     required this.subnets,
     this.remoteKind = ProximityDeviceKind.android,
+    this.onAdvert,
   });
 
   final List<Peer> peers;
   final List<Ipv4Subnet> subnets;
   final ProximityDeviceKind remoteKind;
+
+  /// Fresh BLE address. The peers page uses it to drop a trusted row that
+  /// left the subnet. Tests omit it.
+  final void Function(ProximityAdvert advert)? onAdvert;
 
   @override
   ConsumerState<NearbySection> createState() => _NearbySectionState();
@@ -46,6 +51,7 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
   StateController<Set<String>>? _lanIds;
   StateController<int>? _hitCount;
   Set<String> _published = const {};
+  final _notedAdvert = <String>{};
   var _publishedCount = 0;
   var _showingInvite = false;
   var _showingPsk = false;
@@ -75,11 +81,13 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
           return;
         }
         setState(() => _hits[hit.peerHandle] = hit);
+        _noteAdvert(hit);
       });
       _resets = orch?.scanResets.listen((_) {
         if (!mounted) {
           return;
         }
+        _notedAdvert.clear();
         setState(_hits.clear);
       });
     }
@@ -325,7 +333,7 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
         : utf8.decode(hit.scanResponse, allowMalformed: true);
     await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(nick),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -339,12 +347,15 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
               FilledButton(
                 autofocus: true,
                 onPressed: () async {
-                  Navigator.pop(context);
+                  Navigator.pop(dialogContext);
                   try {
-                    await orch.startPrivateAttempt(
+                    final end = await orch.startPrivateAttempt(
                       remote: remote,
                       peerHandle: hit.peerHandle,
                     );
+                    if (end != AttemptEndReason.running) {
+                      _showAttemptError("Couldn't start the private network.");
+                    }
                   } catch (_) {
                     _showAttemptError(_reachCopy);
                   }
@@ -357,7 +368,7 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
               const SizedBox(height: 8),
               OutlinedButton(
                 onPressed: () async {
-                  Navigator.pop(context);
+                  Navigator.pop(dialogContext);
                   await _useTheirNetwork(
                     context,
                     orch,
@@ -372,7 +383,7 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
               const SizedBox(height: 8),
               OutlinedButton(
                 onPressed: () async {
-                  Navigator.pop(context);
+                  Navigator.pop(dialogContext);
                   await _useMyLan(context, orch, remote, hit.peerHandle);
                 },
                 child: const Text('Use my LAN'),
@@ -383,7 +394,7 @@ class _NearbySectionState extends ConsumerState<NearbySection> {
         actions: [
           TextButton(
             onPressed: () async {
-              Navigator.pop(context);
+              Navigator.pop(dialogContext);
               await orch.abort(UserAbort.sheetCancel);
             },
             child: const Text('Cancel'),
@@ -401,10 +412,16 @@ Future<void> _useTheirNetwork(
   ) async {
     final code = mintSixDigitCode(Random());
     final joinGate = Completer<void>();
+    final inviteGate = Completer<void>();
     final result = orch.requestTheirLan(
       remote: remote,
       peerHandle: peerHandle,
       code: code,
+      onInvite: () {
+        if (!inviteGate.isCompleted) {
+          inviteGate.complete();
+        }
+      },
       onBeforeJoin: () {
         if (!joinGate.isCompleted) {
           joinGate.complete();
@@ -414,22 +431,31 @@ Future<void> _useTheirNetwork(
     // The attempt can fail before the waiting dialog builds; keep the
     // future "handled" so the zone does not report it early.
     unawaited(result.catchError((_) => AttemptEndReason.abortedSheetCancel));
+    await Future.any<void>([
+      inviteGate.future,
+      result.then((_) {}, onError: (_) {}),
+    ]);
     if (!context.mounted) {
       return;
     }
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => _WaitingCodeDialog(
-        future: Future.any<void>([joinGate.future, result]),
-        code: code,
-        onCancel: () => orch.abort(UserAbort.sheetCancel),
-      ),
-    );
+    // A saved network joins here with no invite, so there is no code to show.
+    if (inviteGate.isCompleted) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => _WaitingCodeDialog(
+          future: Future.any<void>([joinGate.future, result]),
+          code: code,
+          title: 'Use their network',
+          message: 'Ask them to accept code $code.',
+          onCancel: () => orch.abort(UserAbort.sheetCancel),
+        ),
+      );
+    }
     try {
       await result;
-    } catch (_) {
-      _showAttemptError(_reachCopy);
+    } catch (error) {
+      _showAttemptError(_joinCopy(error));
     }
     _paint();
   }
@@ -440,27 +466,96 @@ Future<void> _useTheirNetwork(
     AttemptDevice remote,
     String peerHandle,
   ) async {
-    final outcome = await _acquireLanPsk(context, orch, verb: 'Join');
-    final psk = outcome.network;
-    if (psk == null) {
-      if (outcome.skip) {
-        await orch.skipPassword(remote: remote, peerHandle: peerHandle);
-        _paint();
+    final code = mintSixDigitCode(Random());
+    final shareGate = Completer<void>();
+    final trustGate = Completer<bool>();
+    final result = orch.requestMyLan(
+      remote: remote,
+      peerHandle: peerHandle,
+      code: code,
+      onPeerTrust: (verified) {
+        if (!trustGate.isCompleted) {
+          trustGate.complete(verified);
+        }
+      },
+      sharePassword: () async {
+        if (!shareGate.isCompleted) {
+          shareGate.complete();
+        }
+        await WidgetsBinding.instance.endOfFrame;
+        if (!context.mounted) {
+          return null;
+        }
+        debugPrint('blan-prox: my lan share ask');
+        final outcome = await _acquireLanPsk(context, orch, verb: 'Share');
+        return outcome.network;
+      },
+    );
+    unawaited(result.catchError((_) => AttemptEndReason.abortedSheetCancel));
+    final trustDone = Completer<bool>();
+    final trustTimer = Timer(const Duration(seconds: 8), () {
+      if (!trustDone.isCompleted) {
+        trustDone.complete(false);
+      }
+    });
+    trustGate.future.then((trusted) {
+      trustTimer.cancel();
+      if (!trustDone.isCompleted) {
+        trustDone.complete(trusted);
+      }
+    });
+    bool mutual = false;
+    try {
+      final winner = await Future.any<Object?>([result, trustDone.future]);
+      trustTimer.cancel();
+      if (winner is AttemptEndReason) {
+        if (winner != AttemptEndReason.running &&
+            winner != AttemptEndReason.abortedSheetCancel &&
+            context.mounted) {
+          _showAttemptError(_reachCopy);
+        }
         return;
       }
-      await orch.abort(UserAbort.sheetCancel);
+      mutual = winner == true;
+    } catch (error) {
+      trustTimer.cancel();
+      if (context.mounted) {
+        _showAttemptError(_joinCopy(error));
+      }
       return;
     }
-    try {
-      await orch.network.join(
-        ssid: psk.ssid,
-        passphrase: psk.passphrase,
-        security: psk.security,
-        localOnly: false,
-      );
-    } catch (_) {
-      _showAttemptError("Couldn't join '${psk.ssid}'.");
+    if (!context.mounted) {
       return;
+    }
+    // Mutual trust plus a saved network finishes before this wait. A password
+    // share still needs the code, so the dialog opens when the quiet path
+    // does not settle.
+    final quiet = mutual &&
+        await Future.any<bool>([
+          result.then((_) => true, onError: (_) => true),
+          Future<bool>.delayed(const Duration(seconds: 4), () => false),
+        ]);
+    if (!quiet && context.mounted) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => _WaitingCodeDialog(
+          future: Future.any<void>([shareGate.future, result]),
+          code: code,
+          title: 'Use my LAN',
+          message: 'Ask them to join code $code.',
+          onCancel: () => orch.abort(UserAbort.sheetCancel),
+        ),
+      );
+    }
+    try {
+      final end = await result;
+      if (end != AttemptEndReason.running &&
+          end != AttemptEndReason.abortedSheetCancel) {
+        _showAttemptError(_reachCopy);
+      }
+    } catch (error) {
+      _showAttemptError(_joinCopy(error));
     }
     _paint();
   }
@@ -669,6 +764,17 @@ Future<void> _useTheirNetwork(
 
   static const _reachCopy = "Couldn't reach the device. Scan again and retry.";
 
+  String _joinCopy(Object error) {
+    final text = error.toString();
+    if (text.contains('shizukuDead')) {
+      return 'Shizuku is not running on this phone, so it cannot switch Wi-Fi.';
+    }
+    if (text.contains('joinFailed')) {
+      return "Couldn't switch Wi-Fi.";
+    }
+    return _reachCopy;
+  }
+
   void _showAttemptError(String message) {
     if (!mounted) {
       return;
@@ -840,8 +946,24 @@ Future<void> _useTheirNetwork(
     return null;
   }
 
+  void _noteAdvert(BleScanHit hit) {
+    final ProximityAdvert advert;
+    try {
+      advert = ProximityAdvert.unpack(hit.advert);
+    } on FormatException {
+      return;
+    }
+    final key =
+        '${advert.ipv4.join('.')}:${advert.port}:${_shortLabel(advert.shortPeerId)}';
+    if (!_notedAdvert.add(key)) {
+      return;
+    }
+    widget.onAdvert?.call(advert);
+  }
+
   bool _reachedOnLan(ProximityAdvert advert, String host) {
-    final advertLocal = hostSharesLocalSubnet(host, widget.subnets);
+    final hasIpv4 = advert.ipv4.any((byte) => byte != 0);
+    final advertLocal = hasIpv4 && hostSharesLocalSubnet(host, widget.subnets);
     for (final peer in widget.peers) {
       if (peer.port != advert.port) {
         continue;
@@ -851,12 +973,16 @@ Future<void> _useTheirNetwork(
       if (!sameHost && !sameDevice) {
         continue;
       }
-      if (advertLocal || hostSharesLocalSubnet(peer.host, widget.subnets)) {
-        return true;
-      }
+      return sameLanReachable(
+        advertHasIpv4: hasIpv4,
+        advertOnSubnet: advertLocal,
+        storedOnSubnet: hostSharesLocalSubnet(peer.host, widget.subnets),
+        peerStale: peer.stale,
+      );
     }
     return false;
   }
+
 }
 
 String _targetCopy(InvitePrompt prompt) {
@@ -938,11 +1064,15 @@ class _WaitingCodeDialog extends StatefulWidget {
   const _WaitingCodeDialog({
     required this.future,
     required this.code,
+    required this.title,
+    required this.message,
     required this.onCancel,
   });
 
   final Future<void> future;
   final String code;
+  final String title;
+  final String message;
   final Future<void> Function() onCancel;
 
   @override
@@ -956,19 +1086,21 @@ class _WaitingCodeDialogState extends State<_WaitingCodeDialog> {
   void initState() {
     super.initState();
     widget.future.whenComplete(() {
-      if (!mounted || _closing) {
-        return;
-      }
-      _closing = true;
-      Navigator.of(context).pop();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _closing) {
+          return;
+        }
+        _closing = true;
+        Navigator.of(context).pop();
+      });
     }).catchError((_) {});
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Use their network'),
-      content: Text('Ask them to accept code ${widget.code}.'),
+      title: Text(widget.title),
+      content: Text(widget.message),
       actions: [
         TextButton(
           onPressed: () {

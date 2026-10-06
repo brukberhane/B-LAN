@@ -71,45 +71,101 @@ class WifiPskService : IWifiPsk.Stub {
         }
     }
 
-    override fun connectPersonal(ssid: String, passphrase: String, security: String): String {
+    override fun hasSaved(ssid: String): Boolean {
+        if (ssid.isEmpty()) {
+            return false
+        }
+        val listed = savedName(ssid)
+        Log.i("blan-ctl", "pskService saved name=$ssid hit=$listed")
+        return listed
+    }
+
+    /** `cmd wifi list-networks` prints SSIDs and security, never the passphrase. */
+    private fun savedName(ssid: String): Boolean {
         return try {
-            val context = appContext ?: currentApplication()
-            if (context == null) {
-                Log.w("blan-ctl", "pskService connect skip=noContext")
-                return ""
+            val proc = ProcessBuilder("cmd", "wifi", "list-networks")
+                .redirectErrorStream(true)
+                .start()
+            val text = proc.inputStream.bufferedReader().use { it.readText() }
+            if (!proc.waitFor(5, TimeUnit.SECONDS)) {
+                proc.destroyForcibly()
             }
-            val manager =
-                context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            if (manager == null) {
-                Log.w("blan-ctl", "pskService connect skip=noWifiManager")
-                return ""
-            }
-            if (ssid.isEmpty() || passphrase.isEmpty()) {
-                Log.w("blan-ctl", "pskService connect skip=badArgs")
-                return ""
-            }
-            Log.i("blan-ctl", "pskService connect ssid=$ssid")
-            val config = wifiConfig(ssid, passphrase, security)
-            if (invokeConnect(manager, config) && waitForSsid(manager, ssid, 8_000)) {
-                Log.i("blan-ctl", "pskService connect ok=connect")
-                return "ok"
-            }
-            if (addAndEnable(manager, config) && waitForSsid(manager, ssid, 8_000)) {
-                Log.i("blan-ctl", "pskService connect ok=addNetwork")
-                return "ok"
-            }
-            if (cmdConnect(ssid, passphrase, security) && waitForSsid(manager, ssid, 12_000)) {
-                Log.i("blan-ctl", "pskService connect ok=cmd")
-                return "ok"
-            }
-            Log.w("blan-ctl", "pskService connect miss")
-            ""
+            text.lineSequence().any { line -> savedLineMatches(line, ssid) }
         } catch (error: Exception) {
-            Log.w(
-                "blan-ctl",
-                "pskService connect error ${error.javaClass.simpleName}: ${error.message}",
-            )
-            ""
+            Log.w("blan-ctl", "pskService saved list ${rootCause(error)}")
+            false
+        }
+    }
+
+    private fun savedLineMatches(line: String, ssid: String): Boolean {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty() || !trimmed[0].isDigit()) {
+            return false
+        }
+        var body = trimmed.dropWhile { it.isDigit() }.trim()
+        val marks = listOf("wpa3-sae^", "wpa3-sae", "wpa2-psk", "owe^", "wep", "owe", "open")
+        for (mark in marks) {
+            if (body.endsWith(mark)) {
+                body = body.removeSuffix(mark).trim()
+                break
+            }
+        }
+        return body == ssid
+    }
+
+    override fun connectPersonal(ssid: String, passphrase: String, security: String): String {
+        if (ssid.isEmpty() || passphrase.isEmpty()) {
+            Log.w("blan-ctl", "pskService connect skip=badArgs")
+            return ""
+        }
+        Log.i("blan-ctl", "pskService connect ssid=$ssid uid=${Process.myUid()}")
+        val manager = wifiManagerOrNull()
+        val config = wifiConfig(ssid, passphrase, security)
+        // This process is shell (uid 2000). WifiManager from the app context
+        // is attributed to com.brukb.blan and WifiService rejects it
+        // ("Package com.brukb.blan does not belong to 2000"). Each step is
+        // isolated so that rejection still reaches `cmd wifi`, which runs
+        // as shell.
+        if (manager != null &&
+            connectStep("connect") { invokeConnect(manager, config) } &&
+            waitForSsid(ssid, 8_000)
+        ) {
+            Log.i("blan-ctl", "pskService connect ok=connect")
+            return "ok"
+        }
+        if (manager != null &&
+            connectStep("addNetwork") { addAndEnable(manager, config) } &&
+            waitForSsid(ssid, 8_000)
+        ) {
+            Log.i("blan-ctl", "pskService connect ok=addNetwork")
+            return "ok"
+        }
+        if (connectStep("cmd") { cmdConnect(ssid, passphrase, security) } &&
+            waitForSsid(ssid, 12_000)
+        ) {
+            Log.i("blan-ctl", "pskService connect ok=cmd")
+            return "ok"
+        }
+        Log.w("blan-ctl", "pskService connect miss")
+        return ""
+    }
+
+    private fun wifiManagerOrNull(): WifiManager? {
+        return try {
+            val context = appContext ?: currentApplication() ?: return null
+            context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        } catch (error: Exception) {
+            Log.w("blan-ctl", "pskService connect manager ${rootCause(error)}")
+            null
+        }
+    }
+
+    private fun connectStep(name: String, block: () -> Boolean): Boolean {
+        return try {
+            block()
+        } catch (error: Exception) {
+            Log.w("blan-ctl", "pskService connect $name error ${rootCause(error)}")
+            false
         }
     }
 
@@ -307,6 +363,9 @@ class WifiPskService : IWifiPsk.Stub {
                 return match
             }
         }
+        if (ssidHint != null) {
+            return null
+        }
         val personal = configs.filter { config ->
             val ssid = stripQuotes(config.SSID)
             !ssid.isNullOrEmpty() && config.status == WifiConfiguration.Status.CURRENT
@@ -464,20 +523,47 @@ class WifiPskService : IWifiPsk.Stub {
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private fun waitForSsid(manager: WifiManager, ssid: String, budgetMs: Long): Boolean {
+    private fun waitForSsid(ssid: String, budgetMs: Long): Boolean {
         val deadline = System.currentTimeMillis() + budgetMs
         while (System.currentTimeMillis() < deadline) {
-            val current = stripQuotes(manager.connectionInfo?.ssid)
-            if (current == ssid) {
+            if (observedSsid() == ssid) {
                 return true
             }
             try {
                 Thread.sleep(400)
             } catch (_: InterruptedException) {
-                return current == ssid
+                return observedSsid() == ssid
             }
         }
-        return stripQuotes(manager.connectionInfo?.ssid) == ssid
+        return observedSsid() == ssid
+    }
+
+    /** App WifiManager throws from this uid. `cmd wifi status` does not. */
+    private fun observedSsid(): String? {
+        wifiManagerOrNull()?.let { manager ->
+            try {
+                val fromManager = stripQuotes(manager.connectionInfo?.ssid)
+                if (!fromManager.isNullOrEmpty() && fromManager != "<unknown ssid>") {
+                    return fromManager
+                }
+            } catch (error: Exception) {
+                Log.w("blan-ctl", "pskService ssid manager ${rootCause(error)}")
+            }
+        }
+        return try {
+            val proc = ProcessBuilder("cmd", "wifi", "status")
+                .redirectErrorStream(true)
+                .start()
+            val text = proc.inputStream.bufferedReader().use { it.readText() }
+            if (!proc.waitFor(3, TimeUnit.SECONDS)) {
+                proc.destroyForcibly()
+            }
+            val match = Regex("""SSID:\s*"?([^",\r\n]+)"?""").find(text) ?: return null
+            val ssid = match.groupValues[1].trim()
+            if (ssid.isEmpty() || ssid == "<unknown ssid>") null else ssid
+        } catch (error: Exception) {
+            Log.w("blan-ctl", "pskService ssid cmd ${rootCause(error)}")
+            null
+        }
     }
 }

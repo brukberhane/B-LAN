@@ -37,6 +37,15 @@ class OsWifiNetwork {
   final WifiSecurity security;
 }
 
+/// How a normal LAN STA switch runs. Local-only hotspot joins ignore this.
+enum WifiJoinStyle {
+  /// Privileged connect. A miss fails and does not open the system sheet.
+  direct,
+
+  /// System Wi-Fi sheet. Does not call the privileged connect.
+  panel,
+}
+
 class PrivateNetworkException implements Exception {
   const PrivateNetworkException(this.method);
   final HostMethod method;
@@ -89,6 +98,7 @@ abstract class PrivateNetworkPort {
     required String passphrase,
     required WifiSecurity security,
     required bool localOnly,
+    WifiJoinStyle style = WifiJoinStyle.panel,
   });
   Future<void> leaveJoined();
 }

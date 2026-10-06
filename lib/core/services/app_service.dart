@@ -108,10 +108,14 @@ class AppService {
   ShareWatcher? _shareWatcher;
   Timer? _reconcileTimer;
   Timer? _stalePeerRetryTimer;
+  Timer? _lanProbeTimer;
   Timer? _nearbyIdleTimer;
   bool _resumed = true;
+  List<int> _advertIpv4 = const [0, 0, 0, 0];
+  var _advertHasWifi = false;
   static const _reconcileInterval = Duration(minutes: 30);
   static const _stalePeerRetryInterval = Duration(seconds: 45);
+  static const _lanProbeInterval = Duration(seconds: 15);
   final _peerHandshakesInFlight = <String, Future<void>>{};
   final sharingActive = ValueNotifier(true);
 
@@ -171,6 +175,10 @@ class AppService {
     _stalePeerRetryTimer = Timer.periodic(
       _stalePeerRetryInterval,
       (_) => unawaited(_retryStalePeers()),
+    );
+    _lanProbeTimer = Timer.periodic(
+      _lanProbeInterval,
+      (_) => unawaited(_probeLanPeers()),
     );
     if (Platform.isAndroid) {
       await platform.acquireMulticastLock();
@@ -317,6 +325,10 @@ class AppService {
     proximity?.membersCanInvite = allowed;
   }
 
+  Future<void> setNearbyWifiJoin(String style) async {
+    await db.setNearbyWifiJoin(style);
+  }
+
   Future<void> setNearbyDualAdvert(bool enabled) async {
     await db.setNearbyDualAdvert(enabled);
     final orch = proximity;
@@ -378,12 +390,11 @@ class AppService {
           : ProximityDeviceKind.desktop,
     );
     orch.openLan = _openLanFromProximity;
-    final addresses = await lanIpv4Addresses();
-    final ipv4 = _ipv4Bytes(addresses.isEmpty ? '0.0.0.0' : addresses.first);
+    await _refreshAdvertAddress(restartRadio: false);
     final shown = nick.length > 64 ? nick.substring(0, 64) : nick;
     orch.advertBytes = () => ProximityAdvert(
-      hasWifi: addresses.isNotEmpty,
-      ipv4: ipv4,
+      hasWifi: _advertHasWifi,
+      ipv4: _advertIpv4,
       port: httpsPort,
       shortPeerId: shortPeerIdFromUuid(peerId),
       role: AdvertRole.none,
@@ -472,6 +483,35 @@ class AppService {
     orch.transfersInFlight = rows.length;
   }
 
+  bool _sameShort(String peerId, List<int> shortId) {
+    try {
+      final mine = shortPeerIdFromUuid(peerId);
+      if (mine.length != shortId.length) {
+        return false;
+      }
+      for (var i = 0; i < mine.length; i++) {
+        if (mine[i] != shortId[i]) {
+          return false;
+        }
+      }
+      return true;
+    } on FormatException {
+      return false;
+    }
+  }
+
+  bool _sameBytes(List<int> a, List<int> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   List<int> _ipv4Bytes(String host) {
     final parts = host.split('.');
     if (parts.length != 4) {
@@ -517,6 +557,8 @@ class AppService {
     await downloadQueue.stop();
     _stalePeerRetryTimer?.cancel();
     _stalePeerRetryTimer = null;
+    _lanProbeTimer?.cancel();
+    _lanProbeTimer = null;
     _reconcileTimer?.cancel();
     _reconcileTimer = null;
     _nearbyIdleTimer?.cancel();
@@ -726,8 +768,95 @@ class AppService {
         browserHttpPort: server.boundBrowserPort ?? await db.ensureHttpPort(),
       );
     }
-    await _retryStalePeers();
+    await _probeLanPeers(restartAdvert: false);
     await proximity?.refreshRadio();
+  }
+
+  /// BLE advert carries this phone's current IPv4. A network change restarts
+  /// the advert so peers stop matching the old address.
+  Future<void> _refreshAdvertAddress({required bool restartRadio}) async {
+    final addresses = await lanIpv4Addresses();
+    final next = _ipv4Bytes(addresses.isEmpty ? '0.0.0.0' : addresses.first);
+    final changed = !_sameBytes(_advertIpv4, next) ||
+        _advertHasWifi != addresses.isNotEmpty;
+    _advertIpv4 = next;
+    _advertHasWifi = addresses.isNotEmpty;
+    if (changed && restartRadio) {
+      await proximity?.refreshRadio();
+    }
+  }
+
+  /// Latest BLE advert wins over the stored host. An address outside the
+  /// current subnets moves the row off the same-LAN list without deleting trust.
+  Future<void> noteNearbyAdvert(ProximityAdvert advert) async {
+    if (!advert.ipv4.any((byte) => byte != 0)) {
+      return;
+    }
+    final host = advert.ipv4.join('.');
+    final peers = await db.select(db.peers).get();
+    Peer? match;
+    for (final peer in peers) {
+      if (_sameShort(peer.id, advert.shortPeerId)) {
+        match = peer;
+        break;
+      }
+    }
+    if (match == null) {
+      return;
+    }
+    final subnets = await lanIpv4Subnets();
+    if (!hostSharesLocalSubnet(host, subnets)) {
+      if (match.host != host) {
+        await db.updatePeerHost(
+          match.id,
+          host: host,
+          port: advert.port == 0 ? null : advert.port,
+        );
+      }
+      await db.setPeerStale(match.id, true);
+      _log.info('Peer ${match.nick} left the local subnet (BLE $host)');
+      return;
+    }
+    if (match.host != host || match.stale) {
+      unawaited(
+        _probePeer(
+          match,
+          host: host,
+          port: advert.port == 0 ? match.port : advert.port,
+        ),
+      );
+    }
+  }
+
+  /// Re-hello every on-subnet peer. Trusted rows are not purged, so a peer
+  /// that left a same-numbered subnet stays until this probe fails.
+  Future<void> _probeLanPeers({bool restartAdvert = true}) async {
+    await _refreshAdvertAddress(restartRadio: restartAdvert);
+    final subnets = await lanIpv4Subnets();
+    if (subnets.isEmpty) {
+      return;
+    }
+    final peers = await db.select(db.peers).get();
+    for (final peer in peers) {
+      if (peer.manual || !hostSharesLocalSubnet(peer.host, subnets)) {
+        continue;
+      }
+      unawaited(_probePeer(peer, host: peer.host, port: peer.port));
+    }
+  }
+
+  Future<void> _probePeer(Peer peer, {required String host, required int port}) async {
+    try {
+      await _handshakePeer(
+        host: host,
+        port: port,
+        manual: peer.manual,
+        ghostPeerIds: {peer.id},
+      ).timeout(const Duration(seconds: 5));
+    } catch (error, stack) {
+      await db.setPeerStale(peer.id, true);
+      _log.fine('LAN probe failed for $host:$port: $error', error, stack);
+    }
   }
 
   Future<void> trustPeer(String peerId) => db.trustPeer(peerId);

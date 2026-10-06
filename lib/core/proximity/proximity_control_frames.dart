@@ -111,6 +111,17 @@ class ControlSecretBody {
   final String kind;
 }
 
+/// Receiver tells the initiator whether it still needs the LAN passphrase.
+class ControlLanStatusBody {
+  const ControlLanStatusBody({required this.needPsk});
+  final bool needPsk;
+
+  Map<String, dynamic> toJson() => {'needPsk': needPsk};
+
+  factory ControlLanStatusBody.fromJson(Map<String, dynamic> json) =>
+      ControlLanStatusBody(needPsk: json['needPsk'] as bool);
+}
+
 class ControlHostFailedBody {
   const ControlHostFailedBody({required this.hostId, required this.method});
   final String hostId;
@@ -212,6 +223,8 @@ class ControlFrameCodec {
       };
     } else if (body is ControlHostFailedBody) {
       bodyJson = body.toJson();
+    } else if (body is ControlLanStatusBody) {
+      bodyJson = body.toJson();
     } else if (body is ControlInviteMemberBody) {
       bodyJson = body.toJson();
     } else {
@@ -301,6 +314,8 @@ class ControlFrameCodec {
         );
       case 'hostFailed':
         return ControlHostFailedBody.fromJson(bodyJson);
+      case 'lanStatus':
+        return ControlLanStatusBody.fromJson(bodyJson);
       case 'inviteMember':
         return ControlInviteMemberBody.fromJson(bodyJson);
       default:
@@ -326,6 +341,9 @@ class ControlFrameCodec {
     }
     if (body is ControlHostFailedBody) {
       return 'hostFailed';
+    }
+    if (body is ControlLanStatusBody) {
+      return 'lanStatus';
     }
     if (body is ControlInviteMemberBody) {
       return 'inviteMember';

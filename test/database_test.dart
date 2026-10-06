@@ -253,6 +253,34 @@ void main() {
     expect(filtered.map((peer) => peer.id), ['a']);
   });
 
+  test('peersForLanList hides a trusted peer after hello fails', () {
+    Peer row({required String id, required bool trusted, required bool stale}) =>
+        Peer(
+          id: id,
+          nick: id,
+          host: '192.168.1.20',
+          port: 1,
+          scheme: peerSchemeHttps,
+          fingerprint: null,
+          tlsCertFingerprint: null,
+          trusted: trusted,
+          identityStatus: PeerIdentityStatus.normal,
+          lastSeen: DateTime.now(),
+          manual: false,
+          stale: stale,
+        );
+    final visible = db.peersForLanList(
+      [
+        row(id: 'trusted-gone', trusted: true, stale: true),
+        row(id: 'trusted-here', trusted: true, stale: false),
+        row(id: 'new', trusted: false, stale: true),
+      ],
+      [const Ipv4Subnet(address: '192.168.1.10', prefixLength: 24)],
+      filterEnabled: true,
+    );
+    expect(visible.map((peer) => peer.id), ['trusted-here', 'new']);
+  });
+
   test('filterPeersOnLocalSubnet matches peers on any device subnet', () {
     Peer row(String id, String host) => Peer(
           id: id,

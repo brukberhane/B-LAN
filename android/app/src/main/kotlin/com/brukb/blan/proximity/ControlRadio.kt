@@ -430,6 +430,10 @@ class ControlRadio(
 @SuppressLint("MissingPermission")
     private fun attachGattClientLink(linkId: Int, device: BluetoothDevice): Link {
         Log.i("blan-ctl", "gatt client connecting dev=${device.address}")
+        // A second connect to the same address used to leave the old callback
+        // registered. Both callbacks then wrote the same notify into one
+        // reassembly buffer, and the follow-up frame never surfaced.
+        gattClients.remove(device.address)?.close()
         val holder = GattClientHolder()
         val writer = { frame: ByteArray ->
             holder.client?.write(frame) ?: throw IllegalStateException("gatt link not ready")

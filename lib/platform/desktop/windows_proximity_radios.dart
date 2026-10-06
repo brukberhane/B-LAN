@@ -144,6 +144,7 @@ class WindowsProximityRadios
     required String passphrase,
     required WifiSecurity security,
     required bool localOnly,
+    WifiJoinStyle style = WifiJoinStyle.panel,
   }) async {
     await _invoke('join', {
       'ssid': ssid,

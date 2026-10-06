@@ -21,7 +21,7 @@ What this spoke does not cover:
 
 1. Private network means a local-only hotspot first. It has no internet. Close the reservation on idle or Disband.
 2. Wi-Fi Direct runs only after that device's hotspot fails, and only on Android. The group owner is the only admitter.
-3. Local-only join uses `WifiNetworkSpecifier` **without** `INTERNET`, then binds the process to that network so concurrent-STA phones can keep their other Wi-Fi. A specifier request that keeps `INTERNET` is rejected and never shows a picker. LAN join is a real STA switch: privileged connect when Shizuku is ready on the joiner, else a saved suggestion plus the system Wi-Fi panel, waiting until the current SSID matches. Suggestion Join does not migrate a phone already on a healthy STA. Do not call specifier for a normal LAN.
+3. Local-only join uses `WifiNetworkSpecifier` **without** `INTERNET`, then binds the process to that network so concurrent-STA phones can keep their other Wi-Fi. A specifier request that keeps `INTERNET` is rejected and never shows a picker. LAN join is a real STA switch and does not use specifier. The Change Wi-Fi setting is exclusive: Direct is privileged connect only (a miss fails and does not open the panel); Panel is the system Wi-Fi sheet only (no privileged connect). Unset, with Shizuku ready and allowed, defaults to Direct. Suggestion Join does not migrate a phone already on a healthy STA. The setting does not apply to `localOnly` specifier joins.
 4. Warn before spin-up that the host's current Wi-Fi may pause. Do not migrate an in-flight transfer onto a new group owner mid-session. Host failure handling is spin-up only.
 5. Permissions: `CHANGE_WIFI_STATE`, and `NEARBY_WIFI_DEVICES` with `neverForLocation` when the app targets API 33+. Location is the pre-33 substitute, not an extra track.
 
@@ -35,6 +35,22 @@ What this spoke does not cover:
 - last consulted: 2026-10
 
 ## Problem classes
+
+### `Local-only hotspot fails with location already granted`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Private network never starts a hotspot. Log shows nearby wifi denied, or `onFailed` with no passphrase | `NEARBY_WIFI_DEVICES` uses `neverForLocation`, so fine location does not cover it, and the runtime permission was never requested. An empty log is not success | Request that permission before `startLocalOnlyHotspot` on API 33+. Log `onFailed` reason, timeout, and missing creds. Do not log the passphrase |
+
+<!-- last-verified: 2026-10 -->
+
+### `Saved-network lookup does not compile`
+
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Kotlin `Unresolved reference` on a `WifiConfiguration` field such as a hidden flag | The field is not in the app compile SDK | A saved hit is a matching SSID and a non-negative network id. Do not read hidden configuration flags |
+
+<!-- last-verified: 2026-10 -->
 
 ### `Hotspot SSID is random and the joiner never hears it`
 
